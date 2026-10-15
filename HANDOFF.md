@@ -1,0 +1,278 @@
+# PhDF — Project Handoff & Roadmap
+
+> Status: **Phase 1 done (local, v0.1.0)** — GitHub repo not created yet. Ask the owner before starting each new phase.
+> Last updated: 2026-10-15
+> Original requirements: `notes.md`
+
+---
+
+## 1. Vision
+
+PhDF is a **lightweight, reader-first, cross-platform PDF app** for heavy readers (research, study) that:
+- remembers exactly where you were in every PDF,
+- lives next to your Markdown notes (built-in MD reader/editor + Obsidian bridge),
+- turns anything into text (OCR) and gets text out fast (send to Obsidian, 1-click export to `.md`),
+- offers reading aids (focus / "ADHD mode"),
+- has a terminal-based AI side panel (Claude Code / Codex).
+
+**Non-goals (for now):** full PDF authoring, form design, digital signatures, heavy page editing.
+
+---
+
+## 2. Requirements (from `notes.md`, normalized)
+
+| # | Requirement | Priority |
+|---|---|---|
+| R1 | Lightweight: small install, fast startup, low RAM | Must |
+| R2 | Remember position (page, zoom, scroll) per PDF across sessions | Must |
+| R3 | Markdown reader + editor, openable side-by-side with a PDF | Must |
+| R4 | Annotations: highlight, underline, sticky notes, free text, ink | Must |
+| R5 | Easy navigation: outline/TOC, thumbnails, search, go-to-page, back/forward | Must |
+| R6 | OCR for scanned PDFs (selectable/searchable text) | Should |
+| R7 | Obsidian integration: send selection/quote to the vault/note | Must |
+| R8 | 1-click export PDF → `.md` (text + highlights/notes) | Should |
+| R9 | MD-first secondary mode with reading aids ("ADHD mode") | Should |
+| R10 | AI sidebar: Claude Code / Codex through an embedded terminal | Could |
+| R11 | Link peek: clicking a link opens a small preview first → *expand*, *open here*, or *close* | Must |
+
+---
+
+## 3. Final Decisions & Rationale (Decision Log)
+
+| # | Decision | Why | Alternatives considered |
+|---|---|---|---|
+| D1 | **Python backend + pywebview frontend** (option "B") | Owner prefers Python. pywebview uses the OS's built-in webview (WebView2 / WebKit / GTK WebKit), so no bundled Chromium → stays light (~40–60 MB install). Web UI makes CodeMirror, xterm.js, popups, overlays and side panels easy. | **A) PySide6/Qt** — fully native Python, but CodeMirror/xterm would need QtWebEngine (+~150 MB Chromium) or a primitive Qt editor. **C) Tauri + PDF.js** — lightest, but no Python and loses MuPDF strengths. |
+| D2 | **PDF engine: PyMuPDF (MuPDF)**, behind an abstraction layer | Fast native C rendering, best fidelity on complex/scanned PDFs, rich text extraction (blocks/lines/fonts/positions), built-in Tesseract OCR hooks, full annotation read/write, `pymupdf4llm` for high-quality Markdown export. Most of our key features (OCR, export, notes) are exactly MuPDF's strengths. | **PDF.js** — free text layer, but slower on big files, weak extraction, limited annotation writing, no OCR. **PDFium** (`pypdfium2`, BSD/Apache) — kept as the **fallback engine** if licensing ever requires it. |
+| D3 | **Engine abstraction (`PdfEngine` interface)** | MuPDF is AGPL. If PhDF is ever sold closed-source, we can swap to PDFium (or buy an Artifex license) without rewriting the app. "Worst case we swap the engine." | Direct MuPDF calls everywhere (faster to write, locks us in). |
+| D4 | **License: AGPL-3.0, open source on GitHub** | Required by MuPDF anyway; free to use. Selling is still allowed under AGPL (source stays open). | MIT/Apache — only possible with a non-AGPL engine. |
+| D5 | **CLA (Contributor License Agreement) for outside contributors** | Keeps the owner's right to relicense later (e.g. dual-license or closed-source commercial edition). Without it, every contributor must agree to a license change. | No CLA (simpler, but blocks future relicensing). |
+| D6 | **Markdown editor: CodeMirror 6** | Obsidian itself uses CodeMirror 6 → same feel (live preview, wikilinks, callouts). Lightweight, extensible. | textarea + preview (too basic), Milkdown/TipTap (WYSIWYG, Obsidian syntax painful), Monaco (too heavy). |
+| D7 | **AI integration: terminal-based** (xterm.js + PTY) | Reuses the user's installed `claude` / `codex` CLIs and their own auth; PhDF stores no API keys; zero vendor lock-in. | Direct API integration (needs key management, more code). |
+| D8 | **Platforms: Windows + macOS + Linux** | Every chosen component is cross-platform. Windows is the primary dev platform; GitHub Actions builds all three from Phase 0. macOS/Linux marked "experimental" until end of Phase 1. | Windows-only (simpler, but harder to add later). |
+| D9 | **OCR: Tesseract** (via PyMuPDF integration) | Works on all three OSes, supports many languages incl. Turkish. | Windows.Media.Ocr (Windows-only). |
+| D10 | **State store: SQLite** in the per-user app-data dir | Built into Python, zero setup, reliable. Stores positions, recent files, settings, annotation index. | JSON files (fragile under concurrency/growth). |
+| D11 | **Document identity = content hash**, not path | Position memory survives renames and moves. | Path-based keys (break on move). |
+| D12 | **Annotations written into the PDF** (standard annotations) + index in SQLite | Other PDF readers can see them; index enables fast search/list. | Sidecar-only (invisible to other apps). |
+| D13 | **Release model: phased, incremental packages** | Ship each phase as a versioned release; new phases can be added along the way. | Big-bang release. |
+| D14 | **Frontend framework: Svelte 5 + TypeScript (Vite)** | PhDF has many interactive, stateful parts (tabs, sidebar, annotation list, MD editor, terminal, link peek, reading modes, settings). Svelte's reactivity keeps that manageable while adding only ~5–10 KB (compiled to plain JS). CodeMirror 6 and xterm.js integrate directly. | **Vanilla TS** — smallest, but manual DOM/state syncing gets messy as UI grows. **React** — bigger runtime and steeper learning curve. |
+| D15 | **macOS-inspired UI** (owner preference) | Translucent unified toolbar with centered title/subtitle, SF/Segoe UI Variable font stack, system blue accent, segmented controls, inset grouped lists, thin overlay scrollbars, light/dark from OS. Tokens live in `frontend/src/app.css`. No engine name shown in the UI. | Windows/Fluent look; plain default styling. |
+
+### Open source → selling later: how it works
+- AGPL itself costs nothing.
+- Selling under AGPL is allowed (e.g. paid installers, support, hosted features) as long as source remains available.
+- For a **closed-source** commercial edition: either swap the engine to PDFium (D3) or buy a commercial MuPDF license from Artifex (price on request, not public).
+- The CLA (D5) ensures the owner can relicense their own code.
+
+---
+
+## 4. Architecture
+
+```
+┌──────────────────────── pywebview window ────────────────────────┐
+│  Frontend (HTML/CSS/TypeScript, bundled with Vite)               │
+│  ┌──────────┐ ┌───────────────────────┐ ┌──────────────────────┐ │
+│  │ Sidebar  │ │ PDF view              │ │ Side panel           │ │
+│  │ TOC,     │ │ page images +         │ │ • MD editor (CM6)    │ │
+│  │ thumbs,  │ │ text layer +          │ │ • Annotations list   │ │
+│  │ search   │ │ annotation layer      │ │ • Terminal (xterm.js)│ │
+│  └──────────┘ └───────────────────────┘ └──────────────────────┘ │
+└──────────────────────────────▲───────────────────────────────────┘
+                               │ pywebview JS↔Python bridge
+┌──────────────────────────────┴───────────────────────────────────┐
+│  Python backend                                                  │
+│  • PdfEngine interface → MuPdfEngine (default) / PdfiumEngine    │
+│  • Render service (page → PNG/WebP at zoom, LRU cache)           │
+│  • Text service (words + bboxes for selectable text layer)       │
+│  • Annotation service (write to PDF + SQLite index)              │
+│  • OCR service (Tesseract, background thread, per-page cache)    │
+│  • Export service (pymupdf4llm → .md + notes)                    │
+│  • Session store (SQLite, content-hash keys)                     │
+│  • Obsidian bridge (vault write / obsidian:// URI / REST API)    │
+│  • PTY service (pywinpty on Windows, ptyprocess on Unix)         │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Rendering approach:** PyMuPDF renders pages to images; the frontend overlays an invisible, positioned **text layer** (from word bounding boxes) for selection/copy/search highlights, plus an **annotation layer**. Pages are virtualized (only visible ± a few are rendered), with an LRU cache and resolution re-render on zoom.
+
+### Proposed repo layout
+```
+projectPDF/                # repo root
+  backend/phdf/
+    app.py                 # pywebview entry point (`uv run phdf`)
+    api.py                 # methods exposed to JS as window.pywebview.api.*
+    paths.py               # per-OS data dir, bundled frontend location
+    docid.py               # content-hash document identity (D11)
+    engine/                # PdfEngine interface (base.py) + MuPDF impl (mupdf.py)
+    db/store.py            # SQLite: settings, documents/positions, append-only migrations
+    services/render_server.py  # local HTTP server streaming page PNGs to <img> tags
+    services/              # annots, ocr, export, obsidian, pty — added per phase
+  frontend/
+    src/App.svelte         # shell: toolbar, tabs, sidebar, shortcuts, session restore
+    src/lib/api.ts         # typed wrapper for the Python API + page image URLs
+    src/lib/tab.svelte.ts  # per-tab state: position, history, search, text/link caches
+    src/lib/viewer/        # Viewer (virtualized scroll, zoom/fit) + PageView (image, text, links)
+    src/lib/*.svelte       # Sidebar, OutlineNode, TabBar, Welcome, LinkPeek, Icon
+  tests/                   # pytest (engine, store, docid)
+  .github/workflows/ci.yml # lint/test/package matrix: windows, macos, linux
+  phdf.spec                # PyInstaller spec
+  pyproject.toml, LICENSE (AGPL-3.0), CLA.md, README.md
+```
+
+### Tooling
+- Python 3.12+, `uv` for env/deps, `ruff` (lint/format), `pytest`
+- Frontend: Svelte 5 + TypeScript + Vite (D14)
+- Packaging: PyInstaller (one build per OS via GitHub Actions)
+
+---
+
+## 5. Feature Design Notes
+
+### R2 — Session memory
+- Key: SHA-256 of (first 1 MB + file size) → robust to rename/move.
+- Store: page, scroll offset, zoom, view mode, last opened, open panels.
+- Optional: restore all open tabs at startup.
+
+### R11 — Link peek
+- **Internal links** (same PDF): floating mini-render of the target. Buttons: `Go there` · `Open as split` · `✕`.
+- **External URLs**: small secondary pywebview window with top bar: `Maximize` · `Open in browser` · `✕`.
+- Back/forward history so jumps never lose your place.
+
+### R7 — Obsidian bridge (by effort)
+1. **Direct vault write**: configure vault path → append to inbox note / daily note / chosen note.
+2. **`obsidian://` URI**: no plugin needed.
+3. **Local REST API plugin**: target the *currently open* note.
+4. (Later) `phdf://open?file=…&page=…` deep links back from Obsidian.
+- Quote template (configurable): `> text` + `— [[Book Title]], p. 12`.
+
+### R8 — Export to Markdown
+- `pymupdf4llm` for body text (headings, lists, tables) + appended highlights/notes with page refs.
+- Optional later: external tools (`marker`, `docling`) if installed.
+
+### R9 — MD mode & reading aids
+- Focus line / reading ruler, dim non-current paragraphs, bionic-style bolding toggle.
+- Adjustable line width/spacing, dyslexia-friendly font, reading timer, progress bar.
+- Ruler/dim overlays also usable in PDF mode.
+
+### R10 — AI terminal
+- Embedded terminal running `claude` / `codex` in a chosen working dir (vault or PhDF workspace).
+- "Send to AI": puts selection + page ref + file path into the prompt (or a temp context file).
+
+---
+
+## 6. Roadmap (each phase = a versioned release)
+
+### Phase 0 — Foundations → `v0.0.x`
+- [x] Local git repo, AGPL-3.0 `LICENSE`, `CLA.md`, README
+- [ ] Create the GitHub repo and push (needs `gh` CLI or web UI) — CI has never run yet
+- [x] Python project (`uv`, `ruff`, `pytest`), frontend (Vite + Svelte 5 + TS)
+- [x] pywebview window + JS↔Python bridge (verified end-to-end in a real window)
+- [x] `PdfEngine` interface + `MuPdfEngine` (info, page size, render, outline)
+- [x] SQLite schema + settings + document positions/recents
+- [x] GitHub Actions workflow + PyInstaller spec (Windows build verified locally: 70 MB folder, ~31 MB zipped)
+
+### Phase 0.1 — Polish → `v0.0.2`
+- [x] Remove engine name ("mupdf") from the UI
+- [x] macOS-style UI: translucent toolbar, centered title + "Page X of Y", segmented page
+      controls, welcome screen with app icon and "Recents" card, Ctrl/Cmd+O shortcut, Home button
+- [x] `.gitignore` hardened (`.env*`, venvs, OS files) + `.env.example` + `.env` loader
+      (`backend/phdf/env.py`, real env vars win, ignored in packaged builds)
+- [ ] (Later) frameless window with Mac-style traffic-light buttons — needs custom drag/resize
+      handling per OS, so deferred
+
+### Phase 1 — Core Reader (MVP) → `v0.1`
+- [x] Open PDF, continuous virtualized rendering (only pages near the viewport load), zoom
+      (buttons, Ctrl±, Ctrl+wheel) & fit modes (width / page / actual size)
+- [x] Selectable text layer (copy works, line breaks preserved), in-document search with
+      highlights and n/N stepping
+- [x] Outline/TOC tree, page thumbnails, go-to-page (click "Page X of Y" or Ctrl+G), back/forward
+- [x] **Session memory (R2)**: page + offset within page + zoom + fit per document; open tabs,
+      active tab and sidebar restored at startup
+- [x] **Link peek (R11)**: internal links → small card with a clip of the target (Enlarge /
+      Go to Page / close); web links → small floating window right away, card offers Enlarge
+      (maximize) / Open in Browser / Copy Link / close
+- [x] Tabs (Ctrl+T/W/Tab), recents on the new-tab page, dark pages toggle (inverted rendering)
+- [ ] macOS/Linux promoted from experimental to supported — needs CI runs first
+- Not yet: "open link target as split view", rotated-text support in the text layer,
+  multi-threaded rendering, password-protected PDFs (open fails with an error toast)
+
+### Phase 2 — Notes & Markdown → `v0.2`
+- [ ] Highlight, underline, sticky note, free text (R4) → written into PDF + indexed
+- [ ] Annotations panel (jump, filter, search)
+- [ ] CodeMirror 6 MD editor/reader, split view with PDF (R3)
+- [ ] **Obsidian bridge v1**: vault path, send selection, quote template (R7)
+
+### Phase 3 — Text Power → `v0.3`
+- [ ] OCR for scanned pages (R6) — background, progress, cache
+- [ ] 1-click export to `.md` (R8)
+- [ ] Ink/freehand annotations
+
+### Phase 4 — Reading Modes → `v0.4`
+- [ ] MD-first secondary mode (R9)
+- [ ] Reading aids: focus line, ruler, dimming, bionic, timer
+
+### Phase 5 — AI & Deep Integrations → `v0.5`
+- [ ] Embedded terminal (xterm.js + PTY) with Claude Code / Codex (R10)
+- [ ] "Send selection to AI"
+- [ ] Obsidian REST API (active note), `phdf://` deep links
+
+### → `v1.0` when Phases 0–5 are stable on all three OSes.
+
+---
+
+## 7. Future Ideas (candidate phases, add as we go)
+
+- **Command palette** (Ctrl+K) & full keyboard navigation (optional vim keys)
+- **Library view**: tags, collections, reading status, full-text search across all PDFs
+- **Citations**: Zotero / BibTeX import, citation keys in Obsidian quotes
+- **Sync**: positions/annotations synced via the Obsidian vault folder (or any synced folder)
+- **Flashcards**: turn highlights into Anki / Obsidian spaced-repetition cards
+- **Text-to-speech** reading with word highlighting
+- **Translation** of selection (local or via AI terminal)
+- **Dual-page / book mode**, presentation mode
+- **Basic page tools**: merge, split, rotate, reorder, extract
+- **Other formats**: EPUB, XPS, CBZ (MuPDF supports these natively)
+- **Plugin system** for community extensions
+- **AI extras**: chat-with-PDF context files, auto-summaries per chapter into Obsidian
+- **Mobile / tablet** companion (long-term, separate project)
+- **PDFium engine** implementation if a closed-source edition is ever needed (D3)
+
+---
+
+## 8. Implementation Notes / Gotchas
+
+- **Windows `.js` MIME type:** the registry often maps `.js` → `text/plain`; Python's `mimetypes`
+  reads it, pywebview's local server then serves modules as text and WebView2 refuses them (blank
+  window). Fixed by `fix_mimetypes()` in `app.py` — keep it.
+- **TypeScript pinned to 5.x:** `svelte-check` does not yet support TypeScript 7 without extra
+  setup. Revisit later.
+- **Thread safety:** pywebview calls API methods on worker threads; MuPDF is not thread-safe, so
+  `Api` serializes engine access with a lock, and `Store` serializes its SQLite connection.
+- **pywebview exposes every public attribute** of the API object to JS → keep internals `_private`.
+- **Dev mode:** `npm --prefix frontend run dev` + `PHDF_DEV=1 uv run phdf` (hot reload, devtools),
+  or set it in `.env` (copy `.env.example`).
+  `PHDF_DATA_DIR` overrides the data directory (useful for tests/packaged-app checks).
+- **Page images** come from `RenderServer` (127.0.0.1, random port, random token in the path),
+  not the JS bridge. URLs are cached as `immutable` because `doc_id` is a content hash —
+  **Phase 2 must add a revision parameter** once annotations change how a page renders.
+  PNG beat JPEG for text pages (smaller and faster to encode).
+- **Text layer:** spans are positioned in PDF points inside a layer scaled by CSS `transform`,
+  each span stretched with `scaleX` to its PDF bbox (canvas `measureText`), `<br>` after each line
+  so copied text keeps line breaks.
+- **Position model:** `scroll` = offset within the current page as a 0..1 fraction, so it
+  survives zoom/window-size changes. Migration 2 added the `fit` column.
+- **Web link previews** open in a separate pywebview window *without* `js_api` — never expose the
+  app API to third-party pages.
+- **Write files as UTF-8 explicitly** (`encoding="utf-8"`) on Windows; the default cp1252 once
+  corrupted an em dash in `store.py`.
+- **Screenshot testing:** WebView2 content is not captured reliably by `CopyFromScreen`; use
+  `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT=2)`. Don't force the window to the foreground in
+  scripted tests. Phase 1 was verified with a scripted end-to-end run (restore, selection, search,
+  internal/external link peek, history, zoom, thumbnails, tabs, dark pages, saved positions).
+
+## 9. Next Steps
+
+1. Owner: create the GitHub repo (install `gh` or use the web UI), push, confirm CI is green on
+   Windows and see what macOS/Linux report.
+2. Phase 2 (on the owner's "start"): annotations written into the PDF (+ render revision for
+   cache busting), annotations panel, CodeMirror 6 Markdown panel in split view, Obsidian
+   bridge v1.
