@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { RecentDocument } from "./api";
   import Icon from "./Icon.svelte";
+  import { ui } from "./notify.svelte";
 
   interface Props {
     version: string;
@@ -29,6 +30,7 @@
     <button class="primary" onclick={onopen}>Open…</button>
     <button class="secondary" onclick={onnewnote}>New Note…</button>
   </div>
+  <button class="tour" onclick={() => (ui.helpOpen = true)}>How to use PhDF →</button>
 
   {#if recents.length}
     <h2>Recents</h2>
@@ -107,6 +109,16 @@
     display: flex;
     gap: 8px;
     margin-top: 18px;
+  }
+
+  .tour {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--accent);
+  }
+
+  .tour:hover {
+    text-decoration: underline;
   }
 
   .secondary {

@@ -4,6 +4,7 @@
   import Icon from "../Icon.svelte";
   import { api } from "../api";
   import { notify, ui } from "../notify.svelte";
+  import { askAi } from "../ai/terminal.svelte";
   import type { Tab } from "../tab.svelte";
   import type { TextSelection } from "../viewer/Viewer.svelte";
   import { COLORS, DEFAULT_COLOR } from "./colors";
@@ -51,13 +52,36 @@
     }
   }
 
+  // Ask AI: presets are sent right away; "My own question…" only types the context.
+  let aiMenu = $state(false);
+  const PRESETS = [
+    { label: "Explain", prompt: "Explain this passage clearly." },
+    { label: "Summarize", prompt: "Summarize this passage in a few bullet points." },
+    { label: "Translate to Turkish", prompt: "Translate this passage into Turkish." },
+  ];
+
+  function context() {
+    const pages = [...sel.byPage.keys()].sort((a, b) => a - b).map((p) => p + 1);
+    const where = pages.length > 1 ? `pages ${pages[0]}–${pages[pages.length - 1]}` : `page ${pages[0]}`;
+    const quote = sel.text.trim().split("\n").map((l) => `> ${l}`).join("\n");
+    return `From “${tab.title}” (${where}, file: ${tab.path}):\n${quote}\n\n`;
+  }
+
+  function ask(prompt: string | null) {
+    const folder = tab.path.replace(/[\\/][^\\/]*$/, "");
+    const text = context() + (prompt ?? "");
+    getSelection()?.removeAllRanges();
+    onclose();
+    askAi(text, prompt !== null, folder, null);
+  }
+
   async function copy() {
     await navigator.clipboard.writeText(sel.text);
     onclose();
   }
 </script>
 
-<Popover anchor={sel.box} width={358} {onclose}>
+<Popover anchor={sel.box} width={390} {onclose}>
   <div class="row">
     {#each COLORS as c}
       <button class="dot" style="--c:{c.value}" title="Highlight {c.name}" onclick={() => annotate("highlight", c.value)}
@@ -74,7 +98,16 @@
     <button class="icon" title="Note in MD" onclick={noteInMd}><Icon name="mdnote" size={16} /></button>
     <button class="icon" title="Send to Obsidian" onclick={toObsidian}><Icon name="obsidian" size={16} /></button>
     <button class="icon" title="Copy" onclick={copy}><Icon name="copy" size={16} /></button>
+    <button class="icon" class:on={aiMenu} title="Ask AI" onclick={() => (aiMenu = !aiMenu)}><Icon name="sparkle" size={16} /></button>
   </div>
+  {#if aiMenu}
+    <div class="ai-row">
+      {#each PRESETS as p}
+        <button class="ai-btn" onclick={() => ask(p.prompt)}>{p.label}</button>
+      {/each}
+      <button class="ai-btn own" onclick={() => ask(null)}>My own question…</button>
+    </div>
+  {/if}
 </Popover>
 
 <style>
@@ -113,7 +146,33 @@
     color: var(--text);
   }
 
-  .icon:hover {
+  .icon:hover,
+  .icon.on {
     background: var(--hover);
+  }
+
+  .ai-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 0.5px solid var(--separator);
+  }
+
+  .ai-btn {
+    padding: 3px 9px;
+    border-radius: 6px;
+    font-size: 12px;
+    background: var(--hover);
+  }
+
+  .ai-btn:hover {
+    background: var(--accent);
+    color: var(--accent-text);
+  }
+
+  .ai-btn.own {
+    font-style: italic;
   }
 </style>

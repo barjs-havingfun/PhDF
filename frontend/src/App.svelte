@@ -15,6 +15,11 @@
   import { notify, ui } from "./lib/notify.svelte";
   import { ocrLanguages } from "./lib/ocr";
   import Settings from "./lib/Settings.svelte";
+  import Help from "./lib/Help.svelte";
+  import AiPanel from "./lib/ai/AiPanel.svelte";
+  import DocAiMenu from "./lib/ai/DocAiMenu.svelte";
+  import TerminalGuide from "./lib/ai/TerminalGuide.svelte";
+  import { HEADER_HEIGHT, closeTerminal, loadLayout, openTerminal, saveLayout, term } from "./lib/ai/terminal.svelte";
   import FocusMenu from "./lib/focus/FocusMenu.svelte";
   import ParkingLot from "./lib/focus/ParkingLot.svelte";
   import ReadMenu from "./lib/focus/ReadMenu.svelte";
@@ -75,6 +80,7 @@
   let readMenu = $state(false);
   let focusMenu = $state(false);
   let parking = $state(false);
+  let aiMenu = $state(false);
 
   /** Focused tab of any kind; `active` is the same tab when it is a PDF. */
   const current = $derived(ws.activeTab);
@@ -238,6 +244,41 @@
   $effect(() => {
     if (active) notePage(active.id, active.page);
   });
+
+  // --- AI terminal -----------------------------------------------------------------------------
+
+  /** Folder of the open document: the shell starts there. */
+  const docFolder = $derived((current?.path ?? "").replace(/[\\/][^\\/]*$/, "") || null);
+
+  /** The pane whose side column shows the terminal (falls back to the first pane). */
+  const termPaneId = $derived(ws.pane(term.paneId ?? -1) ? term.paneId : ws.panes[0]?.id);
+
+  function toggleTerminal() {
+    if (term.open) closeTerminal();
+    else openTerminal(docFolder, ws.focused.id);
+  }
+
+  function startBottomResize(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    capture(el, e.pointerId);
+    const move = (ev: PointerEvent) => {
+      const h = innerHeight - ev.clientY;
+      if (h < HEADER_HEIGHT + 20) term.collapsed = true;
+      else {
+        term.collapsed = false;
+        term.bottomHeight = Math.min(h, innerHeight - 160);
+      }
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      saveLayout();
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  }
+
+  const bottomDock = $derived(term.open && term.dock === "bottom" ? (term.collapsed ? HEADER_HEIGHT : term.bottomHeight) : 0);
 
   async function openParkingList() {
     if (active) return active.showParking();
@@ -430,6 +471,13 @@
     const key = e.key.toLowerCase();
     let handled = true;
 
+    // Terminal toggle works everywhere; other shortcuts stay out of the terminal's way.
+    if (mod && (e.code === "Backquote" || key === "`")) {
+      e.preventDefault();
+      return toggleTerminal();
+    }
+    if ((e.target as HTMLElement).closest?.(".xterm")) return;
+
     if (mod && e.shiftKey && (key === " " || e.code === "Space")) parking = !parking;
     else if (mod && key === ".") toggleZen();
     else if (key === "f11") toggleFullscreen();
@@ -521,7 +569,7 @@
     const appInfo = await py.app_info();
     setRenderBaseUrl(appInfo.renderBaseUrl);
     invert = await py.get_setting("invertPages", false);
-    await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace()]);
+    await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace(), loadLayout()]);
     const sidebar = await py.get_setting("sidebar", { open: false, mode: "pages" as const });
     sidebarOpen = sidebar.open;
     sidebarMode = sidebar.mode;
@@ -599,6 +647,14 @@
               <FocusMenu tab={active} onclose={() => (focusMenu = false)} />
             {/if}
           </div>
+          <button
+            class="pill park"
+            class:on={parking}
+            title="Parking lot — park a stray thought (Ctrl+Shift+Space)"
+            onclick={() => (parking = !parking)}
+          >
+            <Icon name="park" size={15} /> <span class="pill-label">Park</span>
+          </button>
         </div>
 
         <div class="title">
@@ -726,13 +782,22 @@
               {/if}
             </label>
           {/if}
-          <button
-            class="tool"
-            class:on={parking}
-            title="Parking lot — park a stray thought (Ctrl+Shift+Space)"
-            onclick={() => (parking = !parking)}
-          >
-            <Icon name="park" />
+          {#if active}
+            <div class="drop ai-drop">
+              <button class="tool" class:on={aiMenu} title="Ask the AI about this document, chapter or page" onclick={() => (aiMenu = !aiMenu)}>
+                <Icon name="sparkle" />
+              </button>
+              {#if aiMenu}
+                <DocAiMenu tab={active} paneId={ws.focused.id} onclose={() => (aiMenu = false)} />
+              {/if}
+            </div>
+          {/if}
+          <button class="tool" class:on={term.open} title="AI terminal (Ctrl+`)" onclick={toggleTerminal} disabled={!info}>
+            <Icon name="terminal" />
+          </button>
+
+          <button class="tool help" title="How to use PhDF" onclick={() => (ui.helpOpen = true)}>
+            <Icon name="help" />
           </button>
           <div class="more">
             <button class="tool" class:on={moreMenu} title="More" onclick={() => (moreMenu = !moreMenu)} disabled={!info}>
@@ -781,7 +846,7 @@
       </div>
     </header>
 
-    <div class="panes" bind:this={panesEl}>
+    <div class="panes" bind:this={panesEl} style="bottom:{bottomDock}px">
       {#if info}
         {#each ws.panes as pane, i (pane.id)}
           {#if i > 0}
@@ -793,6 +858,7 @@
             multi={ws.panes.length > 1}
             toolbarHeight={read.zen ? 0 : toolbarHeight}
             zen={read.zen}
+            termHere={term.open && term.dock === "side" && pane.id === termPaneId}
             {invert}
             version={info.version}
             {recents}
@@ -815,12 +881,29 @@
       {/if}
     </div>
 
+    {#if term.open && term.dock === "bottom"}
+      <div class="bottom-dock" style="height:{bottomDock}px">
+        {#if !term.collapsed}
+          <div class="b-divider" role="separator" aria-orientation="horizontal" onpointerdown={startBottomResize}></div>
+        {/if}
+        <AiPanel />
+      </div>
+    {/if}
+
+    {#if term.dragging}
+      <div class="dock-zone side" class:on={term.dropTarget === "side"}>Dock at the side</div>
+      <div class="dock-zone bottom" class:on={term.dropTarget === "bottom"}>Dock at the bottom</div>
+    {/if}
+
     {#if notify.current}
       {@const n = notify.current}
       <div class="toast" class:error={n.error} role={n.error ? "alert" : "status"}>
         <span>{n.text}</span>
         {#if n.action}
           <button class="action" onclick={() => (n.action!.run(), notify.clear())}>{n.action.label}</button>
+        {/if}
+        {#if n.action2}
+          <button class="action" onclick={() => (n.action2!.run(), notify.clear())}>{n.action2.label}</button>
         {/if}
         <button onclick={() => notify.clear()} aria-label="Dismiss"><Icon name="close" size={12} /></button>
       </div>
@@ -851,6 +934,14 @@
       onparked={() => active?.parkingChanged()}
       onopen={openParkingList}
     />
+  {/if}
+
+  {#if term.guideOpen}
+    <TerminalGuide onclose={() => (term.guideOpen = false)} />
+  {/if}
+
+  {#if ui.helpOpen}
+    <Help onclose={() => (ui.helpOpen = false)} />
   {/if}
 
   {#if ui.settingsOpen}
@@ -960,6 +1051,57 @@
     display: none;
   }
 
+  .bottom-dock {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9;
+    border-top: 0.5px solid var(--separator);
+  }
+
+  .b-divider {
+    position: absolute;
+    top: -4px;
+    left: 0;
+    right: 0;
+    height: 8px;
+    z-index: 2;
+    cursor: row-resize;
+  }
+
+  .dock-zone {
+    position: fixed;
+    z-index: 55;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    border: 2px dashed var(--accent);
+    background: rgb(0 122 255 / 0.08);
+    color: var(--accent);
+    font-weight: 600;
+    pointer-events: none;
+    transition: background 0.12s;
+  }
+
+  .dock-zone.on {
+    background: rgb(0 122 255 / 0.22);
+  }
+
+  .dock-zone.side {
+    top: 70px;
+    right: 10px;
+    bottom: 240px;
+    width: 40%;
+  }
+
+  .dock-zone.bottom {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    height: 200px;
+  }
+
   .drop {
     position: relative;
     margin-left: 4px;
@@ -981,6 +1123,14 @@
   .pill.on {
     background: var(--hover);
     color: var(--text);
+  }
+
+  .park {
+    margin-left: 4px;
+  }
+
+  .ai-drop {
+    margin-left: 0;
   }
 
   .mini-clock {

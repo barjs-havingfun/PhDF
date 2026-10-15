@@ -11,6 +11,8 @@ old ids as aliases: the frontend can keep using the id it was given for the whol
 """
 
 import re
+import shutil
+import sys
 import threading
 import uuid
 import webbrowser
@@ -30,6 +32,7 @@ from phdf.engine import PdfDocument, PdfEngine, Rect
 from phdf.engine.base import EDITABLE_KINDS
 from phdf.paths import data_dir
 from phdf.services import ocr, parking, webview_memory
+from phdf.services.terminal import Terminals
 
 FIT_MODES = ("width", "page", "none")
 PEEK_SIZE = (560, 460)
@@ -37,6 +40,16 @@ SESSION_PREFIX = "session."
 
 # (window_id, x, y) -> None; set by app.py so the API can open new windows.
 WindowFactory = Callable[[str, int | None, int | None], None]
+
+
+def _markdown_converter():
+    """pymupdf4llm, imported quietly (it prints an advert for its optional layout add-on)."""
+    import contextlib
+    import io
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        import pymupdf4llm
+    return pymupdf4llm
 
 
 class Core:
@@ -158,6 +171,7 @@ class Api:
         self._open: set[str] = set()  # ids (as given to the frontend) this window holds
         self._peek: webview.Window | None = None
         self._force_close = False
+        self._terminals = Terminals()
 
     # --- app / windows ----------------------------------------------------------------------
 
@@ -167,6 +181,7 @@ class Api:
             "version": __version__,
             "renderBaseUrl": self._core.render_base_url,
             "windowId": self._window_id,
+            "platform": {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux"),
         }
 
     def pick_file(self, kind: str = "document") -> str | None:
@@ -403,7 +418,8 @@ class Api:
     def export_markdown(self, doc_id: str) -> str:
         """The document's text as Markdown (headings, lists, tables), including unsaved OCR."""
         import pymupdf
-        import pymupdf4llm
+
+        pymupdf4llm = _markdown_converter()
 
         with self._core.lock:
             data = self._core.doc(doc_id).to_bytes()
@@ -445,6 +461,73 @@ class Api:
             return {"path": str(path), "written": False, "exists": True}
         self.write_text(str(path), text)
         return {"path": str(path), "written": True, "exists": True}
+
+    # --- AI terminal ----------------------------------------------------------------------------
+
+    def term_start(self, cwd: str | None = None, cols: int = 80, rows: int = 24) -> str:
+        """Start the user's shell (in `cwd`, e.g. the open PDF's folder). Returns a session id."""
+        return self._terminals.start(cwd, cols, rows)
+
+    def term_read(self, session_id: str, timeout: float = 0.5) -> dict[str, Any]:
+        """Long poll: new output (waits up to `timeout`), and whether the shell still runs."""
+        session = self._terminals.get(session_id)
+        if session is None:
+            return {"data": "", "alive": False}
+        data, alive = session.read(min(max(timeout, 0.0), 2.0))
+        return {"data": data, "alive": alive}
+
+    def term_write(self, session_id: str, data: str) -> None:
+        if session := self._terminals.get(session_id):
+            session.write(data)
+
+    def term_resize(self, session_id: str, cols: int, rows: int) -> None:
+        if session := self._terminals.get(session_id):
+            session.resize(cols, rows)
+
+    def term_ai(self, session_id: str) -> str | None:
+        """Which AI CLI runs in the terminal ('claude' / 'codex'), if any."""
+        session = self._terminals.get(session_id)
+        return session.running_ai() if session else None
+
+    def term_close(self, session_id: str) -> None:
+        self._terminals.close(session_id)
+
+    def ai_tools(self) -> dict[str, bool]:
+        """Which AI command-line tools are installed on this computer (found on PATH)."""
+        home = Path.home()
+        extra = [home / ".local" / "bin"]  # the native installers put them here
+        found = {}
+        for tool in ("claude", "codex"):
+            found[tool] = bool(shutil.which(tool)) or any(
+                (d / name).exists() for d in extra for name in (tool, f"{tool}.exe")
+            )
+        return found
+
+    def ai_context(self, doc_id: str, first_page: int, last_page: int) -> dict[str, Any]:
+        """Write pages [first_page, last_page] as Markdown for the AI to read; returns the file.
+
+        Cached per document revision and page range in PhDF's data folder (not next to the
+        user's PDF), and includes unsaved OCR text."""
+        import pymupdf
+
+        pymupdf4llm = _markdown_converter()
+
+        with self._core.lock:
+            doc = self._core.doc(doc_id)
+            count = doc.info().page_count
+            first, last = max(0, first_page), min(count - 1, last_page)
+            current = self._core.resolve(doc_id)
+            rev = sum(self._core.revs(doc_id).values())
+            path = data_dir() / "ai" / f"{current[:12]}-p{first + 1}-{last + 1}-r{rev}.md"
+            data = None if path.exists() else doc.to_bytes()
+        if data is not None:
+            with pymupdf.open("pdf", data) as copy:
+                text = pymupdf4llm.to_markdown(
+                    copy, pages=list(range(first, last + 1)), show_progress=False
+                )
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        return {"path": str(path), "first": first, "last": last, "chars": path.stat().st_size}
 
     # --- parking lot ----------------------------------------------------------------------------
 
@@ -561,6 +644,7 @@ class Api:
 
     def _on_closed(self) -> None:
         self.peek_close()
+        self._terminals.close_all()
         with self._core.lock:
             for doc_id in self._open:
                 self._core.release(doc_id)

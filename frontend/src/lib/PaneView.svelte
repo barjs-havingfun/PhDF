@@ -8,6 +8,8 @@
   import SelectionMenu from "./annot/SelectionMenu.svelte";
   import { capture, drag } from "./dnd.svelte";
   import Icon from "./Icon.svelte";
+  import AiPanel from "./ai/AiPanel.svelte";
+  import { HEADER_HEIGHT, saveLayout, term } from "./ai/terminal.svelte";
   import { notify } from "./notify.svelte";
   import { ocrLanguages } from "./ocr";
   import type { Pin } from "./pin";
@@ -22,6 +24,7 @@
     focused: boolean;
     multi: boolean; // more than one pane in the window
     zen: boolean; // hide the tab bar
+    termHere: boolean; // the AI terminal is docked in this pane's side column
     toolbarHeight: number;
     invert: boolean;
     version: string;
@@ -42,7 +45,7 @@
   }
 
   let {
-    pane, focused, multi, zen, toolbarHeight, invert, version, recents,
+    pane, focused, multi, zen, termHere, toolbarHeight, invert, version, recents,
     onfocus, onopen, onnewnote, onopenpath, onselect, onclose, onnew, ondragstart, onlink, onviewer,
     onmdpin, onpickmd,
   }: Props = $props(); // prettier-ignore
@@ -132,24 +135,63 @@
     if (path && pdf) await pdf.linkExistingMd(path);
   }
 
-  // Divider between the PDF and its note.
+  const mdShown = $derived(!!(pdf?.mdOpen && pdf.md));
+  const sideShown = $derived(mdShown || termHere);
+  const sideWidth = $derived(mdShown && pdf ? pdf.mdWidth : term.sideWidth);
+
+  // Divider between the document and the side column (note and/or terminal).
   function startMdResize(e: PointerEvent) {
-    if (!pdf || !content) return;
+    if (!content) return;
     const tab = pdf;
     const el = e.currentTarget as HTMLElement;
     const box = content.getBoundingClientRect();
     capture(el, e.pointerId);
     const move = (ev: PointerEvent) => {
-      const w = (box.right - ev.clientX) / box.width;
-      tab.mdWidth = Math.min(Math.max(w, 0.2), 0.75);
+      const w = Math.min(Math.max((box.right - ev.clientX) / box.width, 0.2), 0.75);
+      if (mdShown && tab) tab.mdWidth = w;
+      else term.sideWidth = w;
     };
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
+      saveLayout();
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
   }
+
+  // Divider between the terminal (top) and the note (bottom): a drawer you can pull shut.
+  let side = $state<HTMLElement>();
+  function startTermResize(e: PointerEvent) {
+    if (!side) return;
+    const el = e.currentTarget as HTMLElement;
+    const box = side.getBoundingClientRect();
+    const top = box.top + topInset;
+    capture(el, e.pointerId);
+    const move = (ev: PointerEvent) => {
+      const f = (ev.clientY - top) / (box.bottom - top);
+      if (f < 0.06) term.collapsed = true;
+      else {
+        term.collapsed = false;
+        term.sideFraction = Math.min(f, 0.9);
+      }
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      saveLayout();
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  }
+
+  const termSlotStyle = $derived(
+    term.collapsed
+      ? `height:${topInset + HEADER_HEIGHT}px;flex:none`
+      : mdShown
+        ? `height:calc(${topInset}px + (100% - ${topInset}px) * ${term.sideFraction});flex:none`
+        : "flex:1",
+  );
 
   const zone = $derived.by(() => {
     const t = drag.target;
@@ -188,14 +230,22 @@
           />
           <AnnotationsPanel tab={pdf} {topInset} />
         </div>
-        {#if pdf.mdOpen && pdf.md}
+        {#if sideShown}
           <div class="md-divider" role="separator" aria-orientation="vertical" onpointerdown={startMdResize}></div>
-          <div class="md" style="flex-basis:{pdf.mdWidth * 100}%">
+          <div class="side" style="flex-basis:{sideWidth * 100}%" bind:this={side}>
+          {#if termHere}
+            <div class="term-slot" style={termSlotStyle}><AiPanel {topInset} /></div>
+            {#if mdShown && !term.collapsed}
+              <div class="h-divider" role="separator" aria-orientation="horizontal" onpointerdown={startTermResize}></div>
+            {/if}
+          {/if}
+          {#if mdShown && pdf.md}
+          <div class="md">
             {#await loadEditor() then MdEditor}
             {#key pdf.mdView}
             <MdEditor
               md={pdf.mdView === "parking" && pdf.parking ? pdf.parking : pdf.md}
-              {topInset}
+              topInset={termHere ? 0 : topInset}
               onpin={onPin}
               reveal={pdf.mdView === "note" ? pdf.mdReveal : null}
             >
@@ -217,6 +267,8 @@
             {/key}
             {/await}
           </div>
+          {/if}
+          </div>
         {/if}
       </div>
     {/key}
@@ -228,11 +280,23 @@
             <MdEditor md={note.md} {topInset} onpin={(pin) => onmdpin(note, pin)} />
           {/await}
         </div>
+        {#if termHere}
+          <div class="md-divider" role="separator" aria-orientation="vertical" onpointerdown={startMdResize}></div>
+          <div class="side" style="flex-basis:{term.sideWidth * 100}%"><div class="term-slot" style="flex:1"><AiPanel {topInset} /></div></div>
+        {/if}
       </div>
     {/key}
   {:else}
-    <div class="home" style="padding-top:{topInset + 24}px">
-      <Welcome {version} {recents} {onopen} {onnewnote} {onopenpath} />
+    <div class="content" bind:this={content}>
+      <div class="home-wrap">
+        <div class="home" style="padding-top:{topInset + 24}px">
+          <Welcome {version} {recents} {onopen} {onnewnote} {onopenpath} />
+        </div>
+      </div>
+      {#if termHere}
+        <div class="md-divider" role="separator" aria-orientation="vertical" onpointerdown={startMdResize}></div>
+        <div class="side" style="flex-basis:{term.sideWidth * 100}%"><div class="term-slot" style="flex:1"><AiPanel {topInset} /></div></div>
+      {/if}
     </div>
   {/if}
 
@@ -303,14 +367,48 @@
     overflow: hidden;
   }
 
-  .md {
+  .side {
     position: relative;
     flex: 0 0 auto;
     min-width: 240px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .md {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
   }
 
   .md.full {
     flex: 1 1 0;
+  }
+
+  .term-slot {
+    position: relative;
+    min-height: 0;
+  }
+
+  .h-divider {
+    position: relative;
+    z-index: 8;
+    flex: none;
+    height: 1px;
+    background: var(--separator);
+    cursor: row-resize;
+  }
+
+  .h-divider::before {
+    content: "";
+    position: absolute;
+    inset: -4px 0;
+  }
+
+  .home-wrap {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .md-divider {

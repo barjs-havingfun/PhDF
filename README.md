@@ -3,7 +3,7 @@
 A lightweight, reader-first PDF app for heavy readers — with position memory, a built-in
 Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 
-> **Status:** early development (v0.4.1 — Read mode, Focus, parking lot). See [`HANDOFF.md`](HANDOFF.md) for the
+> **Status:** early development (v0.5.1 — AI terminal, Read mode, Focus, parking lot). See [`HANDOFF.md`](HANDOFF.md) for the
 > full roadmap and design decisions.
 
 ## Keyboard shortcuts
@@ -22,10 +22,18 @@ Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 | Zen mode / full screen | Ctrl+. / F11 |
 | Parking lot (park a stray thought) | Ctrl+Shift+Space |
 | Delete selected annotation | Delete |
+| AI terminal | Ctrl+` |
 
 **Tabs & panes:** drag a tab to reorder it; drop it on the left/right edge of a document to view
 up to three side by side (drag the divider to resize); drop it outside the window to open it in a
 new window.
+
+**AI terminal:** Ctrl+` opens your shell in the PDF's folder above the note — run `claude` or
+`codex`. Drag its header to dock it at the bottom, drag the divider to resize, click the header to
+fold it away. Select text → ✦ *Ask AI* to explain, summarize or translate it, or to ask your own
+question; ✦ in the toolbar asks about the whole document, a chapter or a page. New to
+`claude` / `codex`? **How to** in the terminal's header shows how to install them for your OS. The
+**?** button explains everything in the app.
 
 **Read & Focus:** the *Read* menu (top left) turns on a reading ruler, zen mode, full screen
 or a page tint — each on its own. *Focus* has a small pomodoro and shows how long the chapter

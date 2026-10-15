@@ -1,6 +1,6 @@
 # PhDF — Project Handoff & Roadmap
 
-> Status: **Phase 4.1 done (v0.4.1)** — GitHub repo not created yet. Ask the owner before starting each new phase.
+> Status: **Phase 5.1 done (v0.5.1)** — GitHub repo not created yet. Ask the owner before starting each new phase.
 > Last updated: 2026-10-15
 > Original requirements: `notes.md`
 
@@ -310,12 +310,54 @@ Scope chosen by the owner (an "ADHD-friendly" set, each part optional):
       1.5 s (incl. a single jump) is skimming and wipes the dwell; a sample needs a ±1 page turn
       and 8 s–10 min of dwell. Verified: a 12-page fling adds 0 samples, a real read adds 1.
 
-### Phase 5 — AI & Deep Integrations → `v0.5`
-- [ ] Embedded terminal (xterm.js + PTY) with Claude Code / Codex (R10)
-- [ ] "Send selection to AI"
-- [ ] Obsidian REST API (active note), `phdf://` deep links
+### Phase 5 — AI terminal → `v0.5.0`
+- [x] **Embedded terminal** (xterm.js + PTY: pywinpty on Windows, ptyprocess elsewhere) running
+      the user's shell (PowerShell on Windows, `$SHELL` elsewhere) **in the active PDF's folder**.
+      No AI is auto-started: the user types `claude` / `codex` (both installed: Claude Code 2.1,
+      codex-cli 0.161). PhDF stores no API keys.
+- [x] **Modular, MATLAB-style docking**: default docked in the right column **above the note**
+      (Note | Parking), with a draggable splitter; drag its header (or a button) to dock it at the
+      **bottom** of the window instead, and back. Works like a drawer: drag down to any size,
+      down to a thin header strip; click the header to collapse/expand. Dock place and sizes are
+      remembered. Moving/collapsing never restarts the shell (one persistent xterm per window,
+      re-parented between docks).
+- [x] **Ask AI** in the selection menu: presets (Explain, Summarize, Translate to Turkish) paste
+      the quote + book title + page + PDF path into the terminal **and send it**; “My own
+      question…” pastes the same context **without** pressing Enter. Uses bracketed paste so
+      multi-line text doesn't submit early. **Guard:** if no `claude`/`codex` process runs in the
+      shell (psutil, child processes), nothing is pasted — a toast offers *Claude* / *Codex*,
+      starts it, waits until it runs, then sends. (Pasting into plain PowerShell would execute
+      the quote as commands.)
+- [x] **How to use PhDF** sheet (“?” button in the toolbar and on the welcome page): one card
+      per feature + shortcut table
+- Implementation: `services/terminal.py` (session + reader thread, long-poll `term_read`),
+  `lib/ai/terminal.svelte.ts` (singleton xterm re-parented between docks, layout persisted as
+  `terminal.layout`), `lib/ai/AiPanel.svelte`; app shortcuts are ignored while the terminal has
+  focus (except Ctrl+` to toggle). Verified with a real PowerShell and a fake `claude.exe` echo.
 
-### → `v1.0` when Phases 0–5 are stable on all three OSes.
+### Phase 5.1 — Terminal guide & whole-document AI → `v0.5.1`
+- [x] **How to** in the terminal header: pick Windows / macOS / Linux (auto-detected) and Claude
+      Code / Codex (✓ when installed, found via PATH / `~/.local/bin`); 5 steps — install, restart
+      the terminal, check (`--version`), start & sign in, use — each command with *Type in
+      terminal* (typed, not run: the user presses Enter) and *Copy*, plus what it does in plain
+      words ("this is your computer's own command line…"). Commands verified against the official
+      docs on 2026-10-15: Claude `irm https://claude.ai/install.ps1 | iex` /
+      `curl -fsSL https://claude.ai/install.sh | bash`; Codex
+      `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"` /
+      `curl -fsSL https://chatgpt.com/codex/install.sh | sh`. Re-check them when updating.
+- [x] **✦ AI in the toolbar** for the whole text: summarize the document / this chapter, explain
+      this page, key ideas & terms, study questions, own question. The page range is converted to
+      Markdown (`ai_context`, cached in `<data>/ai/<doc>-p<a>-<b>-r<rev>.md`, includes unsaved OCR)
+      and the AI is told to read that file. (Done ahead of Phase 6's "AI reads the whole PDF".)
+- [x] Park button moved next to Read / Focus
+
+### Phase 6 — Obsidian & AI depth (to do, owner: "think about it in Phase 6")
+- [ ] `phdf://` deep links: clicking a pin/link in Obsidian opens PhDF at that page/annotation
+      (register the URL scheme with the OS)
+- [ ] Send to the **currently open** Obsidian note (Local REST API plugin)
+- [x] Let the AI read the whole PDF via the Markdown export — done in Phase 5.1 (✦ AI menu)
+
+### → `v1.0` when Phases 0–6 are stable on all three OSes.
 
 ---
 

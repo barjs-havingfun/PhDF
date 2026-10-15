@@ -8,6 +8,7 @@ export interface AppInfo {
   version: string;
   renderBaseUrl: string;
   windowId: string;
+  platform: "windows" | "macos" | "linux";
 }
 
 export interface Position {
@@ -108,6 +109,14 @@ interface PyApi {
   open_window(paths: string[], x?: number, y?: number): Promise<string>;
   close_window(): Promise<void>;
   toggle_fullscreen(): Promise<void>;
+  term_start(cwd?: string | null, cols?: number, rows?: number): Promise<string>;
+  term_read(id: string, timeout?: number): Promise<{ data: string; alive: boolean }>;
+  term_write(id: string, data: string): Promise<void>;
+  term_resize(id: string, cols: number, rows: number): Promise<void>;
+  term_ai(id: string): Promise<string | null>;
+  term_close(id: string): Promise<void>;
+  ai_tools(): Promise<{ claude: boolean; codex: boolean }>;
+  ai_context(docId: string, firstPage: number, lastPage: number): Promise<{ path: string; first: number; last: number; chars: number }>;
   parking_path(document?: string | null): Promise<string>;
   parking_add(thought: string, source?: string | null, document?: string | null): Promise<string>;
   parking_list(

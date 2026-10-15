@@ -4,6 +4,7 @@ export interface Notice {
   text: string;
   error?: boolean;
   action?: { label: string; run: () => void };
+  action2?: { label: string; run: () => void };
 }
 
 class Notifier {
@@ -29,4 +30,4 @@ class Notifier {
 export const notify = new Notifier();
 
 /** Settings dialog visibility, shared so any component can open it. */
-export const ui = $state({ settingsOpen: false });
+export const ui = $state({ settingsOpen: false, helpOpen: false });
