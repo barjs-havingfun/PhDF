@@ -6,6 +6,7 @@
   --toolbar: rgb(246 246 248 / 0.78);
   --sidebar: rgb(236 236 238);
   --popover: rgb(250 250 252 / 0.9);
+  --popover-solid: #f7f7f9;
   --tab-active: rgb(255 255 255 / 0.85);
   --selection: rgb(0 0 0 / 0.08);
   --pin-bg: rgb(0 122 255 / 0.07);
@@ -37,6 +38,7 @@
     --toolbar: rgb(44 44 46 / 0.78);
     --sidebar: rgb(36 36 38);
     --popover: rgb(50 50 52 / 0.9);
+    --popover-solid: #2d2d30;
     --tab-active: rgb(255 255 255 / 0.1);
     --selection: rgb(255 255 255 / 0.1);
     --pin-bg: rgb(10 132 255 / 0.12);

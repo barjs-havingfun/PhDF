@@ -9,6 +9,7 @@
   // One page: rendered image + search highlights + selectable text layer + link hotspots.
   // Layers are laid out in PDF points and scaled as a whole with a CSS transform.
   import { pageImageUrl, type PdfLink, type Point, type Rect, type TextLine } from "../api";
+  import { read, TINTS } from "../reading.svelte";
   import type { Tab } from "../tab.svelte";
 
   interface Props {
@@ -80,6 +81,10 @@
     <img class:invert src={shownSrc} alt="" draggable="false" />
   {/if}
 
+  {#if read.tint !== "none"}
+    <div class="tint" style="background:{TINTS[read.tint].color}"></div>
+  {/if}
+
   {#if live}
     <div class="layer" style="width:{size[0]}px;height:{size[1]}px;transform:scale({cssScale})">
       {#if selected}
@@ -133,6 +138,13 @@
     inset: 0;
     width: 100%;
     height: 100%;
+    pointer-events: none;
+  }
+
+  .tint {
+    position: absolute;
+    inset: 0;
+    mix-blend-mode: multiply;
     pointer-events: none;
   }
 

@@ -84,6 +84,9 @@ export class Tab {
   md = $state<MdDoc | null>(null);
   mdOpen = $state(false);
   mdWidth = $state(0.42);
+  /** Which file the side panel shows: the integrated note or this document's parking lot. */
+  mdView = $state<"note" | "parking">("note");
+  parking = $state<MdDoc | null>(null);
   /** Ask the note editor to scroll to a pin: { id, nonce }. */
   mdReveal = $state<{ id: string; nonce: number; focus?: boolean } | null>(null);
 
@@ -265,8 +268,38 @@ export class Tab {
   }
 
   async toggleMd(open = !this.mdOpen) {
-    if (open) await this.ensureMd();
+    if (open) {
+      await this.ensureMd();
+      this.ensureParking(); // for the Parking tab's badge
+    }
     this.mdOpen = open;
+  }
+
+  async ensureParking(): Promise<MdDoc> {
+    if (!this.parking) {
+      const path = await (await api()).parking_path(this.doc.path);
+      const doc = new MdDoc(path, `# Parking Lot — ${this.title}\n\nThoughts parked while reading in PhDF.\n\n`);
+      await doc.load();
+      this.parking = doc;
+    }
+    return this.parking;
+  }
+
+  /** Open the side panel on the Parking tab. */
+  async showParking() {
+    await Promise.all([this.ensureMd(), this.ensureParking()]);
+    this.mdView = "parking";
+    this.mdOpen = true;
+  }
+
+  async setMdView(view: "note" | "parking") {
+    if (view === "parking") await this.ensureParking();
+    this.mdView = view;
+  }
+
+  /** Something was parked: refresh the Parking tab if it is loaded. */
+  async parkingChanged() {
+    if (this.parking && !this.parking.dirty) await this.parking.load();
   }
 
   async linkExistingMd(path: string) {
@@ -294,21 +327,9 @@ export class Tab {
     return (await api()).obsidian_append(this.title, pinBlock(annot, sectionFor(this.outline, annot.page)));
   }
 
-  /** The document's text as Markdown, followed by its annotations as pins. */
+  /** The document's text converted to Markdown (only the text: notes live in the .md note). */
   async exportMarkdown(): Promise<string> {
-    const py = await api();
-    await Promise.all([this.loadAnnotations(), this.loadOutline()]);
-    let text = (await py.export_markdown(this.doc.docId)).trimEnd() + "\n";
-    const marks = (this.annotations ?? []).filter((a) => a.kind !== "other");
-    if (marks.length) {
-      text += "\n---\n\n## Annotations\n\n";
-      for (const a of [...marks].sort((x, y) => x.page - y.page || x.rects[0][1] - y.rects[0][1])) {
-        text += pinBlock(a, sectionFor(this.outline, a.page)).trimEnd() + "\n";
-        if (a.contents) text += `\n${a.contents}\n`;
-        text += "\n";
-      }
-    }
-    return text;
+    return (await (await api()).export_markdown(this.doc.docId)).trimEnd() + "\n";
   }
 
   // --- OCR ------------------------------------------------------------------------------------

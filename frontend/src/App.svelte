@@ -15,6 +15,20 @@
   import { notify, ui } from "./lib/notify.svelte";
   import { ocrLanguages } from "./lib/ocr";
   import Settings from "./lib/Settings.svelte";
+  import FocusMenu from "./lib/focus/FocusMenu.svelte";
+  import ParkingLot from "./lib/focus/ParkingLot.svelte";
+  import ReadMenu from "./lib/focus/ReadMenu.svelte";
+  import {
+    clock,
+    loadPace,
+    loadPomodoroSettings,
+    loadReadSettings,
+    noteActivity,
+    notePage,
+    tickReading,
+    pomodoro,
+    read,
+  } from "./lib/reading.svelte";
   import LinkPeek, { type Peek } from "./lib/LinkPeek.svelte";
   import PaneView from "./lib/PaneView.svelte";
   import Sidebar from "./lib/Sidebar.svelte";
@@ -58,6 +72,9 @@
   let editingPage = $state(false);
   let zoomMenu = $state(false);
   let moreMenu = $state(false);
+  let readMenu = $state(false);
+  let focusMenu = $state(false);
+  let parking = $state(false);
 
   /** Focused tab of any kind; `active` is the same tab when it is a PDF. */
   const current = $derived(ws.activeTab);
@@ -202,6 +219,33 @@
       notify.error(`OCR failed: ${e}`);
     }
   }
+
+  // --- Read Mode & Focus -------------------------------------------------------------------------
+
+  function toggleZen() {
+    read.zen = !read.zen;
+    readMenu = false;
+    if (read.zen) notify.show({ text: "Zen mode — press Esc or Ctrl+. to exit." }, 3000);
+  }
+
+  async function toggleFullscreen() {
+    read.fullscreen = !read.fullscreen;
+    readMenu = false;
+    (await api()).toggle_fullscreen();
+  }
+
+  // Learn the reading pace from pages actually read (see reading.svelte.ts).
+  $effect(() => {
+    if (active) notePage(active.id, active.page);
+  });
+
+  async function openParkingList() {
+    if (active) return active.showParking();
+    const path = await (await api()).parking_path(note?.path ?? null);
+    await openPath(path);
+  }
+
+  const parkingSource = $derived(active ? `${active.title}, p. ${active.page + 1}` : (note?.title ?? null));
 
   async function saveCurrent() {
     if (active) await active.save();
@@ -386,7 +430,11 @@
     const key = e.key.toLowerCase();
     let handled = true;
 
-    if (mod && key === "o") pickAndOpen();
+    if (mod && e.shiftKey && (key === " " || e.code === "Space")) parking = !parking;
+    else if (mod && key === ".") toggleZen();
+    else if (key === "f11") toggleFullscreen();
+    else if (key === "escape" && read.zen && !peek && !parking) toggleZen();
+    else if (mod && key === "o") pickAndOpen();
     else if (mod && key === "s") saveCurrent();
     else if (mod && key === "t") newTab();
     else if (mod && key === "w") current && closeTab(current);
@@ -473,10 +521,15 @@
     const appInfo = await py.app_info();
     setRenderBaseUrl(appInfo.renderBaseUrl);
     invert = await py.get_setting("invertPages", false);
+    await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace()]);
     const sidebar = await py.get_setting("sidebar", { open: false, mode: "pages" as const });
     sidebarOpen = sidebar.open;
     sidebarMode = sidebar.mode;
     await restoreSession(appInfo.windowId);
+    setInterval(() => tickReading(), 1000);
+    for (const type of ["pointermove", "keydown", "wheel", "pointerdown"]) {
+      window.addEventListener(type, () => noteActivity(), { passive: true, capture: true });
+    }
     // Closing the window with unsaved annotations: the backend held the close and asks us.
     window.addEventListener("phdf:close-request", async () => {
       for (const t of ws.allTabs()) {
@@ -498,30 +551,54 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="window" class:dragging={drag.tab}>
-  {#if active && sidebarOpen}
+  {#if active && sidebarOpen && !read.zen}
     <div class="sidebar" style="width:{SIDEBAR_WIDTH}px">
       <Sidebar tab={active} mode={sidebarMode} {invert} onmode={setSidebarMode} />
     </div>
   {/if}
 
-  <div class="main" style="left:{active && sidebarOpen ? SIDEBAR_WIDTH : 0}px">
-    <header bind:clientHeight={toolbarHeight}>
+  <div class="main" style="left:{active && sidebarOpen && !read.zen ? SIDEBAR_WIDTH : 0}px">
+    <header bind:clientHeight={toolbarHeight} class:hidden={read.zen}>
       <div class="toolbar">
         <div class="group">
           <button class="tool" title="Sidebar (Ctrl+\)" onclick={toggleSidebar} disabled={!active}>
             <Icon name="sidebar" />
           </button>
-          <button class="tool" title="Back (Alt+←)" onclick={() => active?.goBack()} disabled={!active?.back.length}>
+          <button class="tool nav" title="Back (Alt+←)" onclick={() => active?.goBack()} disabled={!active?.back.length}>
             <Icon name="left" />
           </button>
           <button
-            class="tool"
+            class="tool nav"
             title="Forward (Alt+→)"
             onclick={() => active?.goForward()}
             disabled={!active?.forward.length}
           >
             <Icon name="right" />
           </button>
+          <div class="drop">
+            <button class="pill" class:on={readMenu || read.ruler || read.tint !== "none"} onclick={() => (readMenu = !readMenu)}>
+              <Icon name="book" size={15} /> <span class="pill-label">Read</span> <Icon name="chevron" size={12} />
+            </button>
+            {#if readMenu}
+              <ReadMenu onclose={() => (readMenu = false)} onzen={toggleZen} onfullscreen={toggleFullscreen} />
+            {/if}
+          </div>
+          <div class="drop">
+            <button class="pill" class:on={focusMenu || pomodoro.phase !== "idle"} onclick={() => (focusMenu = !focusMenu)}>
+              <Icon name="timer" size={15} />
+              {#if pomodoro.phase !== "idle"}
+                <span class="mini-clock" class:break={pomodoro.phase === "break"} class:paused={!pomodoro.running}>
+                  {clock(pomodoro.remaining)}
+                </span>
+              {:else}
+                <span class="pill-label">Focus</span>
+              {/if}
+              <Icon name="chevron" size={12} />
+            </button>
+            {#if focusMenu}
+              <FocusMenu tab={active} onclose={() => (focusMenu = false)} />
+            {/if}
+          </div>
         </div>
 
         <div class="title">
@@ -599,7 +676,7 @@
               </button>
             </div>
 
-            <div class="segmented">
+            <div class="segmented zoom">
               <button title="Zoom out (Ctrl+-)" onclick={() => viewer()?.zoomBy(1 / 1.2)}>
                 <Icon name="minus" size={14} />
               </button>
@@ -626,7 +703,7 @@
               {/if}
             </div>
 
-            <button class="tool" class:on={invert} title="Dark pages" onclick={toggleInvert}>
+            <button class="tool dark" class:on={invert} title="Dark pages" onclick={toggleInvert}>
               <Icon name="moon" />
             </button>
 
@@ -649,6 +726,14 @@
               {/if}
             </label>
           {/if}
+          <button
+            class="tool"
+            class:on={parking}
+            title="Parking lot — park a stray thought (Ctrl+Shift+Space)"
+            onclick={() => (parking = !parking)}
+          >
+            <Icon name="park" />
+          </button>
           <div class="more">
             <button class="tool" class:on={moreMenu} title="More" onclick={() => (moreMenu = !moreMenu)} disabled={!info}>
               <Icon name="more" />
@@ -658,6 +743,23 @@
               <div class="menu-backdrop" onclick={() => (moreMenu = false)}></div>
               <div class="menu right" role="menu">
                 {#if active}
+                  {@const pdf = active}
+                  <div class="narrow-tools">
+                    <button role="menuitemcheckbox" aria-checked={pdf.tool === "note"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "note" ? "select" : "note"))}>Add Note</button>
+                    <button role="menuitemcheckbox" aria-checked={pdf.tool === "text"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "text" ? "select" : "text"))}>Add Text</button>
+                    <button role="menuitemcheckbox" aria-checked={pdf.tool === "draw"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "draw" ? "select" : "draw"))}>Draw</button>
+                    <button role="menuitemcheckbox" aria-checked={pdf.panelOpen} onclick={() => ((moreMenu = false), (pdf.panelOpen = !pdf.panelOpen))}>Annotations</button>
+                    <button role="menuitemcheckbox" aria-checked={pdf.mdOpen} onclick={() => ((moreMenu = false), pdf.toggleMd())}>Integrated .md Note</button>
+                    <div class="menu-sep"></div>
+                  </div>
+                  <div class="narrow-zoom">
+                    <button role="menuitem" onclick={() => viewer()?.zoomBy(1.2)}>Zoom In <span class="shortcut">Ctrl++</span></button>
+                    <button role="menuitem" onclick={() => viewer()?.zoomBy(1 / 1.2)}>Zoom Out <span class="shortcut">Ctrl+-</span></button>
+                    <button role="menuitemradio" aria-checked={pdf.fit === "width"} onclick={() => ((moreMenu = false), setFit("width"))}>Fit Width</button>
+                    <button role="menuitemradio" aria-checked={pdf.fit === "page"} onclick={() => ((moreMenu = false), setFit("page"))}>Fit Page</button>
+                    <button role="menuitemcheckbox" aria-checked={invert} onclick={() => ((moreMenu = false), toggleInvert())}>Dark Pages</button>
+                    <div class="menu-sep"></div>
+                  </div>
                   <button role="menuitem" onclick={() => exportMarkdown("file")}>Export as Markdown…</button>
                   <button role="menuitem" onclick={() => exportMarkdown("vault")}>Export to Obsidian Vault</button>
                   <button role="menuitem" onclick={copyNoteToVault}>Copy Note to Obsidian</button>
@@ -689,7 +791,8 @@
             {pane}
             focused={pane.id === ws.focused.id}
             multi={ws.panes.length > 1}
-            {toolbarHeight}
+            toolbarHeight={read.zen ? 0 : toolbarHeight}
+            zen={read.zen}
             {invert}
             version={info.version}
             {recents}
@@ -734,6 +837,20 @@
 
   {#if peek}
     <LinkPeek {peek} {invert} onclose={() => (peek = null)} />
+  {/if}
+
+  {#if read.zen}
+    <button class="zen-exit" onclick={toggleZen} title="Exit zen mode (Esc)">Exit Zen</button>
+  {/if}
+
+  {#if parking}
+    <ParkingLot
+      source={parkingSource}
+      document={active?.path ?? note?.path ?? null}
+      onclose={() => (parking = false)}
+      onparked={() => active?.parkingChanged()}
+      onopen={openParkingList}
+    />
   {/if}
 
   {#if ui.settingsOpen}
@@ -839,6 +956,69 @@
     font-weight: 500;
   }
 
+  header.hidden {
+    display: none;
+  }
+
+  .drop {
+    position: relative;
+    margin-left: 4px;
+  }
+
+  .pill {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 26px;
+    padding: 0 8px;
+    border-radius: 7px;
+    color: var(--secondary);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .pill:hover,
+  .pill.on {
+    background: var(--hover);
+    color: var(--text);
+  }
+
+  .mini-clock {
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .mini-clock.break {
+    color: #34c759;
+  }
+
+  .mini-clock.paused {
+    opacity: 0.6;
+  }
+
+  .zen-exit {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
+    padding: 4px 14px;
+    border-radius: 14px;
+    background: var(--popover);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 0 0 0.5px var(--separator);
+    font-size: 12px;
+    color: var(--secondary);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .zen-exit:hover,
+  .zen-exit:focus-visible {
+    opacity: 1;
+  }
+
   .tools {
     display: flex;
     gap: 2px;
@@ -935,13 +1115,92 @@
     color: var(--accent-text);
   }
 
+  /* Side groups take what they need; the title gets the rest and truncates — nothing overlaps.
+     As the window narrows, groups collapse into the ⋯ menu (container queries below). */
   .toolbar {
     height: var(--toolbar-height);
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 12px;
     padding: 0 10px;
+    container: toolbar / inline-size;
+  }
+
+  .narrow-tools,
+  .narrow-zoom {
+    display: none;
+  }
+
+  .menu .narrow-tools button[aria-checked="true"]::before,
+  .menu .narrow-zoom button[aria-checked="true"]::before {
+    content: "✓";
+    position: absolute;
+    left: 7px;
+  }
+
+  @container toolbar (max-width: 1280px) {
+    .pill-label {
+      display: none;
+    }
+  }
+
+  @container toolbar (max-width: 1120px) {
+    .search {
+      flex-basis: 130px;
+    }
+  }
+
+  @container toolbar (max-width: 1020px) {
+    .tools {
+      display: none;
+    }
+    .narrow-tools {
+      display: block;
+    }
+  }
+
+  @container toolbar (max-width: 860px) {
+    .zoom,
+    .dark {
+      display: none !important;
+    }
+    .narrow-zoom {
+      display: block;
+    }
+  }
+
+  @container toolbar (max-width: 720px) {
+    .search {
+      flex: 0 0 30px;
+      min-width: 30px;
+      padding: 0 8px;
+      cursor: pointer;
+    }
+    .search input,
+    .search .count {
+      display: none;
+    }
+    .search:focus-within {
+      position: absolute;
+      right: 10px;
+      z-index: 22;
+      width: 220px;
+      background: var(--popover-solid);
+      box-shadow:
+        0 0 0 0.5px var(--separator),
+        0 0 0 3px var(--focus-ring);
+    }
+    .search:focus-within input,
+    .search:focus-within .count {
+      display: block;
+    }
+  }
+
+  @container toolbar (max-width: 600px) {
+    .nav {
+      display: none;
+    }
   }
 
   .group {
@@ -986,7 +1245,7 @@
     flex-direction: column;
     align-items: center;
     min-width: 0;
-    max-width: 36vw;
+    text-align: center;
   }
 
   .name {
@@ -1062,7 +1321,7 @@
     min-width: 170px;
     padding: 5px;
     border-radius: 9px;
-    background: var(--popover);
+    background: var(--popover-solid);
     backdrop-filter: saturate(180%) blur(24px);
     box-shadow:
       0 0 0 0.5px var(--separator),

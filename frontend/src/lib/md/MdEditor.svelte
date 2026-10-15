@@ -19,6 +19,8 @@
   import type { MdDoc } from "../md.svelte";
   import { parsePin, PIN_MARK, type Pin } from "../pin";
   import { renderMarkdown } from "./render";
+  import TypographyMenu from "./TypographyMenu.svelte";
+  import { loadTypography, typographyVars } from "./typography.svelte";
 
   interface Props {
     md: MdDoc;
@@ -31,6 +33,8 @@
   let { md, topInset, onpin, reveal = null, actions }: Props = $props();
 
   let mode = $state<"edit" | "preview">("edit");
+  let typeMenu = $state(false);
+  loadTypography();
   let host: HTMLDivElement;
   let preview = $state<HTMLDivElement>();
   let view: EditorView | undefined;
@@ -133,9 +137,14 @@
   ]);
 
   const theme = EditorView.theme({
-    "&": { height: "100%", fontSize: "14px", color: "var(--text)", backgroundColor: "transparent" },
-    ".cm-scroller": { fontFamily: "var(--font)", lineHeight: "1.65", padding: "8px 0 40vh" },
-    ".cm-content": { maxWidth: "720px", margin: "0 auto", padding: "0 28px", caretColor: "var(--accent)" },
+    "&": { height: "100%", fontSize: "var(--md-size)", color: "var(--text)", backgroundColor: "transparent" },
+    ".cm-scroller": {
+      fontFamily: "var(--md-font)",
+      lineHeight: "var(--md-line)",
+      letterSpacing: "var(--md-letter)",
+      padding: "8px 0 40vh",
+    },
+    ".cm-content": { maxWidth: "var(--md-width)", margin: "0 auto", padding: "0 28px", caretColor: "var(--accent)" },
     "&.cm-focused": { outline: "none" },
     ".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
@@ -253,7 +262,7 @@
   const html = $derived(mode === "preview" ? renderMarkdown(md.text) : "");
 </script>
 
-<div class="md-editor">
+<div class="md-editor" style={typographyVars()}>
   <header style="padding-top:{topInset}px">
     <div class="bar">
       <span class="file" title={md.path}>
@@ -261,6 +270,10 @@
         {#if md.saving}<span class="state">Saving…</span>{:else if !md.exists}<span class="state">New</span>{/if}
       </span>
       {@render actions?.()}
+      <div class="aa">
+        <button class="aa-btn" class:on={typeMenu} title="Font & spacing" onclick={() => (typeMenu = !typeMenu)}>Aa</button>
+        {#if typeMenu}<TypographyMenu onclose={() => (typeMenu = false)} />{/if}
+      </div>
       <div class="segmented" role="tablist">
         <button role="tab" aria-selected={mode === "edit"} onclick={() => (mode = "edit")}>Edit</button>
         <button role="tab" aria-selected={mode === "preview"} onclick={() => (mode = "preview")}>Preview</button>
@@ -289,10 +302,65 @@
     background: var(--surface);
   }
 
+  /* The note's header shrinks with its pane: file name first, then tighter buttons. */
   header {
+    container: mdbar / inline-size;
     flex: none;
     background: var(--surface);
     border-bottom: 0.5px solid var(--separator);
+  }
+
+  .aa {
+    position: relative;
+  }
+
+  .bar > :global(*) {
+    flex-shrink: 0;
+  }
+
+  .bar > .file {
+    flex-shrink: 1;
+  }
+
+  @container mdbar (max-width: 540px) {
+    .file {
+      display: none;
+    }
+    .bar {
+      justify-content: flex-end;
+    }
+  }
+
+  @container mdbar (max-width: 440px) {
+    .bar {
+      gap: 4px;
+      padding: 0 6px;
+    }
+    .segmented button,
+    .bar :global(.views button) {
+      padding: 1px 6px;
+      font-size: 11px;
+    }
+  }
+
+  @container mdbar (max-width: 380px) {
+    .bar :global(.md-btn[title^="Link"]) {
+      display: none;
+    }
+  }
+
+  .aa-btn {
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
+    font: 600 13px/1 Georgia, serif;
+    color: var(--secondary);
+  }
+
+  .aa-btn:hover,
+  .aa-btn.on {
+    background: var(--hover);
+    color: var(--text);
   }
 
   .bar {
@@ -364,12 +432,14 @@
     padding: 16px 28px 40vh;
     user-select: text;
     cursor: auto;
-    line-height: 1.65;
-    font-size: 14px;
+    font-family: var(--md-font);
+    line-height: var(--md-line);
+    letter-spacing: var(--md-letter);
+    font-size: var(--md-size);
   }
 
   .preview :global(> *) {
-    max-width: 720px;
+    max-width: var(--md-width);
     margin-left: auto;
     margin-right: auto;
   }
@@ -377,7 +447,7 @@
   .preview :global(.pin-card) {
     display: block;
     width: 100%;
-    max-width: 720px;
+    max-width: var(--md-width);
     margin: 14px auto 0;
     padding: 6px 12px;
     border-left: 3px solid var(--accent);

@@ -16,6 +16,7 @@
   import { INK_COLOR, type Jump, type Tab } from "../tab.svelte";
   import type { Point } from "../api";
   import PageView from "./PageView.svelte";
+  import { noteScroll, read, RULER_SIZES } from "../reading.svelte";
 
   interface Props {
     tab: Tab;
@@ -174,6 +175,7 @@
       const loc = currentLocation();
       tab.page = loc.page;
       tab.scroll = loc.scroll;
+      noteScroll(tab.id, loc.page + loc.scroll);
       savePosition();
     });
   }
@@ -271,6 +273,13 @@
     drawing = null;
     if (!stroke || stroke.points.length < 2) return;
     await tab.addAnnotation(stroke.page, "ink", [], INK_COLOR, "", [stroke.points]);
+  }
+
+  // Reading ruler: a band that follows the pointer; everything else is dimmed.
+  let rulerY = $state<number | null>(null);
+  function onRulerMove(e: PointerEvent) {
+    if (!read.ruler) return;
+    rulerY = e.clientY - scroller.getBoundingClientRect().top;
   }
 
   let downAt = { x: 0, y: 0 };
@@ -371,7 +380,7 @@
   bind:this={scroller}
   onscroll={onScroll}
   onpointerdown={onPointerDown}
-  onpointermove={onPointerMove}
+  onpointermove={(e) => (onPointerMove(e), onRulerMove(e))}
   onpointerup={onPointerUp}
 >
   <div class="content" style="height:{contentHeight}px;width:{contentWidth}px">
@@ -396,7 +405,35 @@
   </div>
 </div>
 
+{#if read.ruler}
+  {@const band = RULER_SIZES[read.rulerSize]}
+  {@const y = rulerY ?? topInset + (viewHeight - topInset) * 0.35}
+  <div class="ruler-shade" style="top:{topInset}px;height:{Math.max(y - band / 2 - topInset, 0)}px"></div>
+  <div class="ruler-line" style="top:{y - band / 2}px;height:{band}px"></div>
+  <div class="ruler-shade" style="top:{y + band / 2}px;bottom:0"></div>
+{/if}
+
 <style>
+  .ruler-shade {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    background: rgb(0 0 0 / 0.42);
+    pointer-events: none;
+  }
+
+  .ruler-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    box-shadow:
+      inset 0 1px 0 rgb(255 214 10 / 0.7),
+      inset 0 -1px 0 rgb(255 214 10 / 0.7);
+    pointer-events: none;
+  }
+
   .scroller {
     position: absolute;
     inset: 0;

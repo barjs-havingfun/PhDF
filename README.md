@@ -3,7 +3,7 @@
 A lightweight, reader-first PDF app for heavy readers — with position memory, a built-in
 Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 
-> **Status:** early development (v0.3 — OCR, Obsidian, export, ink). See [`HANDOFF.md`](HANDOFF.md) for the
+> **Status:** early development (v0.4.1 — Read mode, Focus, parking lot). See [`HANDOFF.md`](HANDOFF.md) for the
 > full roadmap and design decisions.
 
 ## Keyboard shortcuts
@@ -19,10 +19,19 @@ Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 | Back / forward (after links, outline, go-to) | Alt+← / Alt+→ |
 | Previous / next page, first / last page | ← / →, Home / End |
 | Toggle sidebar | Ctrl+\ |
+| Zen mode / full screen | Ctrl+. / F11 |
+| Parking lot (park a stray thought) | Ctrl+Shift+Space |
+| Delete selected annotation | Delete |
 
 **Tabs & panes:** drag a tab to reorder it; drop it on the left/right edge of a document to view
 up to three side by side (drag the divider to resize); drop it outside the window to open it in a
 new window.
+
+**Read & Focus:** the *Read* menu (top left) turns on a reading ruler, zen mode, full screen
+or a page tint — each on its own. *Focus* has a small pomodoro and shows how long the chapter
+and the document will take at your reading pace (fast scrolling doesn't count). The lightbulb
+(Ctrl+Shift+Space) parks a stray thought in `<book>.parking.md` next to the PDF; it shows up in the
+**Parking** tab of the note panel.
 
 **OCR, export & Obsidian:** scanned pages show a *Recognize Text* bar (language files are
 downloaded on first use — no Tesseract install needed). The ⋯ menu exports the document as

@@ -21,6 +21,7 @@
     pane: Pane;
     focused: boolean;
     multi: boolean; // more than one pane in the window
+    zen: boolean; // hide the tab bar
     toolbarHeight: number;
     invert: boolean;
     version: string;
@@ -41,7 +42,7 @@
   }
 
   let {
-    pane, focused, multi, toolbarHeight, invert, version, recents,
+    pane, focused, multi, zen, toolbarHeight, invert, version, recents,
     onfocus, onopen, onnewnote, onopenpath, onselect, onclose, onnew, ondragstart, onlink, onviewer,
     onmdpin, onpickmd,
   }: Props = $props(); // prettier-ignore
@@ -53,7 +54,18 @@
   const active = $derived(pane.active);
   const pdf = $derived(active?.kind === "pdf" ? (active as Tab) : null);
   const note = $derived(active?.kind === "md" ? (active as MdTab) : null);
-  const topInset = $derived(toolbarHeight + barHeight);
+  const topInset = $derived(zen ? 0 : toolbarHeight + barHeight);
+
+  // Delete / Backspace removes the selected annotation (unless typing somewhere).
+  function onKeydown(e: KeyboardEvent) {
+    if (!focused || !pdf?.selectedAnnot || (e.key !== "Delete" && e.key !== "Backspace")) return;
+    const el = e.target as HTMLElement;
+    if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable) return;
+    e.preventDefault();
+    const id = pdf.selectedAnnot;
+    editing = null;
+    pdf.deleteAnnotation(id);
+  }
 
   // The Markdown editor (CodeMirror) is loaded on first use, keeping PDF-only startup light.
   const loadEditor = () => import("./md/MdEditor.svelte").then((m) => m.default);
@@ -110,6 +122,11 @@
     pdf?.reveal(pin.id, pin.page);
   }
 
+  /** Open items in the document's parking lot (for the tab badge). */
+  function openParked(tab: Tab) {
+    return tab.parking ? (tab.parking.text.match(/^- \[ \] /gm)?.length ?? 0) : 0;
+  }
+
   async function linkExisting() {
     const path = await onpickmd();
     if (path && pdf) await pdf.linkExistingMd(path);
@@ -141,15 +158,19 @@
   });
 </script>
 
+<svelte:window onkeydown={onKeydown} />
+
 <section
   class="pane"
   style="flex:{pane.width} 1 0;--focus-mark:{multi ? 1 : 0}"
   data-pane-body={pane.id}
   onpointerdowncapture={onfocus}
 >
-  <div class="bar" style="top:{toolbarHeight}px" bind:clientHeight={barHeight}>
-    <TabBar {pane} focused={focused && multi} {onselect} {onclose} {onnew} {ondragstart} />
-  </div>
+  {#if !zen}
+    <div class="bar" style="top:{toolbarHeight}px" bind:clientHeight={barHeight}>
+      <TabBar {pane} focused={focused && multi} {onselect} {onclose} {onnew} {ondragstart} />
+    </div>
+  {/if}
 
   {#if pdf}
     {#key pdf.id}
@@ -171,8 +192,20 @@
           <div class="md-divider" role="separator" aria-orientation="vertical" onpointerdown={startMdResize}></div>
           <div class="md" style="flex-basis:{pdf.mdWidth * 100}%">
             {#await loadEditor() then MdEditor}
-            <MdEditor md={pdf.md} {topInset} onpin={onPin} reveal={pdf.mdReveal}>
+            {#key pdf.mdView}
+            <MdEditor
+              md={pdf.mdView === "parking" && pdf.parking ? pdf.parking : pdf.md}
+              {topInset}
+              onpin={onPin}
+              reveal={pdf.mdView === "note" ? pdf.mdReveal : null}
+            >
               {#snippet actions()}
+                <div class="views" role="tablist">
+                  <button role="tab" aria-selected={pdf.mdView === "note"} onclick={() => pdf.setMdView("note")}>Note</button>
+                  <button role="tab" aria-selected={pdf.mdView === "parking"} onclick={() => pdf.setMdView("parking")}>
+                    Parking{#if openParked(pdf)}<span class="badge">{openParked(pdf)}</span>{/if}
+                  </button>
+                </div>
                 <button class="md-btn" title="Link an existing .md file to this PDF" onclick={linkExisting}>
                   <Icon name="link" size={14} />
                 </button>
@@ -181,6 +214,7 @@
                 </button>
               {/snippet}
             </MdEditor>
+            {/key}
             {/await}
           </div>
         {/if}
@@ -292,6 +326,41 @@
     content: "";
     position: absolute;
     inset: 0 -4px;
+  }
+
+  .views {
+    display: flex;
+    padding: 2px;
+    border-radius: 7px;
+    background: var(--hover);
+    margin-right: 4px;
+  }
+
+  .views button {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 9px;
+    border-radius: 5px;
+    font-size: 12px;
+    color: var(--secondary);
+  }
+
+  .views button[aria-selected="true"] {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  }
+
+  .badge {
+    min-width: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
   }
 
   .md-btn {

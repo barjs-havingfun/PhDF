@@ -28,7 +28,8 @@ from phdf.db import Store
 from phdf.docid import document_id
 from phdf.engine import PdfDocument, PdfEngine, Rect
 from phdf.engine.base import EDITABLE_KINDS
-from phdf.services import ocr, webview_memory
+from phdf.paths import data_dir
+from phdf.services import ocr, parking, webview_memory
 
 FIT_MODES = ("width", "page", "none")
 PEEK_SIZE = (560, 460)
@@ -350,6 +351,10 @@ class Api:
             ).start()
         return False
 
+    def toggle_fullscreen(self) -> None:
+        if self._window is not None:
+            self._window.toggle_fullscreen()
+
     def close_window(self) -> None:
         """Close this window after the page has dealt with unsaved changes."""
         self._force_close = True
@@ -440,6 +445,29 @@ class Api:
             return {"path": str(path), "written": False, "exists": True}
         self.write_text(str(path), text)
         return {"path": str(path), "written": True, "exists": True}
+
+    # --- parking lot ----------------------------------------------------------------------------
+
+    def parking_path(self, document: str | None = None) -> str:
+        """Where thoughts parked while reading `document` (a PDF or .md path) are kept."""
+        return str(parking.path_for(document, data_dir()))
+
+    def parking_add(
+        self, thought: str, source: str | None = None, document: str | None = None
+    ) -> str:
+        path = Path(self.parking_path(document))
+        title = Path(document).stem if document else None
+        parking.add(path, thought, source, title)
+        return str(path)
+
+    def parking_list(self, document: str | None = None) -> dict[str, Any]:
+        path = Path(self.parking_path(document))
+        return {"path": str(path), "items": [asdict(i) for i in parking.items(path)]}
+
+    def parking_done(
+        self, line: int, text: str, done: bool = True, document: str | None = None
+    ) -> bool:
+        return parking.set_done(Path(self.parking_path(document)), line, text, done)
 
     def open_in_obsidian(self, path: str) -> None:
         webbrowser.open("obsidian://open?path=" + quote(path, safe=""))

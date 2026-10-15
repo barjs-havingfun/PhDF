@@ -1,6 +1,6 @@
 # PhDF — Project Handoff & Roadmap
 
-> Status: **Phase 3.1 done (v0.3.1)** — GitHub repo not created yet. Ask the owner before starting each new phase.
+> Status: **Phase 4.1 done (v0.4.1)** — GitHub repo not created yet. Ask the owner before starting each new phase.
 > Last updated: 2026-10-15
 > Original requirements: `notes.md`
 
@@ -61,6 +61,7 @@ PhDF is a **lightweight, reader-first, cross-platform PDF app** for heavy reader
 | D18 | **Pin format** `⎘ phdf · p.12 · §2.1 · #k7q2` + `> “quote”` (owner) | Distinctive, readable in any editor, one line to parse. The id is the PDF annotation's `/NM`, so a pin finds its exact highlight; page (+ quote) are the fallback. Links are two-way: pin → PDF highlight, highlight → pin. | Obsidian callout + hidden comment; fenced ```phdf block. |
 | D19 | **OCR needs no Tesseract install** | PyMuPDF ships MuPDF's Tesseract engine; only `*.traineddata` files are needed. PhDF downloads them on first use (tessdata_fast, ~4 MB each) into its data folder; a system Tesseract's files are reused if present. Recognized words are written as invisible text into the page (an unsaved change, Ctrl+S), so the PDF becomes searchable everywhere. | Installing Tesseract (needs admin; the winget attempt was cancelled at the UAC prompt). |
 | D20 | **Obsidian v1 = copies, not sync** (owner) | “Send to Obsidian” appends pin + quote to `<vault>/<folder>/<book title>.md`; integrated notes stay next to the PDF, and “Copy Note to Obsidian” writes a copy (asks before replacing). Two-way sync between the integrated note and its vault copy is a later phase. | Moving integrated notes into the vault. |
+| D21 | **Parking lot lives next to the document** (owner) | Parked thoughts belong to the book being read and should be seen with its note, not in Obsidian: `<name>.parking.md` beside `<name>.pdf` / `<name>.md`, shown as a Parking tab in the note panel. | One list in the Obsidian vault (Phase 4 behaviour). |
 
 ### Open source → selling later: how it works
 - AGPL itself costs nothing.
@@ -273,9 +274,41 @@ closing it 1029 MB → **545 MB** (= empty app).
       text selection (Ctrl+C), in both the small card and the enlarged sheet
 - Remaining baseline: WebView2 itself is ~400 MB working set (Chromium processes)
 
-### Phase 4 — Reading Modes → `v0.4`
-- [ ] MD-first secondary mode (R9)
-- [ ] Reading aids: focus line, ruler, dimming, bionic, timer
+### Phase 4 — Read Mode, Focus & Parking Lot → `v0.4.0`
+Scope chosen by the owner (an "ADHD-friendly" set, each part optional):
+- [x] **Read** pull-down (toolbar, top left) — each item on its own: reading ruler (band follows
+      the pointer, S/M/L), zen mode (hide toolbar/tabs/sidebar; Ctrl+. or Esc), full screen
+      (F11), page tint (cream / blue / green / gray, multiply blend)
+- [x] **Focus** pull-down: small pomodoro (15/25/45/50 min, break, chime, clock in the toolbar)
+      and time left for the chapter (top-level outline entry) and the whole document, from a
+      learned reading pace (EMA of 8 s–15 min page turns)
+- [x] **Parking lot** (lightbulb button, Ctrl+Shift+Space): park a stray thought with Enter and
+      go straight back; saved as a Markdown task list with book + page + time; tick items off
+      (storage changed in 4.1, see D21)
+- [x] Markdown editor typography (“Aa”): System, Inter, Literata, Atkinson Hyperlegible,
+      JetBrains Mono (bundled, OFL, loaded on first use) + size, line spacing, letter spacing,
+      text width; shared by editor and preview, remembered
+- [x] “Export as Markdown” is now only the converted text (notes stay in the .md note)
+- [x] Delete / Backspace removes the selected annotation
+- Not wanted (owner): reflow reading view, bionic reading, text-to-speech, reading prompts
+
+### Phase 4.1 — Owner feedback → `v0.4.1`
+- [x] **Parking lot per document, not in Obsidian (D21)**: `<name>.parking.md` next to the PDF
+      (beside its integrated `<name>.md`); the note panel has **Note | Parking** tabs with an
+      open-items badge; “Show All” in the parking popover opens that tab. Standalone notes get
+      their own list next to them; with nothing open → PhDF's data folder.
+- [x] **Narrow windows: toolbar items overlap** (e.g. the title runs over the annotation tool
+      buttons). Fixed: grid `auto | minmax(0,1fr) | auto` so the title truncates instead of
+      overlapping; container queries collapse Read/Focus labels (≤1280), annotation tools
+      (≤1020) and zoom + dark pages (≤860) into the ⋯ menu, search to an icon (≤720), back /
+      forward (≤600). The note panel header shrinks the same way. Verified at 1400–650 px.
+- [x] **Focus pace must ignore fast scrolling**: only count time on a page as reading when the
+      reader actually dwelt there. Detect skimming/scrolling (scroll velocity, pages passed per
+      second, page visible < N s, window not focused / idle) and exclude those intervals; count
+      dwell time per page while it is the main visible page and the user is active.
+      Done: dwell seconds tick only with focus + input in the last 90 s; moving > 1.2 pages within
+      1.5 s (incl. a single jump) is skimming and wipes the dwell; a sample needs a ±1 page turn
+      and 8 s–10 min of dwell. Verified: a 12-page fling adds 0 samples, a real read adds 1.
 
 ### Phase 5 — AI & Deep Integrations → `v0.5`
 - [ ] Embedded terminal (xterm.js + PTY) with Claude Code / Codex (R10)
@@ -293,6 +326,8 @@ closing it 1029 MB → **545 MB** (= empty app).
 - **Citations**: Zotero / BibTeX import, citation keys in Obsidian quotes
 - **Sync**: positions/annotations synced via the Obsidian vault folder (or any synced folder)
 - **Two-way note sync**: keep the integrated note and its Obsidian vault copy in step (D20)
+- **"Where was I?" card** when reopening a document: last position, last highlight and note
+- More Focus pull-down items (owner: "maybe we add other things there later")
 - **Flashcards**: turn highlights into Anki / Obsidian spaced-repetition cards
 - **Text-to-speech** reading with word highlighting
 - **Translation** of selection (local or via AI terminal)
@@ -369,4 +404,5 @@ closing it 1029 MB → **545 MB** (= empty app).
 
 1. Owner: create the GitHub repo (install `gh` or use the web UI), push, confirm CI is green on
    Windows and see what macOS/Linux report.
-2. Phase 4 (on the owner's "start"): MD-first mode and reading aids (R9).
+2. Phase 5 (on the owner's "start"): terminal AI side panel (Claude Code / Codex), send
+   selection to AI, Obsidian active note via Local REST API, `phdf://` deep links.

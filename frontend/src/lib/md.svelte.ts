@@ -27,8 +27,9 @@ export class MdDoc {
     return this.path.split(/[\\/]/).pop() ?? this.path;
   }
 
+  /** Edited and not yet written (a new file still showing its template is not "dirty"). */
   get dirty() {
-    return this.text !== this.savedText;
+    return this.text !== (this.exists ? this.savedText : this.template);
   }
 
   async load() {

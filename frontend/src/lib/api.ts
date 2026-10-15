@@ -107,6 +107,13 @@ interface PyApi {
   pick_new_md(name?: string): Promise<string | null>;
   open_window(paths: string[], x?: number, y?: number): Promise<string>;
   close_window(): Promise<void>;
+  toggle_fullscreen(): Promise<void>;
+  parking_path(document?: string | null): Promise<string>;
+  parking_add(thought: string, source?: string | null, document?: string | null): Promise<string>;
+  parking_list(
+    document?: string | null,
+  ): Promise<{ path: string; items: { line: number; text: string; done: boolean }[] }>;
+  parking_done(line: number, text: string, done?: boolean, document?: string | null): Promise<boolean>;
   open_document(path: string): Promise<OpenedDocument>;
   close_document(docId: string): Promise<void>;
   outline(docId: string): Promise<OutlineItem[]>;
