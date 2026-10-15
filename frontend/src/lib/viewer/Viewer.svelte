@@ -1,9 +1,20 @@
+<script lang="ts" module>
+  import type { Rect as PdfRect } from "../api";
+
+  export interface TextSelection {
+    text: string;
+    byPage: Map<number, PdfRect[]>; // PDF-space rects per page, one per line
+    box: DOMRect; // on screen, for placing the menu
+  }
+</script>
+
 <script lang="ts">
   // Continuous, virtualized page view. Only pages near the viewport load images/text/links.
   // Owns scrolling, zoom/fit and position tracking for one tab.
   import { onMount, tick } from "svelte";
-  import { api, type FitMode, type PdfLink } from "../api";
-  import type { Jump, Tab } from "../tab.svelte";
+  import { api, type Annotation, type FitMode, type PdfLink, type Rect } from "../api";
+  import { INK_COLOR, type Jump, type Tab } from "../tab.svelte";
+  import type { Point } from "../api";
   import PageView from "./PageView.svelte";
 
   interface Props {
@@ -11,9 +22,13 @@
     topInset: number; // height of the translucent header overlapping the top
     invert: boolean;
     onlink: (link: PdfLink, event: MouseEvent) => void;
+    onselection: (sel: TextSelection | null) => void;
+    onannot: (annot: Annotation, event: MouseEvent) => void;
+    /** Click on a page while the note/text tool is active. */
+    onplace: (page: number, x: number, y: number, event: MouseEvent) => void;
   }
 
-  let { tab, topInset, invert, onlink }: Props = $props();
+  let { tab, topInset, invert, onlink, onselection, onannot, onplace }: Props = $props();
 
   const PT_TO_PX = 96 / 72;
   const GAP = 14;
@@ -57,11 +72,20 @@
     return () => clearTimeout(t);
   });
 
-  // Pages within one viewport above and two below are "live".
+  // Pages within half a viewport above and one below are "live" (each live page holds a
+  // full-resolution image, ~20 MB decoded for a scanned book page).
   const liveRange = $derived.by(() => {
-    const lo = scrollTop - viewHeight;
-    const hi = scrollTop + viewHeight * 2;
+    const lo = scrollTop - viewHeight * 0.5;
+    const hi = scrollTop + viewHeight * 1.5;
     return [pageAt(lo), pageAt(hi)] as const;
+  });
+
+  // Only pages around the viewport exist in the DOM at all (a book can have thousands).
+  const MOUNT_MARGIN = 1;
+  const mounted = $derived.by(() => {
+    const from = Math.max(0, liveRange[0] - MOUNT_MARGIN);
+    const to = Math.min(sizes.length - 1, liveRange[1] + MOUNT_MARGIN);
+    return Array.from({ length: Math.max(to - from + 1, 0) }, (_, k) => from + k);
   });
 
   const hitsByPage = $derived.by(() => {
@@ -154,6 +178,139 @@
     });
   }
 
+  // --- selection, annotation clicks, placing notes ------------------------------------------
+
+  /** PDF-space point under a screen point, with its page. */
+  function pdfPoint(clientX: number, clientY: number) {
+    const el = document.elementsFromPoint(clientX, clientY).find((e) => e.matches(".page")) as
+      | HTMLElement
+      | undefined;
+    if (!el || !scroller.contains(el)) return null;
+    const r = el.getBoundingClientRect();
+    return {
+      page: Number(el.dataset.page),
+      x: (clientX - r.left) / cssScale,
+      y: (clientY - r.top) / cssScale,
+    };
+  }
+
+  /** Turn the browser selection into per-page, per-line rects in PDF space. */
+  function readSelection(): TextSelection | null {
+    const sel = getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount || !scroller.contains(sel.anchorNode)) return null;
+    const range = sel.getRangeAt(0);
+    const pages = [...scroller.querySelectorAll<HTMLElement>(".page")].map((el) => ({
+      page: Number(el.dataset.page),
+      box: el.getBoundingClientRect(),
+    }));
+    const byPage = new Map<number, Rect[]>();
+    for (const r of range.getClientRects()) {
+      if (r.width < 1 || r.height < 1) continue;
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const hit = pages.find((p) => cx >= p.box.left && cx <= p.box.right && cy >= p.box.top && cy <= p.box.bottom);
+      if (!hit) continue;
+      const rect: Rect = [
+        (r.left - hit.box.left) / cssScale,
+        (r.top - hit.box.top) / cssScale,
+        (r.right - hit.box.left) / cssScale,
+        (r.bottom - hit.box.top) / cssScale,
+      ];
+      const list = byPage.get(hit.page) ?? [];
+      list.push(rect);
+      byPage.set(hit.page, list);
+    }
+    for (const [page, rects] of byPage) byPage.set(page, mergeLines(rects));
+    if (!byPage.size) return null;
+    return { text: sel.toString(), byPage, box: range.getBoundingClientRect() };
+  }
+
+  /** Union rects that sit on the same text line. */
+  function mergeLines(rects: Rect[]): Rect[] {
+    const sorted = [...rects].sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+    const lines: Rect[] = [];
+    for (const r of sorted) {
+      const last = lines[lines.length - 1];
+      const overlap = last ? Math.min(last[3], r[3]) - Math.max(last[1], r[1]) : 0;
+      if (last && overlap > 0.5 * Math.min(last[3] - last[1], r[3] - r[1])) {
+        lines[lines.length - 1] = [Math.min(last[0], r[0]), Math.min(last[1], r[1]), Math.max(last[2], r[2]), Math.max(last[3], r[3])];
+      } else lines.push(r);
+    }
+    return lines;
+  }
+
+  // Freehand ink (draw tool): one stroke per press, added as an ink annotation on release.
+  let drawing = $state<{ page: number; points: Point[] } | null>(null);
+
+  function startStroke(e: PointerEvent) {
+    const pt = pdfPoint(e.clientX, e.clientY);
+    if (!pt) return false;
+    e.preventDefault(); // no text selection while drawing
+    try {
+      scroller.setPointerCapture(e.pointerId);
+    } catch {
+      // synthetic event
+    }
+    drawing = { page: pt.page, points: [[pt.x, pt.y]] };
+    return true;
+  }
+
+  function onPointerMove(e: PointerEvent) {
+    if (!drawing) return;
+    const el = scroller.querySelector<HTMLElement>(`.page[data-page="${drawing.page}"]`);
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = (e.clientX - r.left) / cssScale;
+    const y = (e.clientY - r.top) / cssScale;
+    const [lx, ly] = drawing.points[drawing.points.length - 1];
+    if (Math.hypot(x - lx, y - ly) >= 1) drawing.points.push([x, y]);
+  }
+
+  async function endStroke() {
+    const stroke = drawing;
+    drawing = null;
+    if (!stroke || stroke.points.length < 2) return;
+    await tab.addAnnotation(stroke.page, "ink", [], INK_COLOR, "", [stroke.points]);
+  }
+
+  let downAt = { x: 0, y: 0 };
+  function onPointerDown(e: PointerEvent) {
+    downAt = { x: e.clientX, y: e.clientY };
+    if (tab.tool === "draw" && e.button === 0) startStroke(e);
+  }
+
+  function onPointerUp(e: PointerEvent) {
+    if (e.button !== 0) return;
+    if (drawing) {
+      endStroke();
+      return;
+    }
+    const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 3;
+    requestAnimationFrame(() => {
+      const sel = readSelection();
+      onselection(sel);
+      if (sel || moved) return;
+      if ((e.target as HTMLElement).closest(".link")) return;
+      const pt = pdfPoint(e.clientX, e.clientY);
+      if (!pt) {
+        tab.selectedAnnot = null;
+        return;
+      }
+      const hit = annotationAt(pt.page, pt.x, pt.y);
+      if (hit) onannot(hit, e);
+      else if (tab.tool !== "select") onplace(pt.page, pt.x, pt.y, e);
+      else tab.selectedAnnot = null;
+    });
+  }
+
+  function annotationAt(page: number, x: number, y: number): Annotation | undefined {
+    const pad = 2;
+    // Last drawn wins, like in the PDF itself.
+    return tab.annotations
+      ?.filter((a) => a.page === page && a.kind !== "other")
+      .findLast((a) => a.rects.some(([x0, y0, x1, y1]) => x >= x0 - pad && x <= x1 + pad && y >= y0 - pad && y <= y1 + pad));
+  }
+
   function onWheel(e: WheelEvent) {
     if (!e.ctrlKey) return;
     e.preventDefault();
@@ -169,11 +326,22 @@
   });
 
   onMount(() => {
+    tab.loadAnnotations();
     scroller.addEventListener("wheel", onWheel, { passive: false });
+    // Only a window resize re-fits the page. When a pane divider or the sidebar changes this
+    // view's width, the zoom stays and the page is cropped on the side that moved.
+    let windowSize = `${innerWidth}x${innerHeight}`;
+    let left = scroller.getBoundingClientRect().left;
     const observer = new ResizeObserver(() => {
       viewWidth = scroller.clientWidth;
       viewHeight = scroller.clientHeight;
-      if (ready && tab.fit !== "none") applyZoom(fitZoom(tab.fit), tab.fit);
+      const newLeft = scroller.getBoundingClientRect().left;
+      const newWindowSize = `${innerWidth}x${innerHeight}`;
+      if (!ready) return;
+      if (newWindowSize !== windowSize && tab.fit !== "none") applyZoom(fitZoom(tab.fit), tab.fit);
+      else if (newLeft !== left) scroller.scrollLeft += newLeft - left; // keep the page in place
+      windowSize = newWindowSize;
+      left = newLeft;
     });
     observer.observe(scroller);
     viewWidth = scroller.clientWidth;
@@ -196,9 +364,19 @@
   });
 </script>
 
-<div class="scroller" bind:this={scroller} onscroll={onScroll}>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="scroller"
+  class:placing={tab.tool !== "select"}
+  bind:this={scroller}
+  onscroll={onScroll}
+  onpointerdown={onPointerDown}
+  onpointermove={onPointerMove}
+  onpointerup={onPointerUp}
+>
   <div class="content" style="height:{contentHeight}px;width:{contentWidth}px">
-    {#each sizes as size, i (i)}
+    {#each mounted as i (i)}
+      {@const size = sizes[i]}
       {@const hits = hitsByPage.get(i)}
       <PageView
         {tab}
@@ -211,6 +389,7 @@
         {invert}
         hits={hits?.rects ?? []}
         activeHit={hits?.active ?? -1}
+        stroke={drawing?.page === i ? drawing.points : null}
         {onlink}
       />
     {/each}
@@ -227,5 +406,10 @@
 
   .content {
     position: relative;
+  }
+
+  .placing :global(.page),
+  .placing :global(.page .text) {
+    cursor: crosshair;
   }
 </style>

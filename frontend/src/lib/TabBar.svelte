@@ -1,7 +1,7 @@
 <script lang="ts">
   import { drag } from "./dnd.svelte";
   import Icon from "./Icon.svelte";
-  import type { Tab } from "./tab.svelte";
+  import type { AnyTab as Tab } from "./tab.svelte";
   import type { Pane } from "./workspace.svelte";
 
   interface Props {
@@ -32,7 +32,7 @@
       role="tab"
       tabindex="0"
       aria-selected={tab.id === pane.activeId}
-      title={tab.doc.path}
+      title={tab.path}
       onpointerdown={(e) => {
         if (!(e.target as HTMLElement).closest(".close")) ondragstart(e, tab);
       }}
@@ -50,7 +50,10 @@
       >
         <Icon name="close" size={11} />
       </button>
-      <span class="label">{tab.doc.title}</span>
+      <span class="label">
+        {#if tab.kind === "md"}<span class="md-badge">MD</span>{/if}{tab.title}
+      </span>
+      {#if tab.dirty}<span class="dirty" title="Unsaved annotations (Ctrl+S)"></span>{/if}
     </div>
   {/each}
   {#if dropIndex === pane.tabs.length}<span class="marker"></span>{/if}
@@ -123,6 +126,25 @@
     overflow: hidden;
     text-overflow: ellipsis;
     pointer-events: none;
+  }
+
+  .md-badge {
+    margin-right: 5px;
+    padding: 0 3px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+
+  .dirty {
+    position: absolute;
+    right: 9px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--secondary);
   }
 
   .close {

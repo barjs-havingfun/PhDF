@@ -58,6 +58,22 @@ class SearchHit:
     rects: list[Rect]
 
 
+AnnotKind = Literal["highlight", "underline", "strikeout", "note", "freetext", "ink", "other"]
+EDITABLE_KINDS = ("highlight", "underline", "strikeout", "note", "freetext", "ink")
+
+
+@dataclass(frozen=True)
+class Annotation:
+    id: str  # our /NM id; "x<xref>" for annotations made elsewhere without one
+    page: int
+    kind: AnnotKind
+    rects: list[Rect]  # one per text line for markup; the icon/box otherwise
+    color: str  # "#rrggbb"
+    contents: str  # comment / note / free-text body
+    quote: str  # text under a markup annotation
+    modified: str | None = None
+
+
 class PdfDocument(ABC):
     """An open document. Page numbers are 0-based."""
 
@@ -73,7 +89,10 @@ class PdfDocument(ABC):
 
     @abstractmethod
     def render_page(self, page: int, scale: float = 1.0, clip: Rect | None = None) -> bytes:
-        """Render a page (or the `clip` region of it) to PNG bytes. `scale` 1.0 = 72 DPI."""
+        """Render a page (or the `clip` region of it). `scale` 1.0 = 72 DPI.
+
+        Returns PNG bytes, or JPEG for photo-heavy pages (much smaller; text stays crisp PNG).
+        Callers tell them apart by the magic bytes."""
 
     @abstractmethod
     def text_lines(self, page: int) -> list[TextLine]: ...
@@ -87,6 +106,55 @@ class PdfDocument(ABC):
 
     @abstractmethod
     def outline(self) -> list[OutlineItem]: ...
+
+    # --- annotations (changes stay in memory until `save`) ---------------------------------
+
+    @abstractmethod
+    def annotations(self) -> list[Annotation]: ...
+
+    @abstractmethod
+    def add_annotation(
+        self,
+        page: int,
+        kind: AnnotKind,
+        rects: list[Rect],
+        color: str,
+        contents: str = "",
+        strokes: list[list[tuple[float, float]]] | None = None,
+    ) -> Annotation:
+        """`strokes` (lists of points) is used for "ink" annotations."""
+
+    @abstractmethod
+    def update_annotation(
+        self, annot_id: str, color: str | None = None, contents: str | None = None
+    ) -> Annotation: ...
+
+    @abstractmethod
+    def delete_annotation(self, annot_id: str) -> int:
+        """Returns the page the annotation was on."""
+
+    @property
+    @abstractmethod
+    def dirty(self) -> bool: ...
+
+    # --- text layer for scanned pages -----------------------------------------------------
+
+    @abstractmethod
+    def has_text(self, page: int) -> bool: ...
+
+    @abstractmethod
+    def add_invisible_text(
+        self, page: int, words: list[tuple[str, Rect]], fontfile: str | None
+    ) -> None:
+        """Write OCR'd words as invisible (selectable, searchable) text."""
+
+    @abstractmethod
+    def to_bytes(self) -> bytes:
+        """The document including unsaved changes."""
+
+    @abstractmethod
+    def save(self) -> None:
+        """Write changes back to the file the document was opened from."""
 
     @abstractmethod
     def close(self) -> None: ...
@@ -103,3 +171,6 @@ class PdfEngine(ABC):
 
     @abstractmethod
     def open(self, path: str | Path) -> PdfDocument: ...
+
+    def trim_cache(self, everything: bool = False) -> None:  # noqa: B027 (optional hook)
+        """Let go of some (or all) of the engine's shared cache (decoded images, fonts…)."""

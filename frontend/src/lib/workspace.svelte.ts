@@ -1,5 +1,5 @@
 // Window layout: up to MAX_PANES side-by-side panes, each with its own tabs.
-import type { Tab } from "./tab.svelte";
+import type { AnyTab, Tab } from "./tab.svelte";
 
 export const MAX_PANES = 3;
 
@@ -7,13 +7,13 @@ let nextPaneId = 1;
 
 export class Pane {
   readonly id = nextPaneId++;
-  tabs = $state<Tab[]>([]);
+  tabs = $state<AnyTab[]>([]);
   /** Active tab id, or null for the "new tab" page. */
   activeId = $state<number | null>(null);
   /** Relative width (flex-grow). */
   width = $state(1);
 
-  get active(): Tab | null {
+  get active(): AnyTab | null {
     return this.tabs.find((t) => t.id === this.activeId) ?? null;
   }
 }
@@ -32,7 +32,7 @@ export class Workspace {
     return this.panes.find((p) => p.id === this.focusedId) ?? this.panes[0];
   }
 
-  get activeTab(): Tab | null {
+  get activeTab(): AnyTab | null {
     return this.focused.active;
   }
 
@@ -44,34 +44,47 @@ export class Workspace {
     return this.panes.find((p) => p.id === id);
   }
 
-  paneOf(tab: Tab): Pane | undefined {
+  paneOf(tab: AnyTab): Pane | undefined {
     return this.panes.find((p) => p.tabs.includes(tab));
   }
 
-  findByDoc(docId: string): Tab | undefined {
+  /** The open PDF tab for a document (matched by id, or by path after a save changed it). */
+  findPdf(docId: string, path: string): Tab | undefined {
     for (const p of this.panes) {
-      const t = p.tabs.find((t) => t.doc.docId === docId);
+      for (const t of p.tabs) {
+        if (t.kind === "pdf" && (t.doc.docId === docId || t.path === path)) return t;
+      }
+    }
+  }
+
+  findByPath(path: string): AnyTab | undefined {
+    for (const p of this.panes) {
+      const t = p.tabs.find((t) => t.path === path);
       if (t) return t;
     }
+  }
+
+  allTabs(): AnyTab[] {
+    return this.panes.flatMap((p) => p.tabs);
   }
 
   focus(pane: Pane) {
     this.focusedId = pane.id;
   }
 
-  activate(tab: Tab) {
+  activate(tab: AnyTab) {
     const pane = this.paneOf(tab);
     if (!pane) return;
     pane.activeId = tab.id;
     this.focus(pane);
   }
 
-  add(tab: Tab, pane: Pane = this.focused, index = pane.tabs.length) {
+  add(tab: AnyTab, pane: Pane = this.focused, index = pane.tabs.length) {
     pane.tabs.splice(index, 0, tab);
   }
 
   /** Remove a tab; activates a neighbour and drops the pane if it became empty. */
-  remove(tab: Tab) {
+  remove(tab: AnyTab) {
     const pane = this.paneOf(tab);
     if (!pane) return;
     const i = pane.tabs.indexOf(tab);
@@ -81,7 +94,7 @@ export class Workspace {
   }
 
   /** Move a tab into `to` at `index` (reordering when `to` is its own pane). */
-  move(tab: Tab, to: Pane, index: number) {
+  move(tab: AnyTab, to: Pane, index: number) {
     const from = this.paneOf(tab);
     if (!from) return;
     const i = from.tabs.indexOf(tab);
@@ -94,14 +107,14 @@ export class Workspace {
     this.activate(tab);
   }
 
-  canSplit(tab: Tab, target: Pane): boolean {
+  canSplit(tab: AnyTab, target: Pane): boolean {
     const from = this.paneOf(tab);
     if (!from || this.panes.length >= MAX_PANES) return false;
     return !(from === target && from.tabs.length === 1); // nothing would be left behind
   }
 
   /** Put a tab in a new pane next to `target`. */
-  split(tab: Tab, target: Pane, side: SplitSide) {
+  split(tab: AnyTab, target: Pane, side: SplitSide) {
     if (!this.canSplit(tab, target)) return;
     const pane = new Pane();
     pane.width = target.width / 2;

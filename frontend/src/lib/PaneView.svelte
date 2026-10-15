@@ -1,11 +1,19 @@
 <script lang="ts">
-  // One pane: its tab bar (overlaying the top, under the window toolbar) and the active tab's
-  // viewer — or the welcome page. Shows drop zones while a tab is being dragged.
-  import type { PdfLink, RecentDocument } from "./api";
-  import { drag } from "./dnd.svelte";
-  import type { Tab } from "./tab.svelte";
+  // One pane: its tab bar (overlaying the top, under the window toolbar) and the active tab —
+  // a PDF (with annotations panel and, optionally, its integrated note beside it), a standalone
+  // Markdown note, or the welcome page. Shows drop zones while a tab is being dragged.
+  import type { Annotation, PdfLink, RecentDocument } from "./api";
+  import AnnotationsPanel from "./annot/AnnotationsPanel.svelte";
+  import AnnotEditor from "./annot/AnnotEditor.svelte";
+  import SelectionMenu from "./annot/SelectionMenu.svelte";
+  import { capture, drag } from "./dnd.svelte";
+  import Icon from "./Icon.svelte";
+  import { notify } from "./notify.svelte";
+  import { ocrLanguages } from "./ocr";
+  import type { Pin } from "./pin";
+  import type { AnyTab, MdTab, Tab } from "./tab.svelte";
   import TabBar from "./TabBar.svelte";
-  import Viewer from "./viewer/Viewer.svelte";
+  import Viewer, { type TextSelection } from "./viewer/Viewer.svelte";
   import Welcome from "./Welcome.svelte";
   import type { Pane } from "./workspace.svelte";
 
@@ -19,24 +27,112 @@
     recents: RecentDocument[];
     onfocus: () => void;
     onopen: () => void;
+    onnewnote: () => void;
     onopenpath: (path: string) => void;
-    onselect: (tab: Tab) => void;
-    onclose: (tab: Tab) => void;
+    onselect: (tab: AnyTab) => void;
+    onclose: (tab: AnyTab) => void;
     onnew: () => void;
-    ondragstart: (e: PointerEvent, tab: Tab) => void;
+    ondragstart: (e: PointerEvent, tab: AnyTab) => void;
     onlink: (link: PdfLink, event: MouseEvent) => void;
     onviewer: (viewer: Viewer | undefined) => void;
+    /** A pin was clicked in a standalone note: open its PDF there. */
+    onmdpin: (tab: MdTab, pin: Pin) => void;
+    onpickmd: () => Promise<string | null>;
   }
 
   let {
     pane, focused, multi, toolbarHeight, invert, version, recents,
-    onfocus, onopen, onopenpath, onselect, onclose, onnew, ondragstart, onlink, onviewer,
+    onfocus, onopen, onnewnote, onopenpath, onselect, onclose, onnew, ondragstart, onlink, onviewer,
+    onmdpin, onpickmd,
   }: Props = $props(); // prettier-ignore
 
   let barHeight = $state(34);
   let viewer = $state<Viewer>();
+  let content = $state<HTMLElement>();
+
+  const active = $derived(pane.active);
+  const pdf = $derived(active?.kind === "pdf" ? (active as Tab) : null);
+  const note = $derived(active?.kind === "md" ? (active as MdTab) : null);
+  const topInset = $derived(toolbarHeight + barHeight);
+
+  // The Markdown editor (CodeMirror) is loaded on first use, keeping PDF-only startup light.
+  const loadEditor = () => import("./md/MdEditor.svelte").then((m) => m.default);
 
   $effect(() => onviewer(viewer));
+
+  // Scanned pages: offer OCR when the current page has no text (checked per page, lazily).
+  $effect(() => {
+    pdf?.checkText(pdf.page);
+  });
+  const pageHasNoText = $derived(pdf ? pdf.hasText[pdf.page] === false : false);
+  let ocrDismissed = $state(false);
+
+  async function recognize(all: boolean) {
+    if (!pdf) return;
+    const tab = pdf;
+    try {
+      const langs = await ocrLanguages();
+      if (all) await tab.loadNoTextPages();
+      await tab.runOcr(all ? [...(tab.noTextPages ?? [])] : [tab.page], langs);
+      notify.show({ text: "Text recognized. Save with Ctrl+S to keep it in the PDF." });
+    } catch (e) {
+      notify.error(`OCR failed: ${e}`);
+    }
+  }
+
+  // Floating UI over the PDF.
+  let selection = $state<TextSelection | null>(null);
+  let editing = $state<{ annot: Annotation; anchor: DOMRect } | null>(null);
+  let placing = $state<{ kind: "note" | "freetext"; page: number; x: number; y: number; anchor: DOMRect } | null>(null);
+
+  // Close floating UI when the tab changes.
+  $effect(() => {
+    void active;
+    selection = null;
+    editing = null;
+    placing = null;
+  });
+
+  function onAnnot(annot: Annotation, e: MouseEvent) {
+    if (!pdf) return;
+    pdf.selectedAnnot = annot.id;
+    editing = { annot, anchor: new DOMRect(e.clientX - 1, e.clientY - 1, 2, 2) };
+    // PDF → note: show its pin if the integrated note is open.
+    if (pdf.mdOpen && pdf.hasPin(annot.id)) pdf.mdReveal = { id: annot.id, nonce: Date.now() };
+  }
+
+  function onPlace(page: number, x: number, y: number, e: MouseEvent) {
+    if (!pdf || pdf.tool === "select") return;
+    placing = { kind: pdf.tool === "note" ? "note" : "freetext", page, x, y, anchor: new DOMRect(e.clientX - 1, e.clientY - 1, 2, 2) };
+  }
+
+  function onPin(pin: Pin) {
+    pdf?.reveal(pin.id, pin.page);
+  }
+
+  async function linkExisting() {
+    const path = await onpickmd();
+    if (path && pdf) await pdf.linkExistingMd(path);
+  }
+
+  // Divider between the PDF and its note.
+  function startMdResize(e: PointerEvent) {
+    if (!pdf || !content) return;
+    const tab = pdf;
+    const el = e.currentTarget as HTMLElement;
+    const box = content.getBoundingClientRect();
+    capture(el, e.pointerId);
+    const move = (ev: PointerEvent) => {
+      const w = (box.right - ev.clientX) / box.width;
+      tab.mdWidth = Math.min(Math.max(w, 0.2), 0.75);
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  }
 
   const zone = $derived.by(() => {
     const t = drag.target;
@@ -55,18 +151,91 @@
     <TabBar {pane} focused={focused && multi} {onselect} {onclose} {onnew} {ondragstart} />
   </div>
 
-  {#if pane.active}
-    {#key pane.active.id}
-      <Viewer bind:this={viewer} tab={pane.active} topInset={toolbarHeight + barHeight} {invert} {onlink} />
+  {#if pdf}
+    {#key pdf.id}
+      <div class="content" bind:this={content}>
+        <div class="doc">
+          <Viewer
+            bind:this={viewer}
+            tab={pdf}
+            {topInset}
+            {invert}
+            {onlink}
+            onselection={(s) => (selection = s)}
+            onannot={onAnnot}
+            onplace={onPlace}
+          />
+          <AnnotationsPanel tab={pdf} {topInset} />
+        </div>
+        {#if pdf.mdOpen && pdf.md}
+          <div class="md-divider" role="separator" aria-orientation="vertical" onpointerdown={startMdResize}></div>
+          <div class="md" style="flex-basis:{pdf.mdWidth * 100}%">
+            {#await loadEditor() then MdEditor}
+            <MdEditor md={pdf.md} {topInset} onpin={onPin} reveal={pdf.mdReveal}>
+              {#snippet actions()}
+                <button class="md-btn" title="Link an existing .md file to this PDF" onclick={linkExisting}>
+                  <Icon name="link" size={14} />
+                </button>
+                <button class="md-btn" title="Close note" onclick={() => pdf.toggleMd(false)}>
+                  <Icon name="close" size={13} />
+                </button>
+              {/snippet}
+            </MdEditor>
+            {/await}
+          </div>
+        {/if}
+      </div>
+    {/key}
+  {:else if note}
+    {#key note.id}
+      <div class="content">
+        <div class="md full">
+          {#await loadEditor() then MdEditor}
+            <MdEditor md={note.md} {topInset} onpin={(pin) => onmdpin(note, pin)} />
+          {/await}
+        </div>
+      </div>
     {/key}
   {:else}
-    <div class="home" style="padding-top:{toolbarHeight + barHeight + 24}px">
-      <Welcome {version} {recents} {onopen} {onopenpath} />
+    <div class="home" style="padding-top:{topInset + 24}px">
+      <Welcome {version} {recents} {onopen} {onnewnote} {onopenpath} />
     </div>
   {/if}
 
   {#if zone}
-    <div class="drop {zone}" style="top:{toolbarHeight + barHeight}px"></div>
+    <div class="drop {zone}" style="top:{topInset}px"></div>
+  {/if}
+
+  {#if pdf?.ocrProgress}
+    <div class="ocr-bar" style="top:{topInset + 10}px">
+      <span class="spinner"></span>
+      Recognizing text… {pdf.ocrProgress.done}/{pdf.ocrProgress.total}
+      <button onclick={() => pdf.stopOcr()}>Stop</button>
+    </div>
+  {:else if pdf && pageHasNoText && !ocrDismissed}
+    <div class="ocr-bar" style="top:{topInset + 10}px">
+      <Icon name="scan" size={16} />
+      This page has no text.
+      <button class="primary" onclick={() => recognize(false)}>Recognize Text</button>
+      {#if pdf.pageCount > 1}
+        <button onclick={() => recognize(true)} disabled={pdf.scanningText}>
+          {pdf.scanningText ? "Finding pages…" : "All Pages Without Text"}
+        </button>
+      {/if}
+      <button class="x" onclick={() => (ocrDismissed = true)} aria-label="Dismiss"><Icon name="close" size={12} /></button>
+    </div>
+  {/if}
+
+  {#if pdf && selection}
+    <SelectionMenu tab={pdf} sel={selection} onclose={() => (selection = null)} />
+  {/if}
+  {#if pdf && editing}
+    {#key editing.annot.id}
+      <AnnotEditor tab={pdf} anchor={editing.anchor} annot={editing.annot} onclose={() => (editing = null)} />
+    {/key}
+  {/if}
+  {#if pdf && placing}
+    <AnnotEditor tab={pdf} anchor={placing.anchor} {placing} onclose={() => (placing = null)} />
   {/if}
 </section>
 
@@ -87,12 +256,119 @@
     border-bottom: 0.5px solid var(--separator);
   }
 
+  .content {
+    position: absolute;
+    inset: 0;
+    display: flex;
+  }
+
+  .doc {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 200px;
+    overflow: hidden;
+  }
+
+  .md {
+    position: relative;
+    flex: 0 0 auto;
+    min-width: 240px;
+  }
+
+  .md.full {
+    flex: 1 1 0;
+  }
+
+  .md-divider {
+    position: relative;
+    z-index: 8;
+    flex: none;
+    width: 1px;
+    background: var(--separator);
+    cursor: col-resize;
+  }
+
+  .md-divider::before {
+    content: "";
+    position: absolute;
+    inset: 0 -4px;
+  }
+
+  .md-btn {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 24px;
+    border-radius: 6px;
+    color: var(--secondary);
+  }
+
+  .md-btn:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+
   .home {
     position: absolute;
     inset: 0;
     overflow: auto;
     padding: 0 24px 32px;
     background: var(--window);
+  }
+
+  .ocr-bar {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px 5px 12px;
+    border-radius: 10px;
+    background: var(--popover);
+    backdrop-filter: saturate(180%) blur(24px);
+    box-shadow:
+      0 0 0 0.5px var(--separator),
+      0 6px 20px rgb(0 0 0 / 0.18);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .ocr-bar button {
+    padding: 2px 10px;
+    border-radius: 6px;
+    background: var(--hover);
+  }
+
+  .ocr-bar button.primary {
+    background: var(--accent);
+    color: var(--accent-text);
+  }
+
+  .ocr-bar button.x {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    width: 22px;
+    height: 22px;
+    background: none;
+    color: var(--secondary);
+  }
+
+  .spinner {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--separator);
+    border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .drop {

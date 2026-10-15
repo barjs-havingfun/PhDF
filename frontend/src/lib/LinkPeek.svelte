@@ -14,8 +14,9 @@
   // Link preview (R11): links open small first. Internal links show a clip of the target
   // page; web links open in a small floating window. From here: enlarge, open, or close.
   import { onMount } from "svelte";
-  import { api, pageImageUrl } from "./api";
+  import { api } from "./api";
   import Icon from "./Icon.svelte";
+  import PeekPage from "./PeekPage.svelte";
 
   interface Props {
     peek: Peek;
@@ -26,16 +27,17 @@
   let { peek, invert, onclose }: Props = $props();
 
   const CARD_WIDTH = 420;
-  const CLIP_HEIGHT = 260; // PDF points shown in the small preview
 
   let expanded = $state(false);
+  let selectMode = $state(false);
+  let zoom = $state(1);
+  let pageView = $state<PeekPage>();
   let webOpen = $state(false);
   let card = $state<HTMLElement>();
 
   const link = $derived(peek.link);
   const target = $derived(link.kind === "goto" ? link.page : -1);
-  const size = $derived(target >= 0 ? peek.tab.doc.pageSizes[target] : ([1, 1] as const));
-  const clipTop = $derived(Math.max(0, Math.min((link.y ?? 0) - 20, size[1] - CLIP_HEIGHT)));
+  const startY = $derived(Math.max((link.y ?? 0) - 20, 0));
 
   const host = $derived.by(() => {
     try {
@@ -83,6 +85,11 @@
       e.stopPropagation();
       if (expanded) expanded = false;
       else close();
+    } else if ((e.ctrlKey || e.metaKey) && (e.key === "=" || e.key === "+" || e.key === "-")) {
+      // Zoom the preview, not the document behind it.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      pageView?.zoomBy(e.key === "-" ? 1 / 1.2 : 1.2);
     }
   }
 
@@ -92,7 +99,27 @@
   });
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydowncapture={onKeydown} />
+
+{#snippet pageTools()}
+  <div class="zoom">
+    <button class="icon-btn" title="Zoom out (Ctrl+-)" onclick={() => pageView?.zoomBy(1 / 1.2)}>
+      <Icon name="minus" size={13} />
+    </button>
+    <span class="pct">{Math.round(zoom * 100)}%</span>
+    <button class="icon-btn" title="Zoom in (Ctrl++ or Ctrl+wheel)" onclick={() => pageView?.zoomBy(1.2)}>
+      <Icon name="plus" size={13} />
+    </button>
+  </div>
+  <button
+    class="icon-btn"
+    class:on={selectMode}
+    title={selectMode ? "Select text (Ctrl+C to copy) — click for pan mode" : "Pan — click to select text"}
+    onclick={() => (selectMode = !selectMode)}
+  >
+    <Icon name="text" size={14} />
+  </button>
+{/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" class:dim={expanded} onclick={close}></div>
@@ -101,40 +128,27 @@
   <div class="sheet" role="dialog" aria-label="Page {target + 1} preview">
     <header>
       <span class="title">Page {target + 1}</span>
+      {@render pageTools()}
       <button class="text-btn" onclick={() => (expanded = false)}>Smaller</button>
       <button class="primary" onclick={goThere}>Go to Page</button>
       <button class="icon-btn" onclick={close} aria-label="Close"><Icon name="close" size={14} /></button>
     </header>
-    <div class="sheet-body">
-      <img
-        class:invert
-        src={pageImageUrl(peek.tab.doc.docId, target, Math.min((860 / size[0]) * devicePixelRatio, 4))}
-        alt="Page {target + 1}"
-      />
-    </div>
+    <PeekPage bind:this={pageView} bind:zoom tab={peek.tab} page={target} {startY} {invert} {selectMode} />
   </div>
 {:else}
   <div class="card" bind:this={card} style={position} role="dialog" aria-label="Link preview">
     {#if target >= 0}
       <header>
         <span class="title">Page {target + 1}</span>
+        {@render pageTools()}
         <button class="icon-btn" onclick={() => (expanded = true)} title="Enlarge">
           <Icon name="expand" size={14} />
         </button>
         <button class="icon-btn" onclick={close} aria-label="Close"><Icon name="close" size={14} /></button>
       </header>
-      <button class="clip" onclick={goThere} title="Go to page {target + 1}">
-        <img
-          class:invert
-          src={pageImageUrl(
-            peek.tab.doc.docId,
-            target,
-            Math.min((CARD_WIDTH / size[0]) * devicePixelRatio, 4),
-            [0, clipTop, size[0], clipTop + CLIP_HEIGHT],
-          )}
-          alt="Preview of page {target + 1}"
-        />
-      </button>
+      <div class="clip">
+        <PeekPage bind:this={pageView} bind:zoom tab={peek.tab} page={target} {startY} {invert} {selectMode} />
+      </div>
       <footer>
         <button class="text-btn" onclick={() => (expanded = true)}>Enlarge</button>
         <button class="primary" onclick={goThere}>Go to Page</button>
@@ -224,32 +238,33 @@
   }
 
   .clip {
-    display: block;
-    width: 100%;
-    background: white;
+    display: flex;
+    height: 300px;
     border-block: 0.5px solid var(--separator);
   }
 
-  .clip img,
-  .sheet-body img {
-    display: block;
-    width: 100%;
-  }
-
-  .sheet-body {
+  .clip :global(.peek-page),
+  .sheet :global(.peek-page) {
     flex: 1;
-    overflow: auto;
-    background: var(--canvas);
-    padding: 16px;
   }
 
-  .sheet-body img {
-    background: white;
-    box-shadow: var(--page-shadow);
+  .zoom {
+    display: flex;
+    align-items: center;
+    border-radius: 6px;
+    background: var(--hover);
   }
 
-  img.invert {
-    filter: invert(0.9) hue-rotate(180deg);
+  .pct {
+    min-width: 40px;
+    text-align: center;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .icon-btn.on {
+    background: var(--pressed);
+    color: var(--text);
   }
 
   .url {

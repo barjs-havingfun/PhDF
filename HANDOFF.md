@@ -1,6 +1,6 @@
 # PhDF — Project Handoff & Roadmap
 
-> Status: **Phase 1.1 done (v0.1.1)** — GitHub repo not created yet. Ask the owner before starting each new phase.
+> Status: **Phase 3.1 done (v0.3.1)** — GitHub repo not created yet. Ask the owner before starting each new phase.
 > Last updated: 2026-10-15
 > Original requirements: `notes.md`
 
@@ -49,13 +49,18 @@ PhDF is a **lightweight, reader-first, cross-platform PDF app** for heavy reader
 | D6 | **Markdown editor: CodeMirror 6** | Obsidian itself uses CodeMirror 6 → same feel (live preview, wikilinks, callouts). Lightweight, extensible. | textarea + preview (too basic), Milkdown/TipTap (WYSIWYG, Obsidian syntax painful), Monaco (too heavy). |
 | D7 | **AI integration: terminal-based** (xterm.js + PTY) | Reuses the user's installed `claude` / `codex` CLIs and their own auth; PhDF stores no API keys; zero vendor lock-in. | Direct API integration (needs key management, more code). |
 | D8 | **Platforms: Windows + macOS + Linux** | Every chosen component is cross-platform. Windows is the primary dev platform; GitHub Actions builds all three from Phase 0. macOS/Linux marked "experimental" until end of Phase 1. | Windows-only (simpler, but harder to add later). |
-| D9 | **OCR: Tesseract** (via PyMuPDF integration) | Works on all three OSes, supports many languages incl. Turkish. | Windows.Media.Ocr (Windows-only). |
+| D9 | **OCR: Tesseract engine built into MuPDF** (see D19) | Works on all three OSes, supports many languages incl. Turkish. | Windows.Media.Ocr (Windows-only); a system Tesseract install. |
 | D10 | **State store: SQLite** in the per-user app-data dir | Built into Python, zero setup, reliable. Stores positions, recent files, settings, annotation index. | JSON files (fragile under concurrency/growth). |
 | D11 | **Document identity = content hash**, not path | Position memory survives renames and moves. | Path-based keys (break on move). |
 | D12 | **Annotations written into the PDF** (standard annotations) + index in SQLite | Other PDF readers can see them; index enables fast search/list. | Sidecar-only (invisible to other apps). |
 | D13 | **Release model: phased, incremental packages** | Ship each phase as a versioned release; new phases can be added along the way. | Big-bang release. |
 | D14 | **Frontend framework: Svelte 5 + TypeScript (Vite)** | PhDF has many interactive, stateful parts (tabs, sidebar, annotation list, MD editor, terminal, link peek, reading modes, settings). Svelte's reactivity keeps that manageable while adding only ~5–10 KB (compiled to plain JS). CodeMirror 6 and xterm.js integrate directly. | **Vanilla TS** — smallest, but manual DOM/state syncing gets messy as UI grows. **React** — bigger runtime and steeper learning curve. |
 | D15 | **macOS-inspired UI** (owner preference) | Translucent unified toolbar with centered title/subtitle, SF/Segoe UI Variable font stack, system blue accent, segmented controls, inset grouped lists, thin overlay scrollbars, light/dark from OS. Tokens live in `frontend/src/app.css`. No engine name shown in the UI. | Windows/Fluent look; plain default styling. |
+| D16 | **Annotations are saved with Ctrl+S** (owner) | Classic PDF-app behaviour: edits live in memory, the tab shows a dot and the title “— Edited”; closing asks Save / Don’t Save / Cancel; closing a window with unsaved changes asks too (pywebview `confirm_close`). Saving is incremental (appends to the file). | Autosave into the file; never touching the PDF. |
+| D17 | **Integrated note = `<pdf name>.md` next to the PDF** (owner) | One note per PDF, opened inside the same tab beside the PDF. An existing .md can be linked instead (stored in `md_links`). Notes autosave (debounced), and reload when changed on disk. Obsidian vault support comes in the next phase. | A central notes folder. |
+| D18 | **Pin format** `⎘ phdf · p.12 · §2.1 · #k7q2` + `> “quote”` (owner) | Distinctive, readable in any editor, one line to parse. The id is the PDF annotation's `/NM`, so a pin finds its exact highlight; page (+ quote) are the fallback. Links are two-way: pin → PDF highlight, highlight → pin. | Obsidian callout + hidden comment; fenced ```phdf block. |
+| D19 | **OCR needs no Tesseract install** | PyMuPDF ships MuPDF's Tesseract engine; only `*.traineddata` files are needed. PhDF downloads them on first use (tessdata_fast, ~4 MB each) into its data folder; a system Tesseract's files are reused if present. Recognized words are written as invisible text into the page (an unsaved change, Ctrl+S), so the PDF becomes searchable everywhere. | Installing Tesseract (needs admin; the winget attempt was cancelled at the UAC prompt). |
+| D20 | **Obsidian v1 = copies, not sync** (owner) | “Send to Obsidian” appends pin + quote to `<vault>/<folder>/<book title>.md`; integrated notes stay next to the PDF, and “Copy Note to Obsidian” writes a copy (asks before replacing). Two-way sync between the integrated note and its vault copy is a later phase. | Moving integrated notes into the vault. |
 
 ### Open source → selling later: how it works
 - AGPL itself costs nothing.
@@ -105,6 +110,7 @@ projectPDF/                # repo root
     engine/                # PdfEngine interface (base.py) + MuPDF impl (mupdf.py)
     db/store.py            # SQLite: settings, documents/positions, append-only migrations
     services/render_server.py  # local HTTP server streaming page PNGs to <img> tags
+                           # engine: annotations (add/update/delete, /NM ids), incremental save
                            # api.py: Core (shared docs/store/render) + Api (one per window)
     services/              # annots, ocr, export, obsidian, pty — added per phase
   frontend/
@@ -114,6 +120,10 @@ projectPDF/                # repo root
     src/lib/viewer/        # Viewer (virtualized scroll, zoom/fit) + PageView (image, text, links)
     src/lib/workspace.svelte.ts  # panes (max 3) and their tabs: move / split / prune
     src/lib/dnd.svelte.ts  # pointer-based tab drag & drop + drop-target hit testing
+    src/lib/annot/         # SelectionMenu, AnnotEditor, AnnotationsPanel, Popover, colours
+    src/lib/md/            # MdEditor (CodeMirror 6, pins as cards) + markdown-it preview
+    src/lib/md.svelte.ts   # MdDoc: load / autosave / reload-on-change for a .md file
+    src/lib/pin.ts         # pin format: parse, format, block, section label
     src/lib/*.svelte       # PaneView, Sidebar, OutlineNode, TabBar, Welcome, LinkPeek, Icon
   tests/                   # pytest (engine, store, docid)
   .github/workflows/ci.yml # lint/test/package matrix: windows, macos, linux
@@ -209,16 +219,59 @@ projectPDF/                # repo root
 - Not yet: dragging a tab *between* two existing windows; "open link target as split"
   (now trivial with panes — see Phase 1 leftovers)
 
-### Phase 2 — Notes & Markdown → `v0.2`
-- [ ] Highlight, underline, sticky note, free text (R4) → written into PDF + indexed
-- [ ] Annotations panel (jump, filter, search)
-- [ ] CodeMirror 6 MD editor/reader, split view with PDF (R3)
-- [ ] **Obsidian bridge v1**: vault path, send selection, quote template (R7)
+### Phase 2 — Notes & Markdown → `v0.2.0`
+- [x] Select text → floating menu: highlight (5 colours), underline, strikethrough, Note in MD, copy
+- [x] Sticky note and free-text tools (click on the page); click any annotation to recolour,
+      comment, delete or jump to its note
+- [x] Save with Ctrl+S (D16): “— Edited” + tab dot, Save/Don’t Save/Cancel on close, window
+      close guard; incremental save; doc ids aliased after a save so open tabs keep working
+- [x] Annotations panel sliding in from the right of the PDF: grouped by page, search, filter by
+      marks/notes and colour, click to jump, delete; shows which ones have a note pin
+- [x] Integrated .md in the same tab (D17), resizable; “Link an existing .md” (import)
+- [x] Pins (D18): “Note in MD” adds a highlight + pin + quote and puts the cursor under it;
+      pin → PDF (“Go to PDF ↗” or Ctrl+click) and highlight → pin, both ways
+- [x] Standalone Markdown tabs (open .md with Ctrl+O, “New Note…”); CodeMirror 6 with heading
+      styles, Edit/Preview (markdown-it, HTML escaped); pins in a standalone note open its PDF
+- [x] Editor is lazy-loaded: initial JS ~107 KB, the editor chunk loads on first note
+- Not yet: undo/redo for annotations, ink/freehand (Phase 3), live-preview editing like Obsidian
 
-### Phase 3 — Text Power → `v0.3`
-- [ ] OCR for scanned pages (R6) — background, progress, cache
-- [ ] 1-click export to `.md` (R8)
-- [ ] Ink/freehand annotations
+### Phase 2.1 — Fixes from manual testing → `v0.2.x`
+- [x] “Don't Save” then reopen showed the discarded highlight (cached page image): page
+      revisions are bumped when a document is reopened
+- [x] Window close asks with the app's own Save / Don't Save / Cancel sheet (per unsaved PDF)
+      instead of a system message box (`closing` event held by the backend)
+- [x] Narrowing a pane (divider / sidebar) no longer re-fits the page: the zoom stays and the
+      page is cropped on the side that moved; only a window resize re-fits
+
+### Phase 3 — Obsidian & Text Power → `v0.3.0`
+- [x] **Obsidian bridge v1** (D20): Settings → vault + folder; selection menu “Send to Obsidian”
+      (highlight + pin + quote into the book's vault note, toast with “Open” via `obsidian://`);
+      More → “Copy Note to Obsidian”
+- [x] **OCR** (R6, D19): “This page has no text” bar → Recognize Text / All N Pages, progress +
+      Stop; More → Recognize Text; Settings → languages (download on demand)
+- [x] **1-click export to .md** (R8): More → “Export as Markdown…” / “Export to Obsidian Vault”;
+      pymupdf4llm text (headings, lists, tables) + an Annotations section with pins
+- [x] **Ink** annotations: draw tool (pen), live stroke, recolour/delete like other annotations
+- [x] More (⋯) menu and Settings sheet; one toast system with an optional action button
+- Not yet: two-way sync of integrated note ↔ vault copy (later phase), ink colour/width picker,
+  OCR of a selected area only
+
+### Phase 3.1 — Big documents & link peek → `v0.3.1`
+Measured with a 218 MB / 655-page scanned-photo textbook (working sets of PhDF + WebView2):
+open → first page 2.8 s → **0.9 s**; scrolling 76 pages peaked 1318 MB → **948 MB**; after
+closing it 1029 MB → **545 MB** (= empty app).
+- [x] No full “pages without text” scan on open (it took 1.9 s and held the doc lock); text is
+      checked per viewed page, the full scan runs only for “All Pages Without Text”
+- [x] Only pages around the viewport are mounted (was one component per page); live range
+      narrowed to ½ viewport above / 1½ below; one shared canvas for text measuring
+- [x] Page images: photo-heavy pages (>50 % image area) are served as JPEG (7.3 MB PNG → 1 MB),
+      text pages stay PNG; `Cache-Control: no-store` + a 64 MB LRU in the render server instead of
+      the browser cache; a closed document's images are dropped
+- [x] MuPDF store emptied every 4 renders and when no document is open (PyMuPDF can't read
+      its size); WebView2 `MemoryUsageTargetLevel` Low→Normal after closing a document
+- [x] Link peek: real page view (zoom −/+ / Ctrl+wheel / Ctrl±), drag to pan, “T” toggles
+      text selection (Ctrl+C), in both the small card and the enlarged sheet
+- Remaining baseline: WebView2 itself is ~400 MB working set (Chromium processes)
 
 ### Phase 4 — Reading Modes → `v0.4`
 - [ ] MD-first secondary mode (R9)
@@ -239,6 +292,7 @@ projectPDF/                # repo root
 - **Library view**: tags, collections, reading status, full-text search across all PDFs
 - **Citations**: Zotero / BibTeX import, citation keys in Obsidian quotes
 - **Sync**: positions/annotations synced via the Obsidian vault folder (or any synced folder)
+- **Two-way note sync**: keep the integrated note and its Obsidian vault copy in step (D20)
 - **Flashcards**: turn highlights into Anki / Obsidian spaced-repetition cards
 - **Text-to-speech** reading with word highlighting
 - **Translation** of selection (local or via AI terminal)
@@ -283,6 +337,27 @@ projectPDF/                # repo root
 - **Session format** is `{panes: [{paths, active, width}], focused}` per window; the v0.1.0
   `{paths, active}` format is migrated on startup (`saved_window_ids` in `app.py`) and in the
   frontend (`normalize`).
+- **Annotation ids:** we always write our own `/NM` (5 chars). MuPDF's own `fitz-…` names are
+  not stable across sessions; annotations made elsewhere without `/NM` get `x<xref>`.
+- **Dirty state is tracked by us** — PyMuPDF's `is_dirty` stays true after `saveIncr()`.
+- **Free-text colour** lives in the `/DA` string, not in `annot.colors`.
+- **Saving changes the content hash** (= doc id). `Core` keeps `old → new` aliases and renames
+  the `documents` row, so the frontend keeps using the id it got for the whole session.
+  `findPdf` also matches by path for files reopened after a save.
+- **Render cache busting:** `Core` bumps a per-page revision on every annotation change; image
+  URLs carry `&r=<rev>` (pages, thumbnails, link peek).
+- **OCR runs outside the document lock**: render under the lock → recognise the PNG (thread-safe,
+  no shared doc) → write the invisible words under the lock. Words use a system TTF (Arial /
+  DejaVu) so Turkish letters extract correctly; Helvetica would turn them into “?”.
+- **Export** works on `doc.tobytes()` (includes unsaved OCR text) in a separate document.
+- **pymupdf4llm is pinned to 0.3.x**: from 1.27 on it requires `pymupdf-layout` (an AI layout
+  model: onnxruntime + numpy, +70 MB to the app). 0.3.x keeps that optional; output is the
+  classic heuristic Markdown. Revisit if export quality matters more than size.
+- **Big PDFs:** never iterate every page on open (text checks, annotation scans…). Keep
+  per-page work lazy; `Core.render` trims the engine cache. `.gitignore` ignores `*.pdf` (test
+  books live in the repo folder).
+- **Shell heredocs**: long Python snippets with curly quotes broke `bash -c`; write helper
+  scripts to the scratchpad and run them instead.
 - **Write files as UTF-8 explicitly** (`encoding="utf-8"`) on Windows; the default cp1252 once
   corrupted an em dash in `store.py`.
 - **Screenshot testing:** WebView2 content is not captured reliably by `CopyFromScreen`; use
@@ -294,6 +369,4 @@ projectPDF/                # repo root
 
 1. Owner: create the GitHub repo (install `gh` or use the web UI), push, confirm CI is green on
    Windows and see what macOS/Linux report.
-2. Phase 2 (on the owner's "start"): annotations written into the PDF (+ render revision for
-   cache busting), annotations panel, CodeMirror 6 Markdown panel in split view, Obsidian
-   bridge v1.
+2. Phase 4 (on the owner's "start"): MD-first mode and reading aids (R9).

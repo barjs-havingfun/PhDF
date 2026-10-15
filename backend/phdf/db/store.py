@@ -30,6 +30,13 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE documents ADD COLUMN fit TEXT NOT NULL DEFAULT 'width';  -- width | page | none
     """,
+    # 3 — Markdown file linked to a PDF when it is not the default "<pdf stem>.md" next to it
+    """
+    CREATE TABLE md_links (
+        pdf_path TEXT PRIMARY KEY,
+        md_path  TEXT NOT NULL
+    );
+    """,
 ]
 
 
@@ -110,6 +117,38 @@ class Store:
             self._conn.execute(
                 "UPDATE documents SET page = ?, scroll = ?, zoom = ?, fit = ? WHERE doc_id = ?",
                 (page, scroll, zoom, fit, doc_id),
+            )
+
+    def rename_document(self, old_id: str, new_id: str) -> None:
+        """A save changed the file's content hash; keep its history under the new id."""
+        if old_id == new_id:
+            return
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM documents WHERE doc_id = ?", (new_id,))
+            self._conn.execute("UPDATE documents SET doc_id = ? WHERE doc_id = ?", (new_id, old_id))
+
+    # --- markdown links ---------------------------------------------------------------------
+
+    def md_link(self, pdf_path: str) -> str | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT md_path FROM md_links WHERE pdf_path = ?", (pdf_path,)
+            ).fetchone()
+        return row["md_path"] if row else None
+
+    def pdf_for_md(self, md_path: str) -> str | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT pdf_path FROM md_links WHERE md_path = ?", (md_path,)
+            ).fetchone()
+        return row["pdf_path"] if row else None
+
+    def set_md_link(self, pdf_path: str, md_path: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO md_links (pdf_path, md_path) VALUES (?, ?) "
+                "ON CONFLICT (pdf_path) DO UPDATE SET md_path = excluded.md_path",
+                (pdf_path, md_path),
             )
 
     def recent_documents(self, limit: int = 20) -> list[dict[str, Any]]:

@@ -10,6 +10,7 @@ import contextlib
 import re
 import secrets
 import threading
+from collections import OrderedDict
 from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,6 +19,7 @@ from urllib.parse import parse_qs, urlsplit
 from phdf.engine.base import Rect
 
 RenderFn = Callable[[str, int, float, Rect | None], bytes | None]
+CACHE_BYTES = 64 * 1024 * 1024  # recently served page images, kept here instead of in the webview
 
 _PATH = re.compile(r"^/(?P<token>[\w-]+)/page/(?P<doc>[0-9a-f]{64})/(?P<page>\d+)\.png$")
 MAX_SCALE = 8.0
@@ -26,6 +28,9 @@ MAX_SCALE = 8.0
 class RenderServer:
     def __init__(self, render: RenderFn) -> None:
         self.token = secrets.token_urlsafe(16)
+        self._cache: OrderedDict[str, bytes] = OrderedDict()
+        self._cache_bytes = 0
+        self._cache_lock = threading.Lock()
         server = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -52,6 +57,29 @@ class RenderServer:
         self._httpd.shutdown()
         self._httpd.server_close()
 
+    def _cached(self, key: str) -> bytes | None:
+        with self._cache_lock:
+            png = self._cache.get(key)
+            if png is not None:
+                self._cache.move_to_end(key)
+            return png
+
+    def _remember(self, key: str, png: bytes) -> None:
+        if len(png) > CACHE_BYTES // 4:
+            return
+        with self._cache_lock:
+            self._cache[key] = png
+            self._cache_bytes += len(png)
+            while self._cache_bytes > CACHE_BYTES:
+                _, old = self._cache.popitem(last=False)
+                self._cache_bytes -= len(old)
+
+    def forget(self, doc_id: str) -> None:
+        """Drop cached images of a closed document."""
+        with self._cache_lock:
+            for key in [k for k in self._cache if f"/page/{doc_id}/" in k]:
+                self._cache_bytes -= len(self._cache.pop(key))
+
     def _handle(self, req: BaseHTTPRequestHandler, render: RenderFn) -> None:
         url = urlsplit(req.path)
         match = _PATH.match(url.path)
@@ -69,19 +97,25 @@ class RenderServer:
             req.send_error(HTTPStatus.BAD_REQUEST)
             return
 
-        try:
-            png = render(match["doc"], int(match["page"]), scale, clip)
-        except (IndexError, ValueError):
-            png = None
+        png = self._cached(req.path)
+        if png is None:
+            try:
+                png = render(match["doc"], int(match["page"]), scale, clip)
+            except (IndexError, ValueError):
+                png = None
+            if png is not None:
+                self._remember(req.path, png)
         if png is None:
             req.send_error(HTTPStatus.NOT_FOUND)
             return
 
         req.send_response(HTTPStatus.OK)
-        req.send_header("Content-Type", "image/png")
+        jpeg = png.startswith(b"\xff\xd8")
+        req.send_header("Content-Type", "image/jpeg" if jpeg else "image/png")
         req.send_header("Content-Length", str(len(png)))
-        # doc_id is a content hash, so a URL's image never changes within a session.
-        req.send_header("Cache-Control", "private, max-age=86400, immutable")
+        # Don't let the webview keep every page it ever showed (hundreds of MB on big books);
+        # re-requests are served from the small LRU cache above.
+        req.send_header("Cache-Control", "no-store")
         req.send_header("Access-Control-Allow-Origin", "*")
         req.end_headers()
         # The view may have scrolled away and the browser cancelled the request.

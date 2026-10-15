@@ -65,7 +65,7 @@
             <img
               class:invert
               loading="lazy"
-              src={pageImageUrl(tab.doc.docId, i, thumbScale(w))}
+              src={pageImageUrl(tab.doc.docId, i, thumbScale(w), undefined, tab.revs[i] ?? 0)}
               alt="Page {i + 1}"
               draggable="false"
             />

@@ -6,6 +6,7 @@ import pytest
 from phdf.services.render_server import RenderServer
 
 DOC = "a" * 64
+FAKE_PNG = bytes([0x89]) + b"PNG fake"
 
 
 @pytest.fixture
@@ -60,3 +61,18 @@ def test_bad_clip(server):
     with pytest.raises(urllib.error.HTTPError) as err:
         get(f"{server.base_url}/page/{DOC}/0.png?clip=1,2")
     assert err.value.code == 400
+
+
+def test_repeat_requests_come_from_the_cache(server):
+    url = f"{server.base_url}/page/{DOC}/2.png?s=1"
+    first, second = get(url)[2], get(url)[2]
+    assert first == second == FAKE_PNG
+    assert len(server.calls) == 1
+
+
+def test_forget_drops_a_documents_images(server):
+    url = f"{server.base_url}/page/{DOC}/1.png?s=1"
+    get(url)
+    server.forget(DOC)
+    get(url)
+    assert len(server.calls) == 2

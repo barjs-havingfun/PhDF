@@ -1,12 +1,13 @@
 [project]
 name = "phdf"
-version = "0.1.1"
+version = "0.3.1"
 description = "A lightweight, reader-first PDF app with Markdown and Obsidian integration."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
     "pymupdf>=1.28.2",
+    "pymupdf4llm>=0.3.4,<1",
     "pywebview>=6.2.1",
     "pywebview[gtk]>=6.2.1; sys_platform == 'linux'",
 ]

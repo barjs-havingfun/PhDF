@@ -24,6 +24,46 @@ export interface OpenedDocument {
   info: { page_count: number; title: string | null; author: string | null; is_encrypted: boolean };
   pageSizes: [number, number][];
   position: Position;
+  dirty: boolean;
+  revs: Revs;
+}
+
+/** Render revision per page; bumped when annotations change how a page looks. */
+export type Revs = Record<number, number>;
+
+export type AnnotKind =
+  | "highlight"
+  | "underline"
+  | "strikeout"
+  | "note"
+  | "freetext"
+  | "ink"
+  | "other";
+
+export type Point = [number, number];
+
+export interface Annotation {
+  id: string;
+  page: number;
+  kind: AnnotKind;
+  rects: Rect[];
+  color: string;
+  contents: string;
+  quote: string;
+  modified: string | null;
+}
+
+export interface AnnotChange {
+  annotation?: Annotation;
+  page?: number;
+  dirty: boolean;
+  revs: Revs;
+}
+
+export interface TextFile {
+  exists: boolean;
+  text: string;
+  mtime: number | null;
 }
 
 export interface RecentDocument {
@@ -63,7 +103,10 @@ export interface SearchHit {
 interface PyApi {
   app_info(): Promise<AppInfo>;
   pick_pdf(): Promise<string | null>;
+  pick_file(kind: "document" | "pdf" | "md"): Promise<string | null>;
+  pick_new_md(name?: string): Promise<string | null>;
   open_window(paths: string[], x?: number, y?: number): Promise<string>;
+  close_window(): Promise<void>;
   open_document(path: string): Promise<OpenedDocument>;
   close_document(docId: string): Promise<void>;
   outline(docId: string): Promise<OutlineItem[]>;
@@ -78,6 +121,45 @@ interface PyApi {
     fit: FitMode,
   ): Promise<void>;
   recent_documents(limit?: number): Promise<RecentDocument[]>;
+  annotations(docId: string): Promise<Annotation[]>;
+  add_annotation(
+    docId: string,
+    page: number,
+    kind: AnnotKind,
+    rects: Rect[],
+    color: string,
+    contents?: string,
+    strokes?: Point[][] | null,
+  ): Promise<AnnotChange>;
+  update_annotation(
+    docId: string,
+    id: string,
+    color?: string | null,
+    contents?: string | null,
+  ): Promise<AnnotChange>;
+  delete_annotation(docId: string, id: string): Promise<AnnotChange>;
+  save_document(docId: string): Promise<{ dirty: boolean; revs: Revs }>;
+  revert_document(docId: string): Promise<{ dirty: boolean; revs: Revs }>;
+  ocr_info(): Promise<{ installed: string[]; common: Record<string, string> }>;
+  ocr_download(lang: string): Promise<string[]>;
+  page_has_text(docId: string, page: number): Promise<boolean>;
+  pages_without_text(docId: string): Promise<number[]>;
+  ocr_page(docId: string, page: number, languages: string[]): Promise<AnnotChange & { words: number }>;
+  export_markdown(docId: string): Promise<string>;
+  pick_folder(): Promise<string | null>;
+  obsidian_append(title: string, block: string): Promise<string>;
+  obsidian_write(
+    title: string,
+    text: string,
+    overwrite?: boolean,
+  ): Promise<{ path: string; written: boolean; exists: boolean }>;
+  open_in_obsidian(path: string): Promise<void>;
+  md_for_pdf(pdfPath: string): Promise<{ path: string; exists: boolean; linked: boolean }>;
+  pdf_for_md(mdPath: string): Promise<string | null>;
+  link_md(pdfPath: string, mdPath: string): Promise<void>;
+  read_text(path: string): Promise<TextFile>;
+  write_text(path: string, text: string): Promise<number>;
+  file_mtime(path: string): Promise<number | null>;
   open_external(url: string): Promise<void>;
   peek_url(url: string): Promise<boolean>;
   peek_expand(): Promise<void>;
@@ -110,8 +192,15 @@ export function setRenderBaseUrl(url: string) {
 }
 
 /** URL of a rendered page image. `scale` is device pixels per PDF point. */
-export function pageImageUrl(docId: string, page: number, scale: number, clip?: Rect): string {
+export function pageImageUrl(
+  docId: string,
+  page: number,
+  scale: number,
+  clip?: Rect,
+  rev = 0,
+): string {
   const s = `s=${scale.toFixed(2)}`;
   const c = clip ? `&clip=${clip.map((v) => v.toFixed(1)).join(",")}` : "";
-  return `${renderBase}/page/${docId}/${page}.png?${s}${c}`;
+  const r = rev ? `&r=${rev}` : ""; // new URL after annotation edits (images are cached)
+  return `${renderBase}/page/${docId}/${page}.png?${s}${c}${r}`;
 }

@@ -6,10 +6,11 @@
     version: string;
     recents: RecentDocument[];
     onopen: () => void;
+    onnewnote: () => void;
     onopenpath: (path: string) => void;
   }
 
-  let { version, recents, onopen, onopenpath }: Props = $props();
+  let { version, recents, onopen, onnewnote, onopenpath }: Props = $props();
 
   function fileName(path: string) {
     return path.split(/[\\/]/).pop() ?? path;
@@ -24,7 +25,10 @@
   <div class="app-icon">Ph</div>
   <h1>PhDF</h1>
   <p class="hint">Version {version}</p>
-  <button class="primary" onclick={onopen}>Open PDF…</button>
+  <div class="buttons">
+    <button class="primary" onclick={onopen}>Open…</button>
+    <button class="secondary" onclick={onnewnote}>New Note…</button>
+  </div>
 
   {#if recents.length}
     <h2>Recents</h2>
@@ -43,7 +47,7 @@
       {/each}
     </ul>
   {/if}
-  <p class="hint small">Ctrl+O to open · Ctrl+T new tab · Ctrl+F search</p>
+  <p class="hint small">Ctrl+O open PDF or Markdown · Ctrl+T new tab · Ctrl+S save annotations</p>
 </section>
 
 <style>
@@ -99,8 +103,25 @@
     color: var(--tertiary);
   }
 
-  .primary {
+  .buttons {
+    display: flex;
+    gap: 8px;
     margin-top: 18px;
+  }
+
+  .secondary {
+    padding: 5px 16px;
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    font-weight: 500;
+    box-shadow: var(--card-shadow);
+  }
+
+  .secondary:hover {
+    background: var(--hover);
+  }
+
+  .primary {
     padding: 5px 16px;
     border-radius: var(--radius-s);
     background: var(--accent);

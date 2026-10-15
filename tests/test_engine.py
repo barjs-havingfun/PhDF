@@ -1,3 +1,5 @@
+import pymupdf
+
 from phdf.engine import default_engine
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -72,3 +74,19 @@ def test_links(sample_pdf):
     kinds = {link.kind: link for link in links}
     assert kinds["goto"].page == 2
     assert kinds["uri"].uri == "https://example.com/"
+
+
+def test_photo_pages_render_as_jpeg(tmp_path):
+    doc = pymupdf.open()
+    text_page = doc.new_page()
+    text_page.insert_text((72, 72), "Just text")
+    photo_page = doc.new_page()
+    noise = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 200, 260), 0)
+    noise.clear_with(180)
+    photo_page.insert_image(photo_page.rect, pixmap=noise)
+    path = tmp_path / "mixed.pdf"
+    doc.save(path)
+    with default_engine().open(path) as d:
+        assert d.render_page(0).startswith(PNG_MAGIC)
+        assert d.render_page(1).startswith(b"\xff\xd8")  # JPEG
+        assert d.render_page(1, clip=(100, 100, 200, 200)).startswith(b"\xff\xd8")

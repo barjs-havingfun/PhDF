@@ -1,6 +1,6 @@
 // Pointer-based tab dragging. Pointer capture keeps events coming even outside the window,
 // which is how a tab dropped outside is detected (→ new window).
-import type { Tab } from "./tab.svelte";
+import type { AnyTab as Tab } from "./tab.svelte";
 
 export type DropTarget =
   | { kind: "bar"; paneId: number; index: number } // reorder / move into a tab bar

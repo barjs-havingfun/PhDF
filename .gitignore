@@ -27,3 +27,6 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# Test documents (large / copyrighted) — never commit
+*.pdf

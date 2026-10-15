@@ -55,6 +55,7 @@ def main() -> None:
     core = Core(default_engine(), store)
     render_server = RenderServer(core.render).start()
     core.render_base_url = render_server.base_url
+    core.on_closed_document = render_server.forget
 
     def create_window(window_id: str, x: int | None = None, y: int | None = None) -> None:
         api = Api(core, window_id)
@@ -66,13 +67,18 @@ def main() -> None:
             return
         api._window = window
         core.windows[window_id] = api
+        window.events.closing += api._on_closing
         window.events.closed += api._on_closed
 
     core.create_window = create_window
     for window_id in saved_window_ids(store):
         create_window(window_id)
 
-    webview.start(debug=dev, private_mode=False, storage_path=str(data_dir() / "webview"))
+    webview.start(
+        debug=dev,
+        private_mode=False,
+        storage_path=str(data_dir() / "webview"),
+    )
     core.shutdown()
     render_server.stop()
     store.close()

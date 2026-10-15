@@ -1,7 +1,14 @@
+<script lang="ts" module>
+  // Fit each span's natural text width to its PDF bbox so selection matches the image.
+  // One canvas shared by every page (a document can have thousands of pages).
+  const measure = document.createElement("canvas").getContext("2d")!;
+  measure.font = "100px sans-serif";
+</script>
+
 <script lang="ts">
   // One page: rendered image + search highlights + selectable text layer + link hotspots.
   // Layers are laid out in PDF points and scaled as a whole with a CSS transform.
-  import { pageImageUrl, type PdfLink, type Rect, type TextLine } from "../api";
+  import { pageImageUrl, type PdfLink, type Point, type Rect, type TextLine } from "../api";
   import type { Tab } from "../tab.svelte";
 
   interface Props {
@@ -15,10 +22,11 @@
     invert: boolean;
     hits: Rect[];
     activeHit: number; // index into `hits`, or -1
+    stroke: Point[] | null; // ink being drawn on this page
     onlink: (link: PdfLink, event: MouseEvent) => void;
   }
 
-  let { tab, index, left, top, cssScale, renderScale, live, invert, hits, activeHit, onlink }: Props =
+  let { tab, index, left, top, cssScale, renderScale, live, invert, hits, activeHit, stroke, onlink }: Props =
     $props();
 
   const size = $derived(tab.doc.pageSizes[index]);
@@ -27,7 +35,12 @@
   // Keep showing the last image while a sharper one loads after zooming.
   let shownSrc = $state<string | null>(null);
 
-  const src = $derived(live ? pageImageUrl(tab.doc.docId, index, renderScale) : null);
+  const src = $derived(
+    live ? pageImageUrl(tab.doc.docId, index, renderScale, undefined, tab.revs[index] ?? 0) : null,
+  );
+  const selected = $derived(
+    tab.selectedAnnot ? tab.annotations?.find((a) => a.id === tab.selectedAnnot && a.page === index) : undefined,
+  );
 
   $effect(() => {
     if (!src) return;
@@ -41,13 +54,10 @@
 
   $effect(() => {
     if (!live) return;
+    void tab.revs[index]; // reload after OCR added a text layer
     tab.textLines(index).then((l) => (lines = l));
     tab.links(index).then((l) => (links = l));
   });
-
-  // Fit each span's natural text width to its PDF bbox so selection matches the image.
-  const measure = document.createElement("canvas").getContext("2d")!;
-  measure.font = "100px sans-serif";
 
   function spanStyle(span: TextLine["spans"][number]) {
     const [x0, y0, x1, y1] = span.bbox;
@@ -72,6 +82,12 @@
 
   {#if live}
     <div class="layer" style="width:{size[0]}px;height:{size[1]}px;transform:scale({cssScale})">
+      {#if selected}
+        {#each selected.rects as rect}
+          <div class="selected" style={box(rect)}></div>
+        {/each}
+      {/if}
+
       {#each hits as rect, i}
         <div class="hit" class:active={i === activeHit} style={box(rect)}></div>
       {/each}
@@ -81,6 +97,12 @@
           {#each line.spans as span}<span style={spanStyle(span)}>{span.text}</span>{/each}<br />
         {/each}
       </div>
+
+      {#if stroke}
+        <svg class="ink" viewBox="0 0 {size[0]} {size[1]}" width={size[0]} height={size[1]}>
+          <polyline points={stroke.map((p) => p.join(",")).join(" ")} />
+        </svg>
+      {/if}
 
       {#each links as link}
         {#if link.kind !== "other"}
@@ -159,6 +181,28 @@
   .hit.active {
     background: rgb(255 149 0 / 0.7);
     outline: 1px solid rgb(255 149 0);
+  }
+
+  .ink {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .ink polyline {
+    fill: none;
+    stroke: #0a84ff;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .selected {
+    position: absolute;
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-radius: 2px;
+    pointer-events: none;
   }
 
   .link {

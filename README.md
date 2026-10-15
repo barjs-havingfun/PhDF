@@ -3,14 +3,15 @@
 A lightweight, reader-first PDF app for heavy readers — with position memory, a built-in
 Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 
-> **Status:** early development (v0.1.1 — core reader, tabs & split view). See [`HANDOFF.md`](HANDOFF.md) for the
+> **Status:** early development (v0.3 — OCR, Obsidian, export, ink). See [`HANDOFF.md`](HANDOFF.md) for the
 > full roadmap and design decisions.
 
 ## Keyboard shortcuts
 
 | Action | Keys |
 |---|---|
-| Open PDF | Ctrl+O |
+| Open PDF or Markdown | Ctrl+O |
+| Save annotations | Ctrl+S |
 | New tab / close tab / next tab | Ctrl+T / Ctrl+W / Ctrl+Tab |
 | Search (Enter next, Shift+Enter previous) | Ctrl+F |
 | Go to page | Ctrl+G |
@@ -22,6 +23,16 @@ Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 **Tabs & panes:** drag a tab to reorder it; drop it on the left/right edge of a document to view
 up to three side by side (drag the divider to resize); drop it outside the window to open it in a
 new window.
+
+**OCR, export & Obsidian:** scanned pages show a *Recognize Text* bar (language files are
+downloaded on first use — no Tesseract install needed). The ⋯ menu exports the document as
+Markdown (to a file or your Obsidian vault) and copies notes to Obsidian; *Send to Obsidian* in
+the selection menu adds the quote to the book's note in your vault (set it in ⋯ → Settings).
+
+**Annotations & notes:** select text to highlight / underline / strike it or send it to the
+PDF's integrated note (**Note in MD**). The note is `<pdf name>.md` next to the PDF and opens beside
+it in the same tab; each quote starts with a pin like `⎘ phdf · p.12 · §2.1 · #k7q2` — click
+**Go to PDF ↗** to jump to the highlight, or click the highlight to jump to its note.
 
 ## Stack
 
