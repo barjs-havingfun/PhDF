@@ -71,6 +71,19 @@ class Store:
                 (key, json.dumps(value)),
             )
 
+    def delete_setting(self, key: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+
+    def settings_with_prefix(self, prefix: str) -> dict[str, Any]:
+        pattern = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT key, value FROM settings WHERE key LIKE ? ESCAPE '\\' ORDER BY key",
+                (pattern,),
+            ).fetchall()
+        return {r["key"]: json.loads(r["value"]) for r in rows}
+
     # --- documents --------------------------------------------------------------------------
 
     def touch_document(

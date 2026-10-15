@@ -33,3 +33,13 @@ def test_document_position_and_recents(tmp_path):
     assert again["path"] == "/moved/a.pdf"
 
     assert [d["doc_id"] for d in store.recent_documents()] == ["a", "b"]
+
+
+def test_settings_prefix_and_delete(tmp_path):
+    store = Store(tmp_path / "db.sqlite")
+    store.set_setting("session.main", 1)
+    store.set_setting("session.x_1", 2)
+    store.set_setting("sessionless", 3)  # must not match "session."
+    assert store.settings_with_prefix("session.") == {"session.main": 1, "session.x_1": 2}
+    store.delete_setting("session.main")
+    assert store.settings_with_prefix("session.") == {"session.x_1": 2}

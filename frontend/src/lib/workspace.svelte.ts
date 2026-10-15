@@ -1,0 +1,126 @@
+// Window layout: up to MAX_PANES side-by-side panes, each with its own tabs.
+import type { Tab } from "./tab.svelte";
+
+export const MAX_PANES = 3;
+
+let nextPaneId = 1;
+
+export class Pane {
+  readonly id = nextPaneId++;
+  tabs = $state<Tab[]>([]);
+  /** Active tab id, or null for the "new tab" page. */
+  activeId = $state<number | null>(null);
+  /** Relative width (flex-grow). */
+  width = $state(1);
+
+  get active(): Tab | null {
+    return this.tabs.find((t) => t.id === this.activeId) ?? null;
+  }
+}
+
+export type SplitSide = "left" | "right";
+
+export class Workspace {
+  panes = $state<Pane[]>([new Pane()]);
+  focusedId = $state(0);
+
+  constructor() {
+    this.focusedId = this.panes[0].id;
+  }
+
+  get focused(): Pane {
+    return this.panes.find((p) => p.id === this.focusedId) ?? this.panes[0];
+  }
+
+  get activeTab(): Tab | null {
+    return this.focused.active;
+  }
+
+  get tabCount(): number {
+    return this.panes.reduce((n, p) => n + p.tabs.length, 0);
+  }
+
+  pane(id: number): Pane | undefined {
+    return this.panes.find((p) => p.id === id);
+  }
+
+  paneOf(tab: Tab): Pane | undefined {
+    return this.panes.find((p) => p.tabs.includes(tab));
+  }
+
+  findByDoc(docId: string): Tab | undefined {
+    for (const p of this.panes) {
+      const t = p.tabs.find((t) => t.doc.docId === docId);
+      if (t) return t;
+    }
+  }
+
+  focus(pane: Pane) {
+    this.focusedId = pane.id;
+  }
+
+  activate(tab: Tab) {
+    const pane = this.paneOf(tab);
+    if (!pane) return;
+    pane.activeId = tab.id;
+    this.focus(pane);
+  }
+
+  add(tab: Tab, pane: Pane = this.focused, index = pane.tabs.length) {
+    pane.tabs.splice(index, 0, tab);
+  }
+
+  /** Remove a tab; activates a neighbour and drops the pane if it became empty. */
+  remove(tab: Tab) {
+    const pane = this.paneOf(tab);
+    if (!pane) return;
+    const i = pane.tabs.indexOf(tab);
+    pane.tabs.splice(i, 1);
+    if (pane.activeId === tab.id) pane.activeId = (pane.tabs[i] ?? pane.tabs[i - 1])?.id ?? null;
+    this.prune();
+  }
+
+  /** Move a tab into `to` at `index` (reordering when `to` is its own pane). */
+  move(tab: Tab, to: Pane, index: number) {
+    const from = this.paneOf(tab);
+    if (!from) return;
+    const i = from.tabs.indexOf(tab);
+    if (from === to && (index === i || index === i + 1)) return this.activate(tab);
+    from.tabs.splice(i, 1);
+    if (from.activeId === tab.id) from.activeId = (from.tabs[i] ?? from.tabs[i - 1])?.id ?? null;
+    if (from === to && index > i) index--;
+    to.tabs.splice(index, 0, tab);
+    this.prune();
+    this.activate(tab);
+  }
+
+  canSplit(tab: Tab, target: Pane): boolean {
+    const from = this.paneOf(tab);
+    if (!from || this.panes.length >= MAX_PANES) return false;
+    return !(from === target && from.tabs.length === 1); // nothing would be left behind
+  }
+
+  /** Put a tab in a new pane next to `target`. */
+  split(tab: Tab, target: Pane, side: SplitSide) {
+    if (!this.canSplit(tab, target)) return;
+    const pane = new Pane();
+    pane.width = target.width / 2;
+    target.width /= 2;
+    const at = this.panes.indexOf(target) + (side === "right" ? 1 : 0);
+    this.panes.splice(at, 0, pane);
+    this.move(tab, pane, 0);
+  }
+
+  private prune() {
+    if (this.panes.length > 1) {
+      const empty = this.panes.filter((p) => p.tabs.length === 0);
+      for (const p of empty) {
+        const i = this.panes.indexOf(p);
+        const neighbour = this.panes[i + 1] ?? this.panes[i - 1];
+        if (neighbour) neighbour.width += p.width;
+        this.panes.splice(i, 1);
+      }
+    }
+    if (!this.pane(this.focusedId)) this.focusedId = this.panes[0].id;
+  }
+}

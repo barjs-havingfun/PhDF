@@ -1,6 +1,6 @@
 # PhDF — Project Handoff & Roadmap
 
-> Status: **Phase 1 done (local, v0.1.0)** — GitHub repo not created yet. Ask the owner before starting each new phase.
+> Status: **Phase 1.1 done (v0.1.1)** — GitHub repo not created yet. Ask the owner before starting each new phase.
 > Last updated: 2026-10-15
 > Original requirements: `notes.md`
 
@@ -105,13 +105,16 @@ projectPDF/                # repo root
     engine/                # PdfEngine interface (base.py) + MuPDF impl (mupdf.py)
     db/store.py            # SQLite: settings, documents/positions, append-only migrations
     services/render_server.py  # local HTTP server streaming page PNGs to <img> tags
+                           # api.py: Core (shared docs/store/render) + Api (one per window)
     services/              # annots, ocr, export, obsidian, pty — added per phase
   frontend/
     src/App.svelte         # shell: toolbar, tabs, sidebar, shortcuts, session restore
     src/lib/api.ts         # typed wrapper for the Python API + page image URLs
     src/lib/tab.svelte.ts  # per-tab state: position, history, search, text/link caches
     src/lib/viewer/        # Viewer (virtualized scroll, zoom/fit) + PageView (image, text, links)
-    src/lib/*.svelte       # Sidebar, OutlineNode, TabBar, Welcome, LinkPeek, Icon
+    src/lib/workspace.svelte.ts  # panes (max 3) and their tabs: move / split / prune
+    src/lib/dnd.svelte.ts  # pointer-based tab drag & drop + drop-target hit testing
+    src/lib/*.svelte       # PaneView, Sidebar, OutlineNode, TabBar, Welcome, LinkPeek, Icon
   tests/                   # pytest (engine, store, docid)
   .github/workflows/ci.yml # lint/test/package matrix: windows, macos, linux
   phdf.spec                # PyInstaller spec
@@ -195,6 +198,17 @@ projectPDF/                # repo root
 - Not yet: "open link target as split view", rotated-text support in the text layer,
   multi-threaded rendering, password-protected PDFs (open fails with an error toast)
 
+### Phase 1.1 — Tabs & Split View → `v0.1.1`
+- [x] Drag tabs to reorder (insertion marker in the tab bar)
+- [x] Side-by-side panes (max 3): drag a tab onto the left/right 30% of a pane to split; onto
+      the middle or another tab bar to move it; empty panes close; dividers are resizable
+- [x] Drag a tab outside the window → it opens in a new window
+- [x] Multi-window backend: one `Api` per window over a shared `Core`; documents are
+      reference-counted across windows; each window has its own session (`session.<windowId>`);
+      closing one of several windows discards its tabs, the last window's session is restored
+- Not yet: dragging a tab *between* two existing windows; "open link target as split"
+  (now trivial with panes — see Phase 1 leftovers)
+
 ### Phase 2 — Notes & Markdown → `v0.2`
 - [ ] Highlight, underline, sticky note, free text (R4) → written into PDF + indexed
 - [ ] Annotations panel (jump, filter, search)
@@ -262,6 +276,13 @@ projectPDF/                # repo root
   survives zoom/window-size changes. Migration 2 added the `fit` column.
 - **Web link previews** open in a separate pywebview window *without* `js_api` — never expose the
   app API to third-party pages.
+- **Tab drag & drop uses pointer events + pointer capture**, not HTML5 DnD: capture keeps
+  events flowing outside the window (→ tear-off detection) and synthetic `PointerEvent`s make it
+  scriptable in tests. Drop targets are found with `elementsFromPoint` and `data-pane-bar` /
+  `data-pane-body` attributes.
+- **Session format** is `{panes: [{paths, active, width}], focused}` per window; the v0.1.0
+  `{paths, active}` format is migrated on startup (`saved_window_ids` in `app.py`) and in the
+  frontend (`normalize`).
 - **Write files as UTF-8 explicitly** (`encoding="utf-8"`) on Windows; the default cp1252 once
   corrupted an em dash in `store.py`.
 - **Screenshot testing:** WebView2 content is not captured reliably by `CopyFromScreen`; use

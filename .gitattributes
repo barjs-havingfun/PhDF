@@ -1,0 +1,7 @@
+# Keep LF line endings everywhere (Windows, macOS, Linux and CI) regardless of core.autocrlf.
+* text=auto eol=lf
+
+# Binary files: never touch
+*.png binary
+*.ico binary
+*.pdf binary

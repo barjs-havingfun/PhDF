@@ -3,7 +3,7 @@
 A lightweight, reader-first PDF app for heavy readers — with position memory, a built-in
 Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 
-> **Status:** early development (v0.1 — core reader). See [`HANDOFF.md`](HANDOFF.md) for the
+> **Status:** early development (v0.1.1 — core reader, tabs & split view). See [`HANDOFF.md`](HANDOFF.md) for the
 > full roadmap and design decisions.
 
 ## Keyboard shortcuts
@@ -18,6 +18,10 @@ Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 | Back / forward (after links, outline, go-to) | Alt+← / Alt+→ |
 | Previous / next page, first / last page | ← / →, Home / End |
 | Toggle sidebar | Ctrl+\ |
+
+**Tabs & panes:** drag a tab to reorder it; drop it on the left/right edge of a document to view
+up to three side by side (drag the divider to resize); drop it outside the window to open it in a
+new window.
 
 ## Stack
 

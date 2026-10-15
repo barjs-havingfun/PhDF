@@ -1,37 +1,51 @@
 <script lang="ts">
+  import { drag } from "./dnd.svelte";
   import Icon from "./Icon.svelte";
   import type { Tab } from "./tab.svelte";
+  import type { Pane } from "./workspace.svelte";
 
   interface Props {
-    tabs: Tab[];
-    activeId: number | null;
-    onselect: (id: number) => void;
-    onclose: (id: number) => void;
+    pane: Pane;
+    focused: boolean;
+    onselect: (tab: Tab) => void;
+    onclose: (tab: Tab) => void;
     onnew: () => void;
+    ondragstart: (e: PointerEvent, tab: Tab) => void;
   }
 
-  let { tabs, activeId, onselect, onclose, onnew }: Props = $props();
+  let { pane, focused, onselect, onclose, onnew, ondragstart }: Props = $props();
+
+  // Where a dragged tab would land in this bar (insertion marker), if anywhere.
+  const dropIndex = $derived(
+    drag.target?.kind === "bar" && drag.target.paneId === pane.id ? drag.target.index : -1,
+  );
 </script>
 
-<div class="tabbar" role="tablist">
-  {#each tabs as tab (tab.id)}
+<div class="tabbar" class:focused role="tablist" data-pane-bar={pane.id}>
+  {#each pane.tabs as tab, i (tab.id)}
+    {#if dropIndex === i}<span class="marker"></span>{/if}
     <div
       class="tab"
-      class:active={tab.id === activeId}
+      class:active={tab.id === pane.activeId}
+      class:dragging={drag.tab === tab}
+      data-tab-id={tab.id}
       role="tab"
       tabindex="0"
-      aria-selected={tab.id === activeId}
+      aria-selected={tab.id === pane.activeId}
       title={tab.doc.path}
-      onclick={() => onselect(tab.id)}
-      onkeydown={(e) => e.key === "Enter" && onselect(tab.id)}
-      onauxclick={(e) => e.button === 1 && onclose(tab.id)}
+      onpointerdown={(e) => {
+        if (!(e.target as HTMLElement).closest(".close")) ondragstart(e, tab);
+      }}
+      onclick={() => !drag.suppressClick && onselect(tab)}
+      onkeydown={(e) => e.key === "Enter" && onselect(tab)}
+      onauxclick={(e) => e.button === 1 && onclose(tab)}
     >
       <button
         class="close"
         aria-label="Close tab"
         onclick={(e) => {
           e.stopPropagation();
-          onclose(tab.id);
+          onclose(tab);
         }}
       >
         <Icon name="close" size={11} />
@@ -39,7 +53,8 @@
       <span class="label">{tab.doc.title}</span>
     </div>
   {/each}
-  <button class="new" class:active={activeId === null} onclick={onnew} title="New tab (Ctrl+T)">
+  {#if dropIndex === pane.tabs.length}<span class="marker"></span>{/if}
+  <button class="new" class:active={pane.activeId === null} onclick={onnew} title="New tab (Ctrl+T)">
     <Icon name="plus" size={14} />
   </button>
 </div>
@@ -47,6 +62,7 @@
 <style>
   .tabbar {
     display: flex;
+    align-items: stretch;
     gap: 1px;
     height: 30px;
     padding: 0 6px 4px;
@@ -64,6 +80,7 @@
     border-radius: 7px;
     color: var(--secondary);
     font-size: 12px;
+    touch-action: none;
   }
 
   .tab:hover {
@@ -76,10 +93,36 @@
     box-shadow: 0 0 0 0.5px var(--separator);
   }
 
+  /* With several panes, the focused pane's active tab gets an accent underline. */
+  .tabbar.focused .tab.active::after {
+    content: "";
+    position: absolute;
+    left: 30%;
+    right: 30%;
+    bottom: 2px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    opacity: var(--focus-mark, 0);
+  }
+
+  .tab.dragging {
+    opacity: 0.4;
+  }
+
+  .marker {
+    flex: none;
+    width: 2px;
+    margin: 4px 0;
+    border-radius: 1px;
+    background: var(--accent);
+  }
+
   .label {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    pointer-events: none;
   }
 
   .close {

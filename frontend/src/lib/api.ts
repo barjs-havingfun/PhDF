@@ -7,6 +7,7 @@ export interface AppInfo {
   name: string;
   version: string;
   renderBaseUrl: string;
+  windowId: string;
 }
 
 export interface Position {
@@ -62,6 +63,7 @@ export interface SearchHit {
 interface PyApi {
   app_info(): Promise<AppInfo>;
   pick_pdf(): Promise<string | null>;
+  open_window(paths: string[], x?: number, y?: number): Promise<string>;
   open_document(path: string): Promise<OpenedDocument>;
   close_document(docId: string): Promise<void>;
   outline(docId: string): Promise<OutlineItem[]>;
