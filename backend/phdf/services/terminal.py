@@ -28,7 +28,8 @@ def command_name(command: str) -> str | None:
         program = command[1:].split(command[0], 1)[0]
     else:
         program = command.split(maxsplit=1)[0] if command else ""
-    name = Path(program).stem.lower()
+    # Split on both separators: a Windows path ("C:\Tools\x.exe") on macOS / Linux too.
+    name = Path(re.split(r"[\\/]", program)[-1]).stem.lower()
     return name or None
 
 
