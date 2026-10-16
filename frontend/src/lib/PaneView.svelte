@@ -9,6 +9,11 @@
   import { capture, drag } from "./dnd.svelte";
   import Icon from "./Icon.svelte";
   import AiPanel from "./ai/AiPanel.svelte";
+  import InkBar from "./InkBar.svelte";
+  import WhereWasI from "./WhereWasI.svelte";
+  import GradingBar from "./grading/GradingBar.svelte";
+  import GradingDrawer from "./grading/GradingDrawer.svelte";
+  import { grading } from "./grading/grading.svelte";
   import { HEADER_HEIGHT, saveLayout, term } from "./ai/terminal.svelte";
   import { notify } from "./notify.svelte";
   import { ocrLanguages } from "./ocr";
@@ -229,6 +234,14 @@
             onplace={onPlace}
           />
           <AnnotationsPanel tab={pdf} {topInset} />
+          {#if pdf.tool === "draw"}<InkBar {topInset} />{/if}
+          {#if pdf.welcomeBack && grading.session?.tab !== pdf}<WhereWasI tab={pdf} {topInset} />{/if}
+          {#if grading.session && grading.session.tab === pdf}
+            {#if grading.automated && grading.session.drawer}
+              {#key grading.session.index}<GradingDrawer session={grading.session} {topInset} />{/key}
+            {/if}
+            <GradingBar session={grading.session} />
+          {/if}
         </div>
         {#if sideShown}
           <div class="md-divider" role="separator" aria-orientation="vertical" onpointerdown={startMdResize}></div>
@@ -256,9 +269,11 @@
                     Parking{#if openParked(pdf)}<span class="badge">{openParked(pdf)}</span>{/if}
                   </button>
                 </div>
+                {#if grading.session?.tab !== pdf}
                 <button class="md-btn" title="Link an existing .md file to this PDF" onclick={linkExisting}>
                   <Icon name="link" size={14} />
                 </button>
+                {/if}
                 <button class="md-btn" title="Close note" onclick={() => pdf.toggleMd(false)}>
                   <Icon name="close" size={13} />
                 </button>

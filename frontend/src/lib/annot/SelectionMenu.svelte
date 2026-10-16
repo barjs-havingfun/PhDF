@@ -5,6 +5,7 @@
   import { api } from "../api";
   import { notify, ui } from "../notify.svelte";
   import { askAi } from "../ai/terminal.svelte";
+  import { citation } from "../cite";
   import type { Tab } from "../tab.svelte";
   import type { TextSelection } from "../viewer/Viewer.svelte";
   import { COLORS, DEFAULT_COLOR } from "./colors";
@@ -75,13 +76,19 @@
     askAi(text, prompt !== null, folder, null);
   }
 
+  async function copyCited() {
+    await navigator.clipboard.writeText(citation(tab, sel.text, [...sel.byPage.keys()]));
+    notify.show({ text: "Copied with citation." }, 1800);
+    onclose();
+  }
+
   async function copy() {
     await navigator.clipboard.writeText(sel.text);
     onclose();
   }
 </script>
 
-<Popover anchor={sel.box} width={390} {onclose}>
+<Popover anchor={sel.box} width={422} {onclose}>
   <div class="row">
     {#each COLORS as c}
       <button class="dot" style="--c:{c.value}" title="Highlight {c.name}" onclick={() => annotate("highlight", c.value)}
@@ -98,6 +105,7 @@
     <button class="icon" title="Note in MD" onclick={noteInMd}><Icon name="mdnote" size={16} /></button>
     <button class="icon" title="Send to Obsidian" onclick={toObsidian}><Icon name="obsidian" size={16} /></button>
     <button class="icon" title="Copy" onclick={copy}><Icon name="copy" size={16} /></button>
+    <button class="icon" title="Copy with citation (Ctrl+Shift+C)" onclick={copyCited}><Icon name="quote" size={16} /></button>
     <button class="icon" class:on={aiMenu} title="Ask AI" onclick={() => (aiMenu = !aiMenu)}><Icon name="sparkle" size={16} /></button>
   </div>
   {#if aiMenu}

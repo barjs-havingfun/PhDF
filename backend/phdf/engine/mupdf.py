@@ -176,6 +176,10 @@ class MuPdfDocument(PdfDocument):
             colors = annot.colors or {}
             color = _hex(colors.get("stroke") or colors.get("fill"))
         info = annot.info
+        strokes = width = None
+        if kind == "ink":
+            strokes = [[(round(x, 2), round(y, 2)) for x, y in s] for s in (annot.vertices or [])]
+            width = (annot.border or {}).get("width") or 2
         return Annotation(
             id=self._annot_id(annot),
             page=page.number,
@@ -185,6 +189,8 @@ class MuPdfDocument(PdfDocument):
             contents=info.get("content", ""),
             quote=" ".join(quote.split()),
             modified=info.get("modDate") or None,
+            strokes=strokes,
+            width=width,
         )
 
     def _freetext_color(self, annot: pymupdf.Annot) -> str:
@@ -216,6 +222,8 @@ class MuPdfDocument(PdfDocument):
         color: str,
         contents: str = "",
         strokes: list[list[tuple[float, float]]] | None = None,
+        width: float | None = None,
+        annot_id: str | None = None,
     ) -> Annotation:
         p = self._doc[page]
         rgb = _rgb(color)
@@ -236,14 +244,15 @@ class MuPdfDocument(PdfDocument):
             if not strokes:
                 raise ValueError("ink annotations need strokes")
             annot = p.add_ink_annot([[tuple(pt) for pt in stroke] for stroke in strokes])
-            annot.set_border(width=2)
+            annot.set_border(width=width or 2)
         else:
             raise ValueError(f"cannot create {kind!r} annotations")
         if kind != "freetext":
             annot.set_colors(stroke=rgb)
         annot.set_info(content=contents)
         annot.update()
-        self._doc.xref_set_key(annot.xref, "NM", pymupdf.get_pdf_str(new_annotation_id()))
+        nm = annot_id if annot_id and not annot_id.startswith("x") else new_annotation_id()
+        self._doc.xref_set_key(annot.xref, "NM", pymupdf.get_pdf_str(nm))
         self._dirty = True
         return self._to_model(p, annot)
 
@@ -270,6 +279,26 @@ class MuPdfDocument(PdfDocument):
         page.delete_annot(annot)
         self._dirty = True
         return page.number
+
+    def move_annotation(self, annot_id: str, dx: float, dy: float) -> Annotation:
+        page, annot = self._find(annot_id)
+        model = self._to_model(page, annot)
+        if model.kind == "ink":
+            # Ink points can't be edited in place: re-create the drawing, shifted, with its id.
+            strokes = [[(x + dx, y + dy) for x, y in s] for s in model.strokes or []]
+            page.delete_annot(annot)
+            return self.add_annotation(
+                page.number, "ink", [], model.color, model.contents, strokes, model.width, model.id
+            )
+        if model.kind not in ("note", "freetext"):
+            raise ValueError(f"cannot move {model.kind!r} annotations")
+        annot.set_rect(annot.rect + (dx, dy, dx, dy))
+        if model.kind == "freetext":
+            annot.update(text_color=_rgb(model.color))
+        else:
+            annot.update()
+        self._dirty = True
+        return self._to_model(page, annot)
 
     @property
     def dirty(self) -> bool:

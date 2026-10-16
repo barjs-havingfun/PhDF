@@ -27,6 +27,31 @@ export interface OpenedDocument {
   position: Position;
   dirty: boolean;
   revs: Revs;
+  lastOpened: number | null; // unix time of the previous visit
+}
+
+export interface Bookmark {
+  page: number;
+  label: string;
+  created: number;
+}
+
+export interface LibraryItem {
+  docId: string;
+  path: string;
+  title: string;
+  page: number;
+  pageCount: number;
+  lastOpened: number;
+  seconds: number;
+  exists: boolean;
+}
+
+export interface ReadingStats {
+  days: { day: string; seconds: number }[];
+  today: number;
+  week: number;
+  streak: number;
 }
 
 /** Render revision per page; bumped when annotations change how a page looks. */
@@ -52,6 +77,8 @@ export interface Annotation {
   contents: string;
   quote: string;
   modified: string | null;
+  strokes: Point[][] | null;
+  width: number | null;
 }
 
 export interface AnnotChange {
@@ -96,6 +123,13 @@ export interface PdfLink {
   uri: string | null;
 }
 
+export interface GradingFolder {
+  folder: string;
+  title: string;
+  table: string; // the grades table (.md)
+  files: { rel: string; name: string }[];
+}
+
 export interface SearchHit {
   page: number;
   rects: Rect[];
@@ -116,6 +150,15 @@ interface PyApi {
   term_ai(id: string): Promise<string | null>;
   term_close(id: string): Promise<void>;
   ai_tools(): Promise<{ claude: boolean; codex: boolean }>;
+  bookmarks(docId: string): Promise<Bookmark[]>;
+  set_bookmark(docId: string, page: number, label?: string): Promise<Bookmark[]>;
+  delete_bookmark(docId: string, page: number): Promise<Bookmark[]>;
+  log_reading(docId: string, seconds: number): Promise<void>;
+  reading_stats(): Promise<ReadingStats>;
+  library(): Promise<LibraryItem[]>;
+  library_cover(docId: string, path: string): Promise<string | null>;
+  window_at(x: number, y: number, scale?: number): Promise<string | null>;
+  send_to_window(windowId: string, path: string): Promise<boolean>;
   ai_context(docId: string, firstPage: number, lastPage: number): Promise<{ path: string; first: number; last: number; chars: number }>;
   parking_path(document?: string | null): Promise<string>;
   parking_add(thought: string, source?: string | null, document?: string | null): Promise<string>;
@@ -146,6 +189,8 @@ interface PyApi {
     color: string,
     contents?: string,
     strokes?: Point[][] | null,
+    width?: number | null,
+    annotId?: string | null,
   ): Promise<AnnotChange>;
   update_annotation(
     docId: string,
@@ -154,6 +199,7 @@ interface PyApi {
     contents?: string | null,
   ): Promise<AnnotChange>;
   delete_annotation(docId: string, id: string): Promise<AnnotChange>;
+  move_annotation(docId: string, id: string, dx: number, dy: number): Promise<AnnotChange>;
   save_document(docId: string): Promise<{ dirty: boolean; revs: Revs }>;
   revert_document(docId: string): Promise<{ dirty: boolean; revs: Revs }>;
   ocr_info(): Promise<{ installed: string[]; common: Record<string, string> }>;
@@ -163,6 +209,9 @@ interface PyApi {
   ocr_page(docId: string, page: number, languages: string[]): Promise<AnnotChange & { words: number }>;
   export_markdown(docId: string): Promise<string>;
   pick_folder(): Promise<string | null>;
+  save_csv(name: string, text: string): Promise<string | null>;
+  grading_scan(folder: string): Promise<GradingFolder>;
+  grading_copy(folder: string, rel: string): Promise<string>;
   obsidian_append(title: string, block: string): Promise<string>;
   obsidian_write(
     title: string,

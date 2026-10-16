@@ -10,7 +10,7 @@
   // Layers are laid out in PDF points and scaled as a whole with a CSS transform.
   import { pageImageUrl, type PdfLink, type Point, type Rect, type TextLine } from "../api";
   import { read, TINTS } from "../reading.svelte";
-  import type { Tab } from "../tab.svelte";
+  import { ink, type Tab } from "../tab.svelte";
 
   interface Props {
     tab: Tab;
@@ -81,6 +81,10 @@
     <img class:invert src={shownSrc} alt="" draggable="false" />
   {/if}
 
+  {#if tab.isBookmarked(index)}
+    <span class="ribbon" title="Bookmarked page"></span>
+  {/if}
+
   {#if read.tint !== "none"}
     <div class="tint" style="background:{TINTS[read.tint].color}"></div>
   {/if}
@@ -90,6 +94,13 @@
       {#if selected}
         {#each selected.rects as rect}
           <div class="selected" style={box(rect)}></div>
+        {/each}
+      {/if}
+
+      {#if tab.moving}
+        {@const m = tab.moving}
+        {#each tab.annotations?.find((a) => a.id === m.id && a.page === index)?.rects ?? [] as [x0, y0, x1, y1]}
+          <div class="moving" style={box([x0 + m.dx, y0 + m.dy, x1 + m.dx, y1 + m.dy])}></div>
         {/each}
       {/if}
 
@@ -105,7 +116,7 @@
 
       {#if stroke}
         <svg class="ink" viewBox="0 0 {size[0]} {size[1]}" width={size[0]} height={size[1]}>
-          <polyline points={stroke.map((p) => p.join(",")).join(" ")} />
+          <polyline points={stroke.map((p) => p.join(",")).join(" ")} style="stroke:{ink.color};stroke-width:{ink.width}" />
         </svg>
       {/if}
 
@@ -138,6 +149,18 @@
     inset: 0;
     width: 100%;
     height: 100%;
+    pointer-events: none;
+  }
+
+  .ribbon {
+    position: absolute;
+    top: 0;
+    right: 18px;
+    z-index: 3;
+    width: 14px;
+    height: 22px;
+    background: #ff375f;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%);
     pointer-events: none;
   }
 
@@ -214,6 +237,15 @@
     outline: 2px solid var(--accent);
     outline-offset: 1px;
     border-radius: 2px;
+    pointer-events: none;
+  }
+
+  .moving {
+    position: absolute;
+    z-index: 2;
+    border: 1.5px dashed var(--accent);
+    border-radius: 3px;
+    background: rgb(0 122 255 / 0.12);
     pointer-events: none;
   }
 

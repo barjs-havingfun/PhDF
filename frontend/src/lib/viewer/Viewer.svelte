@@ -13,7 +13,7 @@
   // Owns scrolling, zoom/fit and position tracking for one tab.
   import { onMount, tick } from "svelte";
   import { api, type Annotation, type FitMode, type PdfLink, type Rect } from "../api";
-  import { INK_COLOR, type Jump, type Tab } from "../tab.svelte";
+  import { ink, type Jump, type Tab } from "../tab.svelte";
   import type { Point } from "../api";
   import PageView from "./PageView.svelte";
   import { noteScroll, read, RULER_SIZES } from "../reading.svelte";
@@ -272,7 +272,7 @@
     const stroke = drawing;
     drawing = null;
     if (!stroke || stroke.points.length < 2) return;
-    await tab.addAnnotation(stroke.page, "ink", [], INK_COLOR, "", [stroke.points]);
+    await tab.addAnnotation(stroke.page, "ink", [], ink.color, "", [stroke.points], ink.width);
   }
 
   // Reading ruler: a band that follows the pointer; everything else is dimmed.
@@ -282,10 +282,67 @@
     rulerY = e.clientY - scroller.getBoundingClientRect().top;
   }
 
+  // Dragging a note, text box or (selected) drawing to a new spot on its page.
+  let dragging: { annot: Annotation; page: number; x: number; y: number } | null = null;
+  const MOVABLE = ["note", "freetext", "ink"];
+
+  function startMove(e: PointerEvent) {
+    const pt = pdfPoint(e.clientX, e.clientY);
+    const hit = pt && annotationAt(pt.page, pt.x, pt.y);
+    if (!pt || !hit || !MOVABLE.includes(hit.kind)) return false;
+    if (hit.kind === "ink" && tab.selectedAnnot !== hit.id) return false; // click a drawing first
+    e.preventDefault(); // no text selection
+    try {
+      scroller.setPointerCapture(e.pointerId);
+    } catch {
+      // synthetic event
+    }
+    dragging = { annot: hit, page: pt.page, x: pt.x, y: pt.y };
+    return true;
+  }
+
+  let overMovable = $state(false);
+
+  function onMove(e: PointerEvent) {
+    if (!dragging) {
+      // A move cursor over things that can be dragged.
+      const pt = tab.tool === "draw" || e.buttons ? null : pdfPoint(e.clientX, e.clientY);
+      const hit = pt && annotationAt(pt.page, pt.x, pt.y);
+      overMovable = !!hit && MOVABLE.includes(hit.kind) && (hit.kind !== "ink" || tab.selectedAnnot === hit.id);
+      return;
+    }
+    if (Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) <= 3 && !tab.moving) return;
+    const el = scroller.querySelector<HTMLElement>(`.page[data-page="${dragging.page}"]`);
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const [w, h] = sizes[dragging.page];
+    // Keep the annotation on its page.
+    const box = dragging.annot.rects.reduce((b, q) => [Math.min(b[0], q[0]), Math.min(b[1], q[1]), Math.max(b[2], q[2]), Math.max(b[3], q[3])]);
+    const dx = Math.min(Math.max((e.clientX - r.left) / cssScale - dragging.x, -box[0]), w - box[2]);
+    const dy = Math.min(Math.max((e.clientY - r.top) / cssScale - dragging.y, -box[1]), h - box[3]);
+    tab.moving = { id: dragging.annot.id, dx, dy };
+  }
+
+  /** Finish a drag; true when the annotation was moved (so the click is not handled). */
+  function endMove(): boolean {
+    const d = dragging;
+    const moved = tab.moving;
+    dragging = null;
+    if (!d || !moved || (Math.abs(moved.dx) < 0.5 && Math.abs(moved.dy) < 0.5)) {
+      tab.moving = null;
+      return false;
+    }
+    tab.selectedAnnot = d.annot.id;
+    tab.moveAnnotation(d.annot.id, moved.dx, moved.dy).finally(() => (tab.moving = null));
+    return true;
+  }
+
   let downAt = { x: 0, y: 0 };
   function onPointerDown(e: PointerEvent) {
     downAt = { x: e.clientX, y: e.clientY };
-    if (tab.tool === "draw" && e.button === 0) startStroke(e);
+    if (e.button !== 0) return;
+    if (tab.tool === "draw") startStroke(e);
+    else startMove(e);
   }
 
   function onPointerUp(e: PointerEvent) {
@@ -294,6 +351,7 @@
       endStroke();
       return;
     }
+    if (dragging && endMove()) return;
     const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 3;
     requestAnimationFrame(() => {
       const sel = readSelection();
@@ -377,10 +435,11 @@
 <div
   class="scroller"
   class:placing={tab.tool !== "select"}
+  class:movable={overMovable || !!tab.moving}
   bind:this={scroller}
   onscroll={onScroll}
   onpointerdown={onPointerDown}
-  onpointermove={(e) => (onPointerMove(e), onRulerMove(e))}
+  onpointermove={(e) => (onPointerMove(e), onMove(e), onRulerMove(e))}
   onpointerup={onPointerUp}
 >
   <div class="content" style="height:{contentHeight}px;width:{contentWidth}px">
@@ -443,6 +502,11 @@
 
   .content {
     position: relative;
+  }
+
+  .movable :global(.page),
+  .movable :global(.page .text) {
+    cursor: move !important;
   }
 
   .placing :global(.page),

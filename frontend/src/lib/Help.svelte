@@ -21,7 +21,9 @@
       items: [
         "Select text to <b>highlight</b>, underline, strike through, copy — or send it to a note or the AI.",
         "Toolbar: sticky <b>note</b>, free <b>text</b> and <b>draw</b> tools; the list button shows every annotation.",
-        "Click an annotation to recolour, comment or delete it (<b>Delete</b> also works). Save into the PDF with <b>Ctrl+S</b>.",
+        "Click an annotation to recolour, comment or delete it (<b>Delete</b> also works); <b>Ctrl+Z</b> undoes. Save into the PDF with <b>Ctrl+S</b>.",
+        "<b>Drag</b> a sticky note or text box to move it; to move a drawing, click it first, then drag.",
+        "<b>Ctrl+B</b> bookmarks a page (list in the sidebar's <i>Marks</i>); ⋯ → <i>Export Highlights to Note</i> collects every highlight under a line at the end of the book's note.",
         "Scanned page? A bar offers <i>Recognize Text</i> (OCR) so you can select and search it.",
       ],
     },
@@ -52,6 +54,16 @@
       ],
     },
     {
+      icon: "grade",
+      title: "Grading exams",
+      items: [
+        "The <i>Grade</i> button (next to <b>?</b>) asks for a folder of exam PDFs — subfolders too, e.g. a Moodle download. They open one by one; mark them with any tool.",
+        "<i>Done</i> saves and opens the next exam, <i>Prev</i> goes back; the sidebar's <i>Exams</i> list jumps anywhere. The originals are never changed: the marked copies go to <code>graded/</code>.",
+        "Beside the exam: the folder's grades table <code>&lt;folder&gt;.grades.md</code> (<i>#, Name, Grade, Comment</i> — add your own columns).",
+        "<i>Automated</i> on: a drawer asks who wrote each exam, and the grade typed next to Done (Enter = Done) goes into the table. Off: fill the table yourself. <i>CSV</i> exports it.",
+      ],
+    },
+    {
       icon: "terminal",
       title: "AI terminal",
       items: [
@@ -72,7 +84,11 @@
   ];
 
   const shortcuts = [
+    ["Find any command", "Ctrl+K"],
     ["Open", "Ctrl+O"],
+    ["Undo / redo annotations", "Ctrl+Z / Ctrl+Y"],
+    ["Bookmark page", "Ctrl+B"],
+    ["Copy with citation", "Ctrl+Shift+C"],
     ["Save annotations", "Ctrl+S"],
     ["Search / go to page", "Ctrl+F / Ctrl+G"],
     ["New / close / next tab", "Ctrl+T / Ctrl+W / Ctrl+Tab"],

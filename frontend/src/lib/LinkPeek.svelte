@@ -22,9 +22,15 @@
     peek: Peek;
     invert: boolean;
     onclose: () => void;
+    onsplit: (tab: Tab, page: number, y: number | null) => void; // open the target in a pane beside
   }
 
-  let { peek, invert, onclose }: Props = $props();
+  let { peek, invert, onclose, onsplit }: Props = $props();
+
+  function openSplit() {
+    onsplit(peek.tab, target, link.y);
+    close();
+  }
 
   const CARD_WIDTH = 420;
 
@@ -130,6 +136,7 @@
       <span class="title">Page {target + 1}</span>
       {@render pageTools()}
       <button class="text-btn" onclick={() => (expanded = false)}>Smaller</button>
+      <button class="text-btn" onclick={openSplit}>Open Beside</button>
       <button class="primary" onclick={goThere}>Go to Page</button>
       <button class="icon-btn" onclick={close} aria-label="Close"><Icon name="close" size={14} /></button>
     </header>
@@ -151,6 +158,7 @@
       </div>
       <footer>
         <button class="text-btn" onclick={() => (expanded = true)}>Enlarge</button>
+        <button class="text-btn" onclick={openSplit} title="Open the target page in a pane beside this one">Open Beside</button>
         <button class="primary" onclick={goThere}>Go to Page</button>
       </footer>
     {:else}

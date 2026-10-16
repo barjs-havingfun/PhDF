@@ -18,6 +18,9 @@
   import Help from "./lib/Help.svelte";
   import AiPanel from "./lib/ai/AiPanel.svelte";
   import DocAiMenu from "./lib/ai/DocAiMenu.svelte";
+  import CommandPalette, { type Command } from "./lib/CommandPalette.svelte";
+  import { citation } from "./lib/cite";
+  import { loadInk } from "./lib/tab.svelte";
   import TerminalGuide from "./lib/ai/TerminalGuide.svelte";
   import { HEADER_HEIGHT, closeTerminal, loadLayout, openTerminal, saveLayout, term } from "./lib/ai/terminal.svelte";
   import FocusMenu from "./lib/focus/FocusMenu.svelte";
@@ -27,8 +30,14 @@
     clock,
     loadPace,
     loadPomodoroSettings,
+    flushReading,
     loadReadSettings,
     noteActivity,
+    pausePomodoro,
+    saveReadSettings,
+    startPomodoro,
+    TINTS,
+    type Tint,
     notePage,
     tickReading,
     pomodoro,
@@ -36,7 +45,8 @@
   } from "./lib/reading.svelte";
   import LinkPeek, { type Peek } from "./lib/LinkPeek.svelte";
   import PaneView from "./lib/PaneView.svelte";
-  import Sidebar from "./lib/Sidebar.svelte";
+  import Sidebar, { type SidebarMode } from "./lib/Sidebar.svelte";
+  import { GradingSession, grading, loadGradingSettings, type Host } from "./lib/grading/grading.svelte";
   import { MdDoc } from "./lib/md.svelte";
   import type { Pin } from "./lib/pin";
   import { MdTab, Tab, type AnyTab } from "./lib/tab.svelte";
@@ -63,7 +73,8 @@
 
   let invert = $state(false);
   let sidebarOpen = $state(false);
-  let sidebarMode = $state<"outline" | "pages">("pages");
+  let sidebarMode = $state<SidebarMode>("pages");
+  let palette = $state(false);
   let restored = $state(false);
 
   let toolbarHeight = $state(52);
@@ -242,7 +253,7 @@
 
   // Learn the reading pace from pages actually read (see reading.svelte.ts).
   $effect(() => {
-    if (active) notePage(active.id, active.page);
+    if (active) notePage(active.id, active.page, active.doc.docId);
   });
 
   // --- AI terminal -----------------------------------------------------------------------------
@@ -288,6 +299,171 @@
 
   const parkingSource = $derived(active ? `${active.title}, p. ${active.page + 1}` : (note?.title ?? null));
 
+  // --- undo, bookmarks, citation ----------------------------------------------------------------
+
+  async function undo() {
+    const label = await active?.undo();
+    notify.show({ text: label ? `Undone: ${label}` : "Nothing to undo." }, 1800);
+  }
+
+  async function redo() {
+    const label = await active?.redo();
+    notify.show({ text: label ? `Redone: ${label}` : "Nothing to redo." }, 1800);
+  }
+
+  async function toggleBookmark() {
+    if (!active) return;
+    await active.loadBookmarks();
+    const on = await active.toggleBookmark();
+    notify.show({ text: on ? `Bookmarked page ${active.page + 1}.` : `Bookmark removed.` }, 1800);
+  }
+
+  async function copyWithCitation() {
+    const sel = getSelection();
+    if (!active || !sel) return;
+    const pages = [sel.anchorNode, sel.focusNode]
+      .map((n) => (n instanceof Element ? n : n?.parentElement)?.closest<HTMLElement>(".page")?.dataset.page)
+      .filter((p): p is string => p !== undefined)
+      .map(Number);
+    await navigator.clipboard.writeText(citation(active, sel.toString(), pages.length ? pages : [active.page]));
+    notify.show({ text: "Copied with citation." }, 1800);
+  }
+
+  async function exportHighlights() {
+    moreMenu = false;
+    if (!active) return;
+    const n = await active.exportHighlightsToNote();
+    notify.show({ text: `${n} highlight${n === 1 ? "" : "s"} written under the line in ${active.md?.name}.` });
+  }
+
+  // --- grading mode -----------------------------------------------------------------------------
+
+  const gradingHost: Host = {
+    open: async (path) => {
+      const pane = (grading.session?.tab && ws.paneOf(grading.session.tab)) || ws.focused;
+      const tab = await openPath(path, pane);
+      return tab?.kind === "pdf" ? tab : null;
+    },
+    close: async (tab) => {
+      if (!ws.allTabs().includes(tab)) return;
+      ws.remove(tab);
+      if (peek?.tab === tab) peek = null;
+      await releaseDocument(tab);
+    },
+  };
+
+  const gradingKey = () => `grading.window.${info?.windowId ?? "main"}`;
+
+  async function startGrading(folder?: string | null) {
+    const py = await api();
+    folder ??= await py.pick_folder();
+    if (!folder) return;
+    if (grading.session) await grading.session.stop();
+    const session = await GradingSession.start(folder, gradingHost);
+    if (!session) return;
+    sidebarOpen = true;
+    sidebarMode = "files";
+    py.set_setting(gradingKey(), session.folder);
+    notify.show({ text: `Grading ${session.exams.length} exams in “${session.title}”. Marked copies go to graded/.` }, 4000);
+  }
+
+  async function stopGrading() {
+    if (!grading.session) return;
+    await grading.session.stop();
+    if (sidebarMode === "files") sidebarMode = "outline";
+    (await api()).set_setting(gradingKey(), null);
+  }
+
+  function toggleGrading() {
+    if (grading.session) stopGrading();
+    else startGrading();
+  }
+
+  // --- command palette ----------------------------------------------------------------------------
+
+  function setTint(tint: Tint) {
+    read.tint = tint;
+    saveReadSettings();
+  }
+
+  const commands = $derived.by((): Command[] => {
+    const c: Command[] = [];
+    const add = (group: string, title: string, run: () => void, keys?: string) =>
+      c.push({ id: `${group}:${title}`, group, title, run, keys });
+    const pdf = active;
+    if (pdf) {
+      add("Document", "Save annotations", saveCurrent, "Ctrl+S");
+      add("Document", "Undo", undo, "Ctrl+Z");
+      add("Document", "Redo", redo, "Ctrl+Y");
+      add("Document", pdf.isBookmarked(pdf.page) ? "Remove bookmark" : "Bookmark this page", toggleBookmark, "Ctrl+B");
+      add("Document", "Show bookmarks", () => ((sidebarOpen = true), (sidebarMode = "bookmarks")));
+      add("Document", "Export highlights to note", exportHighlights);
+      add("Document", "Export as Markdown…", () => exportMarkdown("file"));
+      add("Document", "Export to Obsidian vault", () => exportMarkdown("vault"));
+      add("Document", "Copy note to Obsidian", copyNoteToVault);
+      add("Document", "Recognize text (OCR)", recognizeAll);
+      add("Document", "Go to first page", () => pdf.navigate({ page: 0 }), "Home");
+      add("Document", "Go to last page", () => pdf.navigate({ page: pdf.pageCount - 1 }), "End");
+      add("Annotate", "Add note", () => (pdf.tool = "note"));
+      add("Annotate", "Add text", () => (pdf.tool = "text"));
+      add("Annotate", "Draw", () => (pdf.tool = "draw"));
+      add("View", "Toggle annotations panel", () => (pdf.panelOpen = !pdf.panelOpen));
+      add("View", "Toggle integrated note", () => pdf.toggleMd());
+      add("View", "Show parking lot", () => pdf.showParking());
+      add("View", "Zoom in", () => viewer()?.zoomBy(1.2), "Ctrl++");
+      add("View", "Zoom out", () => viewer()?.zoomBy(1 / 1.2), "Ctrl+-");
+      add("View", "Fit width", () => setFit("width"));
+      add("View", "Fit page", () => setFit("page"));
+      add("View", "Actual size", () => setFit("none"), "Ctrl+0");
+      add("View", invert ? "Light pages" : "Dark pages", toggleInvert);
+    }
+    add("View", "Toggle sidebar", toggleSidebar, "Ctrl+\\");
+    const g = grading.session;
+    if (g) {
+      add("Grading", "Done — next exam", () => g.next());
+      add("Grading", "Previous exam", () => g.prev());
+      add("Grading", "Export grades as CSV", () => g.exportCsv());
+      add("Grading", "Stop grading", stopGrading);
+    } else add("Grading", "Grade a folder of exams…", () => startGrading());
+    add("Read & Focus", read.ruler ? "Hide reading ruler" : "Show reading ruler", () => ((read.ruler = !read.ruler), saveReadSettings()));
+    add("Read & Focus", "Zen mode", toggleZen, "Ctrl+.");
+    add("Read & Focus", "Full screen", toggleFullscreen, "F11");
+    for (const [key, t] of Object.entries(TINTS)) add("Read & Focus", `Page tint: ${t.label}`, () => setTint(key as Tint));
+    add("Read & Focus", pomodoro.running ? "Pause pomodoro" : "Start pomodoro", () => (pomodoro.running ? pausePomodoro() : startPomodoro()));
+    add("Read & Focus", "Park a thought", () => (parking = true), "Ctrl+Shift+Space");
+    add("AI", term.open ? "Hide terminal" : "Open terminal", toggleTerminal, "Ctrl+`");
+    add("AI", "How to set up Claude Code / Codex", () => (term.guideOpen = true));
+    if (pdf) add("AI", "Ask the AI about this document…", () => (aiMenu = true));
+    add("App", "Open…", () => pickAndOpen(), "Ctrl+O");
+    add("App", "New note…", () => newNote());
+    add("App", "New tab", () => newTab(), "Ctrl+T");
+    add("App", "Settings", () => (ui.settingsOpen = true));
+    add("App", "How to use PhDF", () => (ui.helpOpen = true));
+    for (const r of recents) add("Recent", r.title ?? r.path, () => openPath(r.path));
+    return c;
+  });
+
+  function dynamicCommands(q: string): Command[] {
+    const out: Command[] = [];
+    const pdf = active;
+    if (pdf && /^\d+$/.test(q)) {
+      const n = Math.min(Math.max(Number(q), 1), pdf.pageCount);
+      out.push({ id: "goto", group: "Go to", title: `Go to page ${n}`, run: () => pdf.navigate({ page: n - 1 }) });
+    }
+    if (pdf && q.length >= 2 && !/^\d+$/.test(q)) {
+      out.push({
+        id: "search",
+        group: "Search",
+        title: `Search “${q}” in this document`,
+        run: () => {
+          searchText = q;
+          pdf.search(q);
+        },
+      });
+    }
+    return out;
+  }
+
   async function saveCurrent() {
     if (active) await active.save();
     else if (note) await note.md.flush();
@@ -308,12 +484,30 @@
   }
 
   async function closeTab(tab: AnyTab) {
+    if (tab === grading.session?.tab) await stopGrading(); // closing the exam ends grading
     if (tab.kind === "pdf" && tab.dirty && (await askSave(tab)) === "cancel") return;
     ws.remove(tab);
     if (peek?.tab === tab) peek = null;
     await tab.md?.flush();
-    if (tab.kind === "pdf") (await api()).close_document(tab.doc.docId);
+    await releaseDocument(tab);
     if (!ws.activeTab) refreshRecents();
+  }
+
+  /** Let the backend close a PDF once no other tab in this window shows it. */
+  async function releaseDocument(tab: AnyTab) {
+    if (tab.kind !== "pdf") return;
+    const stillShown = ws.allTabs().some((t) => t !== tab && t.kind === "pdf" && t.doc.docId === tab.doc.docId);
+    if (!stillShown) (await api()).close_document(tab.doc.docId);
+  }
+
+  /** "Open Beside" from a link preview: the same document, at the link target, in a pane beside. */
+  function openBeside(source: Tab, page: number, y: number | null) {
+    const tab = new Tab(source.doc);
+    tab.welcomeBack = false;
+    tab.zoom = source.zoom;
+    tab.fit = source.fit;
+    tab.pendingJump = { page, y };
+    ws.placeBeside(tab, ws.paneOf(source) ?? ws.focused);
   }
 
   function newTab(pane: Pane = ws.focused) {
@@ -345,9 +539,13 @@
       // Tear off: the new window takes its own reference first (unsaved annotations survive),
       // then this window lets the tab go.
       await tab.md?.flush();
-      await (await api()).open_window([tab.path], target.screenX - 160, target.screenY - 20);
+      const py = await api();
+      // Dropped on another PhDF window: move the tab there; anywhere else: a new window.
+      const other = await py.window_at(target.screenX, target.screenY, devicePixelRatio);
+      if (other) await py.send_to_window(other, tab.path);
+      else await py.open_window([tab.path], target.screenX - 160, target.screenY - 20);
       ws.remove(tab);
-      if (tab.kind === "pdf") (await api()).close_document(tab.doc.docId);
+      await releaseDocument(tab);
       return;
     }
     const pane = ws.pane(target.paneId)!;
@@ -455,7 +653,7 @@
     sidebarOpen = !sidebarOpen;
   }
 
-  function setSidebarMode(mode: "outline" | "pages") {
+  function setSidebarMode(mode: SidebarMode) {
     sidebarMode = mode;
   }
 
@@ -484,6 +682,11 @@
     else if (key === "escape" && read.zen && !peek && !parking) toggleZen();
     else if (mod && key === "o") pickAndOpen();
     else if (mod && key === "s") saveCurrent();
+    else if (mod && key === "k") palette = !palette;
+    else if (mod && !e.shiftKey && key === "z" && active && !inTextField(e)) undo();
+    else if (mod && (key === "y" || (e.shiftKey && key === "z")) && active && !inTextField(e)) redo();
+    else if (mod && key === "b" && active && !inTextField(e)) toggleBookmark();
+    else if (mod && e.shiftKey && key === "c" && active && getSelection()?.toString()) copyWithCitation();
     else if (mod && key === "t") newTab();
     else if (mod && key === "w") current && closeTab(current);
     else if (key === "escape" && active && active.tool !== "select") active.tool = "select";
@@ -569,7 +772,7 @@
     const appInfo = await py.app_info();
     setRenderBaseUrl(appInfo.renderBaseUrl);
     invert = await py.get_setting("invertPages", false);
-    await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace(), loadLayout()]);
+    await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace(), loadLayout(), loadInk(), loadGradingSettings()]);
     const sidebar = await py.get_setting("sidebar", { open: false, mode: "pages" as const });
     sidebarOpen = sidebar.open;
     sidebarMode = sidebar.mode;
@@ -584,8 +787,12 @@
         if (t.kind === "pdf" && t.dirty && (await askSave(t)) === "cancel") return;
       }
       for (const t of ws.allTabs()) await t.md?.flush();
+      flushReading();
       (await api()).close_window();
     });
+    // A tab dragged here from another PhDF window.
+    window.addEventListener("phdf:open-path", (e) => openPath((e as CustomEvent<string>).detail));
+    window.addEventListener("beforeunload", () => flushReading());
     // Notes may be edited in Obsidian or elsewhere meanwhile: reload them when we come back.
     window.addEventListener("focus", () => {
       for (const t of ws.allTabs()) t.md?.checkExternal();
@@ -593,6 +800,9 @@
     await refreshRecents();
     info = appInfo;
     restored = true;
+    // Grading was on when this window closed: carry on where it stopped.
+    const gradingFolder = await py.get_setting<string | null>(gradingKey(), null);
+    if (gradingFolder) await startGrading(gradingFolder);
   });
 </script>
 
@@ -796,6 +1006,15 @@
             <Icon name="terminal" />
           </button>
 
+          <button
+            class="tool grade"
+            class:on={!!grading.session}
+            title={grading.session ? `Grading “${grading.session.title}” — click to stop` : "Grade a folder of exam PDFs"}
+            onclick={toggleGrading}
+            disabled={!info}
+          >
+            <Icon name="grade" />
+          </button>
           <button class="tool help" title="How to use PhDF" onclick={() => (ui.helpOpen = true)}>
             <Icon name="help" />
           </button>
@@ -825,6 +1044,13 @@
                     <button role="menuitemcheckbox" aria-checked={invert} onclick={() => ((moreMenu = false), toggleInvert())}>Dark Pages</button>
                     <div class="menu-sep"></div>
                   </div>
+                  {#if grading.session}
+                    {@const g = grading.session}
+                    <button role="menuitem" onclick={() => ((moreMenu = false), g.exportCsv())}>Export Grades as CSV…</button>
+                    <button role="menuitem" onclick={() => ((moreMenu = false), stopGrading())}>Stop Grading</button>
+                    <div class="menu-sep"></div>
+                  {/if}
+                  <button role="menuitem" onclick={exportHighlights}>Export Highlights to Note</button>
                   <button role="menuitem" onclick={() => exportMarkdown("file")}>Export as Markdown…</button>
                   <button role="menuitem" onclick={() => exportMarkdown("vault")}>Export to Obsidian Vault</button>
                   <button role="menuitem" onclick={copyNoteToVault}>Copy Note to Obsidian</button>
@@ -919,7 +1145,7 @@
   {/if}
 
   {#if peek}
-    <LinkPeek {peek} {invert} onclose={() => (peek = null)} />
+    <LinkPeek {peek} {invert} onclose={() => (peek = null)} onsplit={openBeside} />
   {/if}
 
   {#if read.zen}
@@ -934,6 +1160,10 @@
       onparked={() => active?.parkingChanged()}
       onopen={openParkingList}
     />
+  {/if}
+
+  {#if palette}
+    <CommandPalette commands={commands} dynamic={dynamicCommands} onclose={() => (palette = false)} />
   {/if}
 
   {#if term.guideOpen}

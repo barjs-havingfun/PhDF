@@ -7,6 +7,7 @@ import {
   type Annotation,
   type FitMode,
   type OpenedDocument,
+  type Bookmark,
   type OutlineItem,
   type PdfLink,
   type Point,
@@ -36,7 +37,28 @@ export interface FlatHit {
 
 export type Tool = "select" | "note" | "text" | "draw";
 
-export const INK_COLOR = "#0a84ff";
+/** Pen settings for the draw tool (shared by all tabs, remembered). */
+export const ink = $state({ color: "#0a84ff", width: 2 });
+export const INK_WIDTHS = [1.5, 2.5, 4, 7];
+
+export async function loadInk() {
+  const saved = await (await api()).get_setting<{ color: string; width: number } | null>("ink", null);
+  if (saved) Object.assign(ink, saved);
+}
+
+export function saveInk() {
+  api().then((py) => py.set_setting("ink", { ...ink }));
+}
+
+/** One undoable annotation change. */
+interface Op {
+  label: string;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
+}
+
+const HL_START = "<!-- phdf:highlights";
+const HL_END = "<!-- /phdf:highlights -->";
 
 let nextId = 1;
 
@@ -80,6 +102,17 @@ export class Tab {
   ocrProgress = $state<{ done: number; total: number } | null>(null);
   private ocrCancel = false;
 
+  /** An annotation being dragged: drawn as an outline at its new place until released. */
+  moving = $state<{ id: string; dx: number; dy: number } | null>(null);
+
+  // Undo / redo of annotation changes (session only).
+  undoStack = $state<Op[]>([]);
+  redoStack = $state<Op[]>([]);
+
+  bookmarks = $state<Bookmark[]>([]);
+  /** "Where was I?" card: shown once when a document is reopened. */
+  welcomeBack = $state(false);
+
   // Integrated Markdown note shown beside the PDF in this tab.
   md = $state<MdDoc | null>(null);
   mdOpen = $state(false);
@@ -102,11 +135,15 @@ export class Tab {
     this.fit = fit;
     this.dirty = doc.dirty;
     this.revs = doc.revs;
+    this.welcomeBack = !!doc.lastOpened && (page > 0 || scroll > 0.05);
     this.pendingJump = { page: this.page, scroll: this.scroll };
   }
 
+  /** Shown instead of the document title (grading: the student). */
+  label = $state<string | null>(null);
+
   get title() {
-    return this.doc.title;
+    return this.label ?? this.doc.title;
   }
 
   get path() {
@@ -206,24 +243,19 @@ export class Tab {
     this.revs = change.revs;
   }
 
-  async addAnnotation(
-    page: number,
-    kind: AnnotKind,
-    rects: Rect[],
-    color: string,
-    contents = "",
-    strokes: Point[][] | null = null,
-  ) {
+  // The raw operations (no history); the public ones below record undo steps.
+
+  private async _add(a: Omit<Annotation, "id" | "quote" | "modified"> & { id?: string }) {
     await this.loadAnnotations();
     const change = await (await api()).add_annotation(
-      this.doc.docId, page, kind, rects, color, contents, strokes,
+      this.doc.docId, a.page, a.kind, a.rects, a.color, a.contents, a.strokes, a.width, a.id ?? null,
     ); // prettier-ignore
     this.apply(change);
     this.annotations!.push(change.annotation!);
     return change.annotation!;
   }
 
-  async updateAnnotation(id: string, color?: string | null, contents?: string | null) {
+  private async _update(id: string, color?: string | null, contents?: string | null) {
     const change = await (await api()).update_annotation(this.doc.docId, id, color, contents);
     this.apply(change);
     const i = this.annotations?.findIndex((a) => a.id === id) ?? -1;
@@ -231,11 +263,168 @@ export class Tab {
     return change.annotation!;
   }
 
-  async deleteAnnotation(id: string) {
+  private async _delete(id: string) {
     const change = await (await api()).delete_annotation(this.doc.docId, id);
     this.apply(change);
     this.annotations = this.annotations?.filter((a) => a.id !== id) ?? null;
     if (this.selectedAnnot === id) this.selectedAnnot = null;
+  }
+
+  private record(op: Op) {
+    this.undoStack.push(op);
+    if (this.undoStack.length > 200) this.undoStack.shift();
+    this.redoStack = [];
+  }
+
+  async addAnnotation(
+    page: number,
+    kind: AnnotKind,
+    rects: Rect[],
+    color: string,
+    contents = "",
+    strokes: Point[][] | null = null,
+    width: number | null = null,
+  ) {
+    const created = await this._add({ page, kind, rects, color, contents, strokes, width });
+    const snapshot = { ...created };
+    this.record({
+      label: `Add ${kind}`,
+      undo: () => this._delete(snapshot.id),
+      redo: async () => void (await this._add(snapshot)),
+    });
+    return created;
+  }
+
+  async updateAnnotation(id: string, color?: string | null, contents?: string | null) {
+    const before = this.annotations?.find((a) => a.id === id);
+    const updated = await this._update(id, color, contents);
+    if (before) {
+      const prev = { color: before.color, contents: before.contents };
+      this.record({
+        label: "Edit annotation",
+        undo: async () => void (await this._update(id, color != null ? prev.color : null, contents != null ? prev.contents : null)),
+        redo: async () => void (await this._update(id, color, contents)),
+      });
+    }
+    return updated;
+  }
+
+  async deleteAnnotation(id: string) {
+    const snapshot = this.annotations?.find((a) => a.id === id);
+    await this._delete(id);
+    if (snapshot) {
+      this.record({
+        label: `Delete ${snapshot.kind}`,
+        undo: async () => void (await this._add({ ...snapshot })), // same id: note pins keep working
+        redo: () => this._delete(snapshot.id),
+      });
+    }
+  }
+
+  private async _move(id: string, dx: number, dy: number) {
+    const change = await (await api()).move_annotation(this.doc.docId, id, dx, dy);
+    this.apply(change);
+    const i = this.annotations?.findIndex((a) => a.id === id) ?? -1;
+    if (i >= 0 && change.annotation) this.annotations![i] = change.annotation;
+  }
+
+  /** Drag a note, text box or drawing to another spot on its page. */
+  async moveAnnotation(id: string, dx: number, dy: number) {
+    await this._move(id, dx, dy);
+    this.record({
+      label: "Move annotation",
+      undo: () => this._move(id, -dx, -dy),
+      redo: () => this._move(id, dx, dy),
+    });
+  }
+
+  async undo() {
+    const op = this.undoStack.pop();
+    if (!op) return null;
+    await op.undo();
+    this.redoStack.push(op);
+    return op.label;
+  }
+
+  async redo() {
+    const op = this.redoStack.pop();
+    if (!op) return null;
+    await op.redo();
+    this.undoStack.push(op);
+    return op.label;
+  }
+
+  // --- bookmarks ------------------------------------------------------------------------------
+
+  async loadBookmarks() {
+    this.bookmarks = await (await api()).bookmarks(this.doc.docId);
+  }
+
+  isBookmarked(page: number) {
+    return this.bookmarks.some((b) => b.page === page);
+  }
+
+  async toggleBookmark(page = this.page) {
+    const py = await api();
+    this.bookmarks = this.isBookmarked(page)
+      ? await py.delete_bookmark(this.doc.docId, page)
+      : await py.set_bookmark(this.doc.docId, page, "");
+    return this.isBookmarked(page);
+  }
+
+  async renameBookmark(page: number, label: string) {
+    this.bookmarks = await (await api()).set_bookmark(this.doc.docId, page, label);
+  }
+
+  // --- highlights → note -----------------------------------------------------------------------
+
+  /** Write every annotation, in page order, under a line at the end of the integrated note.
+   *  Re-running replaces that section only; the user's own writing above it is untouched. */
+  async exportHighlightsToNote() {
+    await Promise.all([this.loadAnnotations(), this.loadOutline()]);
+    const md = await this.ensureMd();
+    const marks = (this.annotations ?? [])
+      .filter((a) => a.kind !== "other")
+      .sort((a, b) => a.page - b.page || (a.rects[0]?.[1] ?? 0) - (b.rects[0]?.[1] ?? 0));
+    // The markers let a re-export replace only this section (they are hidden in previews).
+    let block = `---\n## Highlights\n${HL_START} -->\n\n`;
+    let lastPage = -1;
+    for (const a of marks) {
+      const section = sectionFor(this.outline, a.page);
+      if (a.page !== lastPage) {
+        block += `### p. ${a.page + 1}${section ? ` · §${section}` : ""}\n\n`;
+        lastPage = a.page;
+      }
+      const pin = pinBlock(a, section).trimEnd();
+      if (a.kind === "note" || a.kind === "freetext") {
+        block += `${pin}\n> 📝 ${a.contents.trim().replace(/\n/g, "\n> ")}\n\n`;
+      } else if (a.kind === "ink") {
+        block += `${pin}\n> ✏️ Drawing\n\n`;
+      } else {
+        block += `${pin}\n`;
+        if (a.contents.trim()) block += `\n${a.contents.trim()}\n`;
+        block += "\n";
+      }
+    }
+    if (!marks.length) block += "_No highlights yet._\n\n";
+    block += `${HL_END}\n`;
+
+    const text = md.text;
+    const start = text.indexOf(HL_START);
+    let next: string;
+    if (start >= 0) {
+      const sep = text.lastIndexOf("---\n## Highlights", start);
+      const from = sep >= 0 ? sep : start;
+      const endAt = text.indexOf(HL_END, start);
+      const to = endAt >= 0 ? endAt + HL_END.length + 1 : text.length;
+      next = text.slice(0, from) + block + text.slice(to);
+    } else {
+      next = text.replace(/\s*$/, "") + "\n\n" + block;
+    }
+    md.replaceText(next);
+    this.mdView = "note";
+    this.mdOpen = true;
+    return marks.length;
   }
 
   async save() {
@@ -265,6 +454,19 @@ export class Tab {
       this.md = md;
     }
     return this.md;
+  }
+
+  /** Show another note beside this PDF (grading: the folder's grades table). */
+  attachNote(md: MdDoc) {
+    this.md = md;
+    this.mdView = "note";
+    this.mdOpen = true;
+  }
+
+  detachNote() {
+    this.label = null;
+    this.md = null;
+    this.mdOpen = false;
   }
 
   async toggleMd(open = !this.mdOpen) {

@@ -156,6 +156,7 @@ const MIN_DWELL = 8; // s
 const MAX_DWELL = 600; // s — longer means a break, not reading
 
 const track = {
+  docId: "",
   tab: -1,
   page: -1,
   dwell: 0, // seconds of real reading on `page`
@@ -183,7 +184,8 @@ export function noteScroll(tabId: number, pos: number, now = Date.now()) {
 }
 
 /** The main visible page changed; a finished page with a believable dwell becomes a sample. */
-export function notePage(tabId: number, page: number) {
+export function notePage(tabId: number, page: number, docId = "") {
+  if (docId) track.docId = docId;
   if (tabId === track.tab && page === track.page) return;
   if (tabId === track.tab && Math.abs(page - track.page) === 1 && !track.skimming) {
     if (track.dwell >= MIN_DWELL && track.dwell <= MAX_DWELL) addSample(track.dwell);
@@ -203,6 +205,22 @@ export function tickReading(now = Date.now(), focused = document.hasFocus()) {
   }
   if (track.page < 0 || !focused || track.skimming || now - track.lastActive > IDLE_MS) return;
   track.dwell += 1;
+  if (track.docId) {
+    unsent[track.docId] = (unsent[track.docId] ?? 0) + 1;
+    if (now - lastFlush > 30_000) flushReading(now);
+  }
+}
+
+// Reading time per document, sent to the backend in small batches (Library & stats).
+const unsent: Record<string, number> = {};
+let lastFlush = Date.now();
+
+export function flushReading(now = Date.now()) {
+  lastFlush = now;
+  for (const [docId, seconds] of Object.entries(unsent)) {
+    delete unsent[docId];
+    if (seconds > 0) api().then((py) => py.log_reading(docId, seconds));
+  }
 }
 
 function addSample(seconds: number) {

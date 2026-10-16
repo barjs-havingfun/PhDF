@@ -10,6 +10,8 @@ Document ids are content hashes, so saving annotations gives a file a new id. `C
 old ids as aliases: the frontend can keep using the id it was given for the whole session.
 """
 
+import base64
+import json
 import re
 import shutil
 import sys
@@ -19,6 +21,7 @@ import webbrowser
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import asdict
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit
@@ -31,7 +34,7 @@ from phdf.docid import document_id
 from phdf.engine import PdfDocument, PdfEngine, Rect
 from phdf.engine.base import EDITABLE_KINDS
 from phdf.paths import data_dir
-from phdf.services import ocr, parking, webview_memory
+from phdf.services import grading, ocr, parking, webview_memory
 from phdf.services.terminal import Terminals
 
 FIT_MODES = ("width", "page", "none")
@@ -243,6 +246,7 @@ class Api:
             dirty = doc.dirty
             revs = core.revs(doc_id)
         title = info.title or Path(path).stem
+        previous = core.store.last_opened(doc_id)
         record = core.store.touch_document(doc_id, str(path), title, info.page_count)
         return {
             "docId": doc_id,
@@ -253,6 +257,7 @@ class Api:
             "position": {k: record[k] for k in ("page", "scroll", "zoom", "fit")},
             "dirty": dirty,
             "revs": revs,
+            "lastOpened": previous,  # unix time of the previous visit, or None
         }
 
     def close_document(self, doc_id: str) -> None:
@@ -310,13 +315,24 @@ class Api:
         color: str,
         contents: str = "",
         strokes: list[list[tuple[float, float]]] | None = None,
+        width: float | None = None,
+        annot_id: str | None = None,
     ) -> dict[str, Any]:
         if kind not in EDITABLE_KINDS:
             raise ValueError(f"unsupported annotation kind {kind!r}")
         rects = [tuple(r) for r in rects]  # type: ignore[misc]
         with self._core.lock:
             doc = self._core.doc(doc_id)
-            annot = doc.add_annotation(page, kind, rects, color, contents, strokes)  # type: ignore[arg-type]
+            annot = doc.add_annotation(
+                page,
+                kind,
+                rects,
+                color,
+                contents,
+                strokes,
+                width,
+                annot_id,  # type: ignore[arg-type]
+            )
             return self._changed(doc_id, page, {"annotation": asdict(annot)})
 
     def update_annotation(
@@ -330,6 +346,11 @@ class Api:
         with self._core.lock:
             page = self._core.doc(doc_id).delete_annotation(annot_id)
             return self._changed(doc_id, page, {"page": page})
+
+    def move_annotation(self, doc_id: str, annot_id: str, dx: float, dy: float) -> dict[str, Any]:
+        with self._core.lock:
+            annot = self._core.doc(doc_id).move_annotation(annot_id, dx, dy)
+            return self._changed(doc_id, annot.page, {"annotation": asdict(annot)})
 
     def save_document(self, doc_id: str) -> dict[str, Any]:
         with self._core.lock:
@@ -375,6 +396,122 @@ class Api:
         self._force_close = True
         if self._window is not None:
             self._window.destroy()
+
+    # --- bookmarks ------------------------------------------------------------------------------
+
+    def bookmarks(self, doc_id: str) -> list[dict[str, Any]]:
+        return self._core.store.bookmarks(self._current(doc_id))
+
+    def set_bookmark(self, doc_id: str, page: int, label: str = "") -> list[dict[str, Any]]:
+        self._core.store.set_bookmark(self._current(doc_id), page, label)
+        return self.bookmarks(doc_id)
+
+    def delete_bookmark(self, doc_id: str, page: int) -> list[dict[str, Any]]:
+        self._core.store.delete_bookmark(self._current(doc_id), page)
+        return self.bookmarks(doc_id)
+
+    def _current(self, doc_id: str) -> str:
+        with self._core.lock:
+            return self._core.resolve(doc_id)
+
+    # --- reading time, library ----------------------------------------------------------------
+
+    def log_reading(self, doc_id: str, seconds: int) -> None:
+        """Add seconds actually spent reading (see the frontend's pace tracker) to today."""
+        if 0 < seconds <= 3600:
+            self._core.store.log_reading(self._current(doc_id), date.today().isoformat(), seconds)
+
+    def reading_stats(self) -> dict[str, Any]:
+        store = self._core.store
+        today = date.today()
+        by_day = {
+            d["day"]: d["seconds"] for d in store.reading_days((today - timedelta(13)).isoformat())
+        }
+        days = [
+            {
+                "day": (today - timedelta(i)).isoformat(),
+                "seconds": by_day.get((today - timedelta(i)).isoformat(), 0),
+            }
+            for i in range(13, -1, -1)
+        ]
+        read_days = set(store.all_reading_days())
+        streak, cursor = 0, today if today.isoformat() in read_days else today - timedelta(1)
+        while cursor.isoformat() in read_days:
+            streak += 1
+            cursor -= timedelta(1)
+        week_start = today - timedelta(today.weekday())
+        return {
+            "days": days,
+            "today": by_day.get(today.isoformat(), 0),
+            "week": sum(d["seconds"] for d in days if d["day"] >= week_start.isoformat()),
+            "streak": streak,
+        }
+
+    def library(self) -> list[dict[str, Any]]:
+        """Every document PhDF has opened, most recent first, with progress and reading time."""
+        store = self._core.store
+        seconds = store.reading_by_document()
+        items = []
+        for row in store.recent_documents(500):
+            items.append(
+                {
+                    "docId": row["doc_id"],
+                    "path": row["path"],
+                    "title": row["title"] or Path(row["path"]).stem,
+                    "page": row["page"],
+                    "pageCount": row["page_count"],
+                    "lastOpened": row["last_opened"],
+                    "seconds": seconds.get(row["doc_id"], 0),
+                    "exists": Path(row["path"]).is_file(),
+                }
+            )
+        return items
+
+    def library_cover(self, doc_id: str, path: str) -> str | None:
+        """A small PNG of page 1 (data URL), cached in PhDF's data folder."""
+        import pymupdf
+
+        cache = data_dir() / "covers" / f"{doc_id[:16]}.png"
+        if not cache.exists():
+            if not Path(path).is_file():
+                return None
+            try:
+                with pymupdf.open(path) as doc:
+                    page = doc[0]
+                    pix = page.get_pixmap(
+                        matrix=pymupdf.Matrix(220 / page.rect.width, 220 / page.rect.width)
+                    )
+                    cache.parent.mkdir(parents=True, exist_ok=True)
+                    cache.write_bytes(pix.tobytes("png"))
+            except Exception:  # noqa: BLE001 — unreadable / encrypted: no cover
+                return None
+        return "data:image/png;base64," + base64.b64encode(cache.read_bytes()).decode()
+
+    # --- windows ---------------------------------------------------------------------------------
+
+    def window_at(self, x: float, y: float, scale: float = 1.0) -> str | None:
+        """Another PhDF window under a screen point (tab drag between windows). The point is in
+        CSS pixels; window geometry may be in device pixels, so both are tried."""
+        for wid, api in self._core.windows.items():
+            win = api._window
+            if wid == self._window_id or win is None:
+                continue
+            for px, py in ((x, y), (x * scale, y * scale)):
+                if win.x <= px < win.x + win.width and win.y <= py < win.y + win.height:
+                    return wid
+        return None
+
+    def send_to_window(self, window_id: str, path: str) -> bool:
+        """Move a tab to another open window: it takes its own reference first, then opens it."""
+        target = self._core.windows.get(window_id)
+        if target is None or target._window is None:
+            return False
+        if path.lower().endswith(".pdf"):
+            target.open_document(path)
+        event = f"new CustomEvent('phdf:open-path', {{detail: {json.dumps(path)}}})"
+        script = f"window.dispatchEvent({event})"
+        threading.Thread(target=target._window.evaluate_js, args=(script,), daemon=True).start()
+        return True
 
     # --- OCR ----------------------------------------------------------------------------------
 
@@ -425,6 +562,37 @@ class Api:
             data = self._core.doc(doc_id).to_bytes()
         with pymupdf.open("pdf", data) as copy:
             return pymupdf4llm.to_markdown(copy, show_progress=False)
+
+    def save_csv(self, name: str, text: str) -> str | None:
+        """Ask where to save a CSV and write it (with a BOM, so Excel reads accents right)."""
+        window = self._window or webview.active_window()
+        if window is None:
+            return None
+        result = window.create_file_dialog(
+            webview.FileDialog.SAVE, save_filename=name, file_types=("CSV (*.csv)",)
+        )
+        if not result:
+            return None
+        path = Path(result if isinstance(result, str) else result[0])
+        if path.suffix.lower() != ".csv":
+            path = path.with_name(path.name + ".csv")
+        path.write_text(text, encoding="utf-8-sig", newline="")
+        return str(path)
+
+    # --- grading ------------------------------------------------------------------------------
+
+    def grading_scan(self, folder: str) -> dict[str, Any]:
+        """The exam PDFs in a folder and where its grades table goes."""
+        return {
+            "folder": str(Path(folder)),
+            "title": Path(folder).name,
+            "table": str(grading.table_path(folder)),
+            "files": grading.scan(folder),
+        }
+
+    def grading_copy(self, folder: str, rel: str) -> str:
+        """Path of the marked copy of one exam (created from the original on first use)."""
+        return str(grading.graded_copy(folder, rel))
 
     # --- Obsidian -------------------------------------------------------------------------------
 

@@ -13,6 +13,7 @@ export function renderMarkdown(text: string): string {
   // Replace pin lines by placeholders that survive Markdown rendering, then swap the cards in.
   const source = text
     .split("\n")
+    .filter((line) => !/^<!-- \/?phdf:[\w-]+.*-->$/.test(line.trim())) // PhDF's section markers
     .map((line) => {
       const pin = line.startsWith(PIN_MARK) ? parsePin(line) : null;
       if (!pin) return line;

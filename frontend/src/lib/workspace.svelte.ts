@@ -124,6 +124,21 @@ export class Workspace {
     this.move(tab, pane, 0);
   }
 
+  /** Show a (new) tab in a pane beside `target`, or in its neighbour at the pane limit. */
+  placeBeside(tab: AnyTab, target: Pane) {
+    if (this.panes.length < MAX_PANES) {
+      const pane = new Pane();
+      pane.width = target.width / 2;
+      target.width /= 2;
+      this.panes.splice(this.panes.indexOf(target) + 1, 0, pane);
+      pane.tabs.push(tab);
+    } else {
+      const i = this.panes.indexOf(target);
+      (this.panes[i + 1] ?? this.panes[i - 1] ?? target).tabs.push(tab);
+    }
+    this.activate(tab);
+  }
+
   private prune() {
     if (this.panes.length > 1) {
       const empty = this.panes.filter((p) => p.tabs.length === 0);

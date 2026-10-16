@@ -60,6 +60,7 @@ class SearchHit:
 
 AnnotKind = Literal["highlight", "underline", "strikeout", "note", "freetext", "ink", "other"]
 EDITABLE_KINDS = ("highlight", "underline", "strikeout", "note", "freetext", "ink")
+MOVABLE_KINDS = ("note", "freetext", "ink")
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,8 @@ class Annotation:
     contents: str  # comment / note / free-text body
     quote: str  # text under a markup annotation
     modified: str | None = None
+    strokes: list[list[tuple[float, float]]] | None = None  # ink only
+    width: float | None = None  # ink line width
 
 
 class PdfDocument(ABC):
@@ -121,8 +124,11 @@ class PdfDocument(ABC):
         color: str,
         contents: str = "",
         strokes: list[list[tuple[float, float]]] | None = None,
+        width: float | None = None,
+        annot_id: str | None = None,
     ) -> Annotation:
-        """`strokes` (lists of points) is used for "ink" annotations."""
+        """`strokes` (lists of points) and `width` are used for "ink" annotations. `annot_id`
+        re-creates an annotation with its old id (undo of a delete keeps note pins working)."""
 
     @abstractmethod
     def update_annotation(
@@ -132,6 +138,10 @@ class PdfDocument(ABC):
     @abstractmethod
     def delete_annotation(self, annot_id: str) -> int:
         """Returns the page the annotation was on."""
+
+    @abstractmethod
+    def move_annotation(self, annot_id: str, dx: float, dy: float) -> Annotation:
+        """Shift a note, free text or drawing by (dx, dy) points on its page (same id)."""
 
     @property
     @abstractmethod

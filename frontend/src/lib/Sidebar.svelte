@@ -1,14 +1,21 @@
+<script lang="ts" module>
+  export type SidebarMode = "outline" | "pages" | "bookmarks" | "files";
+</script>
+
 <script lang="ts">
-  // Left sidebar: document outline or page thumbnails.
+  // Left sidebar: document outline, page thumbnails or bookmarks — in grading mode, the exams
+  // of the folder instead of the outline.
   import { pageImageUrl } from "./api";
+  import { grading } from "./grading/grading.svelte";
+  import Icon from "./Icon.svelte";
   import OutlineNode from "./OutlineNode.svelte";
   import type { Tab } from "./tab.svelte";
 
   interface Props {
     tab: Tab;
-    mode: "outline" | "pages";
+    mode: SidebarMode;
     invert: boolean;
-    onmode: (mode: "outline" | "pages") => void;
+    onmode: (mode: SidebarMode) => void;
   }
 
   let { tab, mode, invert, onmode }: Props = $props();
@@ -18,6 +25,7 @@
 
   $effect(() => {
     if (mode === "outline") tab.loadOutline();
+    if (mode === "bookmarks") tab.loadBookmarks();
   });
 
   // Keep the current page's thumbnail in view.
@@ -37,16 +45,36 @@
 
 <aside>
   <div class="segmented" role="tablist">
-    <button role="tab" aria-selected={mode === "outline"} onclick={() => onmode("outline")}>
-      Contents
-    </button>
+    {#if grading.session}
+      <button role="tab" aria-selected={mode === "files"} onclick={() => onmode("files")}>
+        Exams
+      </button>
+    {:else}
+      <button role="tab" aria-selected={mode === "outline"} onclick={() => onmode("outline")}>
+        Contents
+      </button>
+    {/if}
     <button role="tab" aria-selected={mode === "pages"} onclick={() => onmode("pages")}>
       Pages
+    </button>
+    <button role="tab" aria-selected={mode === "bookmarks"} onclick={() => onmode("bookmarks")}>
+      Marks
     </button>
   </div>
 
   <div class="list" bind:this={list}>
-    {#if mode === "outline"}
+    {#if mode === "files" && grading.session}
+      {@const g = grading.session}
+      <p class="folder" title={g.folder}><Icon name="folder" size={14} /> {g.title}</p>
+      <p class="progress">{g.done.length} of {g.exams.length} done</p>
+      {#each g.exams as exam, i (exam.rel)}
+        <button class="exam" class:current={i === g.index} onclick={() => g.show(i)} title={exam.rel} disabled={g.busy}>
+          <span class="n">{exam.num}</span>
+          <span class="ename">{exam.name}</span>
+          {#if g.isDone(exam)}<span class="tick"><Icon name="check" size={11} /></span>{/if}
+        </button>
+      {/each}
+    {:else if mode === "outline"}
       {#if tab.outline === null}
         <p class="empty">Loading…</p>
       {:else if tab.outline.length === 0}
@@ -58,6 +86,26 @@
           {/each}
         </ul>
       {/if}
+    {:else if mode === "bookmarks"}
+      <button class="add-mark" onclick={() => tab.toggleBookmark()}>
+        {tab.isBookmarked(tab.page) ? "Remove bookmark from" : "Bookmark"} page {tab.page + 1} <span class="key">Ctrl+B</span>
+      </button>
+      {#if !tab.bookmarks.length}
+        <p class="empty">No bookmarks yet.</p>
+      {/if}
+      {#each tab.bookmarks as b (b.page)}
+        <div class="mark" class:current={b.page === tab.page}>
+          <button class="go" onclick={() => go(b.page)}><span class="pg">{b.page + 1}</span></button>
+          <input
+            value={b.label}
+            placeholder="Page {b.page + 1}"
+            onchange={(e) => tab.renameBookmark(b.page, (e.currentTarget as HTMLInputElement).value)}
+            onkeydown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+            spellcheck="false"
+          />
+          <button class="del" title="Remove" onclick={() => tab.toggleBookmark(b.page)}>×</button>
+        </div>
+      {/each}
     {:else}
       {#each tab.doc.pageSizes as [w, h], i (i)}
         <button class="thumb" class:current={i === tab.page} data-thumb={i} onclick={() => go(i)}>
@@ -124,6 +172,142 @@
   .empty {
     margin: 16px 8px;
     color: var(--secondary);
+  }
+
+  .folder {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 4px 0;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .progress {
+    margin: 2px 4px 8px;
+    font-size: 11.5px;
+    color: var(--secondary);
+  }
+
+  .exam {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 5px 6px;
+    border-radius: 7px;
+    text-align: left;
+  }
+
+  .exam:hover {
+    background: var(--hover);
+  }
+
+  .exam.current {
+    background: var(--accent);
+    color: var(--accent-text);
+  }
+
+  .exam .n {
+    min-width: 20px;
+    font-size: 11px;
+    color: var(--secondary);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .exam.current .n {
+    color: inherit;
+  }
+
+  .ename {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tick {
+    display: grid;
+    place-items: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: #34c759;
+    color: white;
+  }
+
+  .add-mark {
+    width: 100%;
+    margin: 4px 0 8px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    background: var(--hover);
+    font-size: 12px;
+    text-align: left;
+  }
+
+  .add-mark:hover {
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+
+  .key {
+    float: right;
+    color: var(--tertiary);
+    font-size: 11px;
+  }
+
+  .mark {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 4px;
+    border-radius: 7px;
+  }
+
+  .mark.current,
+  .mark:hover {
+    background: var(--hover);
+  }
+
+  .pg {
+    display: inline-block;
+    min-width: 30px;
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: #ff375f;
+    color: white;
+    font-size: 11px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mark input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: none;
+    color: var(--text);
+    font: 12.5px var(--font);
+    outline: none;
+    user-select: text;
+  }
+
+  .mark input:focus {
+    box-shadow: 0 1px 0 var(--accent);
+  }
+
+  .del {
+    width: 20px;
+    color: var(--tertiary);
+    opacity: 0;
+  }
+
+  .mark:hover .del {
+    opacity: 1;
   }
 
   .thumb {

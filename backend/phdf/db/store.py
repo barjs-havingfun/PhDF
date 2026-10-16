@@ -37,6 +37,22 @@ MIGRATIONS: list[str] = [
         md_path  TEXT NOT NULL
     );
     """,
+    # 4 — page bookmarks and reading time (seconds actually spent reading, per document and day)
+    """
+    CREATE TABLE bookmarks (
+        doc_id  TEXT NOT NULL,
+        page    INTEGER NOT NULL,
+        label   TEXT NOT NULL DEFAULT '',
+        created REAL NOT NULL,
+        PRIMARY KEY (doc_id, page)
+    );
+    CREATE TABLE reading_log (
+        doc_id  TEXT NOT NULL,
+        day     TEXT NOT NULL,             -- YYYY-MM-DD, local time
+        seconds INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (doc_id, day)
+    );
+    """,
 ]
 
 
@@ -110,6 +126,71 @@ class Store:
             ).fetchone()
         return dict(row)
 
+    def last_opened(self, doc_id: str) -> float | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT last_opened FROM documents WHERE doc_id = ?", (doc_id,)
+            ).fetchone()
+        return row["last_opened"] if row else None
+
+    # --- bookmarks ----------------------------------------------------------------------------
+
+    def bookmarks(self, doc_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT page, label, created FROM bookmarks WHERE doc_id = ? ORDER BY page",
+                (doc_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_bookmark(self, doc_id: str, page: int, label: str = "") -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO bookmarks (doc_id, page, label, created) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT (doc_id, page) DO UPDATE SET label = excluded.label",
+                (doc_id, page, label, time.time()),
+            )
+
+    def delete_bookmark(self, doc_id: str, page: int) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "DELETE FROM bookmarks WHERE doc_id = ? AND page = ?", (doc_id, page)
+            )
+
+    # --- reading time ---------------------------------------------------------------------------
+
+    def log_reading(self, doc_id: str, day: str, seconds: int) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO reading_log (doc_id, day, seconds) VALUES (?, ?, ?) "
+                "ON CONFLICT (doc_id, day) DO UPDATE SET seconds = seconds + excluded.seconds",
+                (doc_id, day, seconds),
+            )
+
+    def reading_days(self, since: str) -> list[dict[str, Any]]:
+        """Seconds read per day since `since` (YYYY-MM-DD), all documents."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT day, SUM(seconds) AS seconds FROM reading_log WHERE day >= ? "
+                "GROUP BY day ORDER BY day",
+                (since,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def reading_by_document(self) -> dict[str, int]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT doc_id, SUM(seconds) AS seconds FROM reading_log GROUP BY doc_id"
+            ).fetchall()
+        return {r["doc_id"]: r["seconds"] for r in rows}
+
+    def all_reading_days(self) -> list[str]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT DISTINCT day FROM reading_log WHERE seconds >= 60 ORDER BY day"
+            ).fetchall()
+        return [r["day"] for r in rows]
+
     def save_position(
         self, doc_id: str, page: int, scroll: float, zoom: float, fit: str = "width"
     ) -> None:
@@ -126,6 +207,11 @@ class Store:
         with self._lock, self._conn:
             self._conn.execute("DELETE FROM documents WHERE doc_id = ?", (new_id,))
             self._conn.execute("UPDATE documents SET doc_id = ? WHERE doc_id = ?", (new_id, old_id))
+            for table in ("bookmarks", "reading_log"):
+                self._conn.execute(
+                    f"UPDATE OR REPLACE {table} SET doc_id = ? WHERE doc_id = ?",  # noqa: S608
+                    (new_id, old_id),
+                )
 
     # --- markdown links ---------------------------------------------------------------------
 

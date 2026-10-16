@@ -28,6 +28,28 @@ def fix_mimetypes() -> None:
     mimetypes.add_type("text/css", ".css")
 
 
+def remember_geometry(window: webview.Window, key: str, store: Store) -> None:
+    """Save a window's size, position and maximized state as it changes."""
+    geo = dict(store.get_setting(key) or {})
+
+    def save(**changes: object) -> None:
+        geo.update(changes)
+        store.set_setting(key, geo)
+
+    def on_resized(width: int, height: int) -> None:
+        if not geo.get("maximized") and width > 200 and height > 200:
+            save(width=width, height=height)
+
+    def on_moved(x: int, y: int) -> None:
+        if not geo.get("maximized") and x > -10000 and y > -10000:
+            save(x=x, y=y)
+
+    window.events.resized += on_resized
+    window.events.moved += on_moved
+    window.events.maximized += lambda: save(maximized=True)
+    window.events.restored += lambda: save(maximized=False)
+
+
 def saved_window_ids(store: Store) -> list[str]:
     """Windows to restore. Migrates the single-window session format of v0.1.0."""
     if (legacy := store.get_setting("session")) is not None:
@@ -59,9 +81,13 @@ def main() -> None:
 
     def create_window(window_id: str, x: int | None = None, y: int | None = None) -> None:
         api = Api(core, window_id)
+        key = f"window.{window_id}"
+        geo = store.get_setting(key) or {}
         window = webview.create_window(
-            "PhDF", url, js_api=api, width=1200, height=800, x=x, y=y,
-            min_size=(640, 480), text_select=True,
+            "PhDF", url, js_api=api,
+            width=geo.get("width", 1200), height=geo.get("height", 800),
+            x=x if x is not None else geo.get("x"), y=y if y is not None else geo.get("y"),
+            maximized=bool(geo.get("maximized")), min_size=(640, 480), text_select=True,
         )  # fmt: skip
         if window is None:
             return
@@ -69,6 +95,7 @@ def main() -> None:
         core.windows[window_id] = api
         window.events.closing += api._on_closing
         window.events.closed += api._on_closed
+        remember_geometry(window, key, store)
 
     core.create_window = create_window
     for window_id in saved_window_ids(store):

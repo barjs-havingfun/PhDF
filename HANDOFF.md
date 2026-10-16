@@ -1,6 +1,6 @@
 # PhDF — Project Handoff & Roadmap
 
-> Status: **Phase 5.1 done (v0.5.1)** — GitHub repo not created yet. Ask the owner before starting each new phase.
+> Status: **Phase 5.5 done (v0.5.5)** — GitHub repo not created yet. Ask the owner before starting each new phase.
 > Last updated: 2026-10-15
 > Original requirements: `notes.md`
 
@@ -351,24 +351,95 @@ Scope chosen by the owner (an "ADHD-friendly" set, each part optional):
       and the AI is told to read that file. (Done ahead of Phase 6's "AI reads the whole PDF".)
 - [x] Park button moved next to Read / Focus
 
-### Phase 6 — Obsidian & AI depth (to do, owner: "think about it in Phase 6")
-- [ ] `phdf://` deep links: clicking a pin/link in Obsidian opens PhDF at that page/annotation
-      (register the URL scheme with the OS)
-- [ ] Send to the **currently open** Obsidian note (Local REST API plugin)
-- [x] Let the AI read the whole PDF via the Markdown export — done in Phase 5.1 (✦ AI menu)
+### Phase 5.2 — Polish before Phase 6 → `v0.5.2`
+- [x] **Undo / redo** of annotation changes (Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z): add, edit, delete;
+      a deleted annotation comes back with **its old /NM id** (`add_annotation(annot_id=…)`), so
+      note pins keep working. Session-only history, 200 steps per tab.
+- [x] **Pen colour & width** bar while drawing (6 colours, 4 widths, remembered as `ink`); ink
+      annotations now expose `strokes` + `width`
+- [x] **Open Beside** in the link preview: the same document opens at the link target in a pane
+      beside (a second tab on the same doc; the backend reference is released with the last tab)
+- [x] **Drag a tab onto another PhDF window** to move it there (`window_at` + `send_to_window`,
+      the target takes its reference first); elsewhere it still opens a new window
+- [x] **Bookmarks**: Ctrl+B, red ribbon on the page, sidebar *Marks* tab with editable labels
+      (`bookmarks` table, follows the doc id across saves)
+- [x] **Where was I?** card when a document is reopened: page, how long ago, latest highlight
+      (click to jump), latest open parked thought; dismisses itself
+- [x] **Copy with citation**: Ctrl+Shift+C or the selection menu → “quote” — Title, p. 12
+- [x] **Export Highlights to Note** (⋯ menu / palette): every annotation, by page, with pins,
+      under `---` + `## Highlights` at the end of the integrated note, between
+      `<!-- phdf:highlights -->` … `<!-- /phdf:highlights -->` markers (hidden in previews);
+      re-exporting replaces only that section, the user's writing above it is kept
+- [x] **Command palette** (Ctrl+K): every action, recent documents, “Go to page N”, “Search …”
+- [x] **Window size & position** remembered per window (`window.<id>`, incl. maximized)
+- [x] **Library** box on the welcome page: every document with cover (cached in
+      `<data>/covers`), progress bar, time read; filter; missing files dimmed
+- [x] **Reading stats** box under it: today / this week / streak + minutes per day for 14 days
+      (bar chart with hover + table view); fed by real reading seconds (`reading_log` table,
+      flushed every 30 s from the pace tracker)
+- Not chosen this round: double-click to explain a word (#9), Turkish UI (#11)
 
-### → `v1.0` when Phases 0–6 are stable on all three OSes.
+### Phase 5.5 — Grading mode → `v0.5.5` (done)
+For teachers / TAs grading a folder of exam PDFs one by one.
+- **Entry**: a *Grade* button at the right of the toolbar, next to *How to use* (?) (owner moved it
+  there from the left of Read); while the mode is on it stays
+  highlighted. Clicking it asks for a **folder** of exam PDFs (subfolders included — LMS exports
+  such as Moodle put each submission in its own folder).
+- **One PDF at a time**: the first PDF opens; the user marks it with every normal tool (pen,
+  highlight, notes). A bottom bar shows **Prev · n / N · [Grade] · Done**. Done saves and opens
+  the next PDF; Prev goes back. The session remembers where it stopped.
+- **Originals are never touched**: the marked copy is saved to `<folder>/graded/<same relative
+  path>`. Reopening a PDF that already has a graded copy opens the copy.
+- **Left sidebar**: instead of Chapters, a list of every PDF in the folder (done ✓ / current /
+  not yet); click to jump.
+- **Grades table** (the integrated note, right side) belongs to the **folder**, not to a PDF:
+  `<folder>/<folder name>.grades.md`, created at the start with one row per PDF:
+  `| # | Name | Grade | Comment |`. The user may add own columns; PhDF keeps unknown columns
+  and only fills the cells it owns.
+  - *Name* starts **empty** (owner: don't put the PDF names in the table). The file's short name
+    (the student's folder for Moodle-style subfolders, `_123456_assignsubmission_file_` removed,
+    else the file name) is only shown in the Exams list, on the tab and as the drawer's hint.
+  - Rows are numbered in a stable order kept in `grading.progress.<folder>` (with done + index):
+    files added later get new numbers at the end, so a row never changes owner.
+- **Automated** toggle (on/off, remembered):
+  - on → when a PDF opens, a drawer slides down from the top asking for the student's
+    identification (name / number), pre-filled from the table if already typed; the grade is typed in the box
+    next to Done; both are written into the table on Done.
+  - off → no drawer, no box: the user fills the table by hand.
+- **Export CSV** of the table (same columns, UTF-8 with BOM so Excel shows Turkish letters).
+- Grading stays on across restarts (`grading.window.<id>`); closing the exam's tab or clicking
+  *Grade* again stops it. The tab shows the student's name instead of the file title.
+- Also in v0.5.5: **move annotations** — drag a sticky note or text box; a drawing after clicking it
+  (`move_annotation`; ink is re-created with the same id). Undoable. Highlights don't move.
+
+### Phase 6 — postponed
+The owner postponed the planned Phase 6 (“didn't make much sense for now”); its items moved to
+**Upcoming features** below. The number is kept free, so the next phase is Phase 7.
+
+### Phase 7 — PDF Tools (owner: later)
+- [ ] Rotate pages, extract / delete pages, reorder, merge PDFs, split a PDF
+
+### → `v1.0` when Phases 0–5.5 and 7 are stable on all three OSes.
+
+### Upcoming features (not scheduled — picked from here into a phase when the owner wants)
+- **`phdf://` deep links**: clicking a pin/link in Obsidian opens PhDF at that page/annotation
+  (register the URL scheme with the OS) — was Phase 6
+- **Send to the currently open Obsidian note** (Local REST API plugin) — was Phase 6
+- **Double-click a word → AI explains it** (offered as #9 in Phase 5.2)
+- **Turkish UI** (offered as #11 in Phase 5.2)
+- **App icon** — the owner is designing it (give a 1024×1024 PNG → `.ico` / `.icns`, wire into
+  `phdf.spec` and the window)
+- (done in Phase 5.1: the AI can read the whole PDF via the Markdown export — ✦ AI menu)
 
 ---
 
 ## 7. Future Ideas (candidate phases, add as we go)
 
 - **Command palette** (Ctrl+K) & full keyboard navigation (optional vim keys)
-- **Library view**: tags, collections, reading status, full-text search across all PDFs
+- **Library**: tags, collections, full-text search across all PDFs (basic Library box done)
 - **Citations**: Zotero / BibTeX import, citation keys in Obsidian quotes
 - **Sync**: positions/annotations synced via the Obsidian vault folder (or any synced folder)
 - **Two-way note sync**: keep the integrated note and its Obsidian vault copy in step (D20)
-- **"Where was I?" card** when reopening a document: last position, last highlight and note
 - More Focus pull-down items (owner: "maybe we add other things there later")
 - **Flashcards**: turn highlights into Anki / Obsidian spaced-repetition cards
 - **Text-to-speech** reading with word highlighting
@@ -441,10 +512,15 @@ Scope chosen by the owner (an "ADHD-friendly" set, each part optional):
   `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT=2)`. Don't force the window to the foreground in
   scripted tests. Phase 1 was verified with a scripted end-to-end run (restore, selection, search,
   internal/external link peek, history, zoom, thumbnails, tabs, dark pages, saved positions).
+- **`MdDoc.flush()` is queued:** two `write_text` calls on the same note at once raced on its
+  `.phdf-tmp` file (PermissionError on Windows) — seen when grading wrote the table twice.
+- **Grading's table is shared:** every exam tab gets the same `MdDoc` via `tab.attachNote()`;
+  `detachNote()` on stop. The grading tab is closed with `ws.remove` + `releaseDocument` (it is
+  saved first, so no Save sheet).
 
 ## 9. Next Steps
 
 1. Owner: create the GitHub repo (install `gh` or use the web UI), push, confirm CI is green on
    Windows and see what macOS/Linux report.
-2. Phase 5 (on the owner's "start"): terminal AI side panel (Claude Code / Codex), send
-   selection to AI, Obsidian active note via Local REST API, `phdf://` deep links.
+2. Phase 6 is postponed (its items are under *Upcoming features*). Next, on the owner's
+   "start": Phase 7 PDF Tools, or something picked from Upcoming features; then v1.0.

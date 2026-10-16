@@ -3,14 +3,18 @@
 A lightweight, reader-first PDF app for heavy readers — with position memory, a built-in
 Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 
-> **Status:** early development (v0.5.1 — AI terminal, Read mode, Focus, parking lot). See [`HANDOFF.md`](HANDOFF.md) for the
+> **Status:** early development (v0.5.5 — grading mode, movable notes). See [`HANDOFF.md`](HANDOFF.md) for the
 > full roadmap and design decisions.
 
 ## Keyboard shortcuts
 
 | Action | Keys |
 |---|---|
+| Find any command | Ctrl+K |
 | Open PDF or Markdown | Ctrl+O |
+| Undo / redo annotations | Ctrl+Z / Ctrl+Y |
+| Bookmark page | Ctrl+B |
+| Copy with citation | Ctrl+Shift+C |
 | Save annotations | Ctrl+S |
 | New tab / close tab / next tab | Ctrl+T / Ctrl+W / Ctrl+Tab |
 | Search (Enter next, Shift+Enter previous) | Ctrl+F |
@@ -46,10 +50,29 @@ downloaded on first use — no Tesseract install needed). The ⋯ menu exports t
 Markdown (to a file or your Obsidian vault) and copies notes to Obsidian; *Send to Obsidian* in
 the selection menu adds the quote to the book's note in your vault (set it in ⋯ → Settings).
 
+**Grading:** the *Grade* button (top right, next to **?**) asks for a folder of exam PDFs (subfolders included, e.g. a
+Moodle download) and opens them one by one. Mark them with any tool; **Done** saves and opens the
+next one, **Prev** goes back, the sidebar's *Exams* list jumps anywhere. The originals are never
+changed — the marked copies are saved in `graded/`. Beside the exam is the folder's grades table,
+`<folder>.grades.md` (`# | Name | Grade | Comment`, add your own columns; names start empty). With *Automated* on, a
+drawer asks who wrote each exam and the grade typed next to Done goes into the table; *CSV*
+exports it.
+
 **Annotations & notes:** select text to highlight / underline / strike it or send it to the
 PDF's integrated note (**Note in MD**). The note is `<pdf name>.md` next to the PDF and opens beside
-it in the same tab; each quote starts with a pin like `⎘ phdf · p.12 · §2.1 · #k7q2` — click
+it in the same tab (drag a sticky note or text box to move it; click a drawing, then drag it); each quote starts with a pin like `⎘ phdf · p.12 · §2.1 · #k7q2` — click
 **Go to PDF ↗** to jump to the highlight, or click the highlight to jump to its note.
+
+## Upcoming features
+
+Not scheduled yet — ideas waiting for their turn:
+
+- `phdf://` links: click a quote's pin in Obsidian to open PhDF at that page
+- Send quotes to the note that is open in Obsidian right now
+- Double-click a word to have the AI explain it
+- Turkish interface
+- PDF tools: rotate, extract, delete and reorder pages, merge and split PDFs
+- An app icon
 
 ## Stack
 

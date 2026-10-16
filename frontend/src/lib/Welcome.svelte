@@ -2,6 +2,8 @@
   import type { RecentDocument } from "./api";
   import Icon from "./Icon.svelte";
   import { ui } from "./notify.svelte";
+  import LibraryBox from "./library/LibraryBox.svelte";
+  import StatsBox from "./library/StatsBox.svelte";
 
   interface Props {
     version: string;
@@ -49,12 +51,14 @@
       {/each}
     </ul>
   {/if}
-  <p class="hint small">Ctrl+O open PDF or Markdown · Ctrl+T new tab · Ctrl+S save annotations</p>
+  <LibraryBox {onopenpath} />
+  <StatsBox />
+  <p class="hint small">Ctrl+K find any command · Ctrl+O open · Ctrl+S save annotations</p>
 </section>
 
 <style>
   .welcome {
-    width: min(520px, 100%);
+    width: min(720px, 100%);
     margin: 0 auto;
     display: flex;
     flex-direction: column;
