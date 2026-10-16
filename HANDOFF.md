@@ -489,6 +489,12 @@ The owner postponed the planned Phase 6 (“didn't make much sense for now”); 
 1. **Default AI agent**: let the user pick a default agent (Claude Code, Codex or another one);
    later, whenever the AI is needed and none runs in the terminal, start the default one
    automatically instead of asking every time.
+   - **First time (owner, 2026-10-16):** when the AI terminal opens (terminal button, ✦ menu,
+     Ask AI) and no agent has been chosen yet, a popup inside the terminal panel asks to **add an
+     agent**: Claude Code, Codex, or another command (typed in), with a link to *How to* for
+     installing one. The choice is saved as the default.
+   - **After that:** the panel opens and the default agent starts by itself; no question. It can
+     be changed in Settings and from the terminal header (owner approved).
 2. **Equation → LaTeX: an OK step**: after the rectangle is drawn, show the box with an **OK**
    button; only OK sends the request to the AI in the terminal (today it is sent at once).
 3. **Swap terminal and note** in the right panel: the AI terminal and the integrated .md can trade
@@ -506,6 +512,44 @@ The owner postponed the planned Phase 6 (“didn't make much sense for now”); 
 8. **Remove all em dashes (—)**: from the app's texts and the docs (scope to confirm: UI
    strings, Help, README, HANDOFF, generated notes such as `# Grades — <folder>` and
    `Parking Lot — <book>`; code comments too?). Use a plain hyphen, colon or comma instead.
+9. **Terminal tabs**: more than one AI terminal (tabs in the terminal header, `+` to add, each its
+   own shell / agent; closing one keeps the others).
+10. **"Read as Markdown" switch in the AI menus** (owner's idea, proposal agreed in principle):
+    a toggle at the bottom of the ✦ / Ask AI menus.
+    - **On** (default): PhDF converts the document to Markdown once, caches it in
+      `<data>/ai/` (as `ai_context` already does per page range — extend to "whole document,
+      prepared in the background when the switch is on"), and the AI reads that: fast, few
+      tokens, works for Codex too. The prompt also gives the PDF path and page, telling the AI to
+      open the PDF itself only when it needs what Markdown loses (figures, tables as images,
+      equations, layout).
+    - **Off**: no conversion; the AI is pointed at the PDF and the page(s) and reads it itself
+      (Claude Code reads PDFs with images; Codex may need its own tool for PDFs).
+    - Remembered as a setting. **Owner decided: only in the ✦ AI menu, on by default — but off by
+      default for big PDFs** (proposed: more than 300 pages; a whole-book conversion takes
+      minutes). The menu says why it is off and the user can still turn it on for that document
+      (remembered per document). Owner approved the page-marker plan below.
+    - **Page markers (needed):** pymupdf4llm writes no page numbers at all (checked on Film Art:
+      the only numbers are the book's own printed headers, e.g. "20 CHAPTER 1" on PDF page 41),
+      so the AI could mix up pages. Convert page by page (`page_chunks=True`) and put a marker
+      before each page, e.g. `<!-- PDF page 41 -->`, and tell the AI in the prompt that "page"
+      means these markers (the printed numbers can differ).
+    - **Whole document in the background:** with markers, one cached file per document revision
+      serves every request (chapter / page ranges are cut from it), so after the first conversion
+      every question starts at once. Cost measured: ~0.36 s per page (Film Art, 655 pages ≈ 4 min,
+      once, in the background, without holding the render lock); show progress in the menu.
+11. **Clean the AI cache** (`<data>/ai/`, today never deleted): keep only the newest revision of
+    each document, delete files not used for 30 days, and cap the folder (e.g. 500 MB, oldest
+    first). Run at startup and after a conversion. Also a "Clear AI cache" button in Settings.
+12. **A nicer-looking Markdown note** (owner: "make it look better"; **owner approved these
+    ideas**): headings with more rhythm (sizes, spacing, a thin rule under H1/H2),
+    pin cards and their quotes as soft cards with the highlight's colour, nicer tables (zebra
+    rows, rounded border; the grades table too), code blocks and callouts (`> [!note]` like
+    Obsidian), task lists with real checkboxes, a comfortable reading width with centred text,
+    better link / image styling; the Edit view closer to the Preview (live headings, dimmed
+    Markdown marks). Best done together with #5 (edit in preview).
+    - **Adjustable in Settings** (owner): a "Note appearance" section next to the existing *Aa*
+      typography (font, size, spacing): theme / accent for headings and pin cards, reading width,
+      table style, show or hide Markdown marks in Edit; a live sample and "Reset to default".
 
 ---
 
