@@ -39,7 +39,7 @@
     z-index: 8;
     width: min(460px, calc(100% - 24px));
     padding: 10px 12px 8px;
-    border-radius: 0 0 14px 14px;
+    border-radius: 0 0 18px 18px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -72,7 +72,7 @@
     min-width: 0;
     padding: 5px 9px;
     border: none;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
     box-shadow: inset 0 0 0 1px var(--separator);
     color: var(--text);
@@ -87,7 +87,7 @@
 
   .ok {
     padding: 5px 12px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--accent);
     color: var(--accent-text);
     font-weight: 600;

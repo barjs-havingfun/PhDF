@@ -90,6 +90,13 @@ export function zoomText(delta: number) {
 
 export const DEFAULT_SIZE = DEFAULTS.size;
 
+/** Set the note text size (px), within the zoom range. */
+export function setTextSize(px: number) {
+  const { min, max } = RANGES.size;
+  typo.size = Math.min(max, Math.max(min, Math.round(px)));
+  save();
+}
+
 export function reset() {
   Object.assign(typo, DEFAULTS);
   save();

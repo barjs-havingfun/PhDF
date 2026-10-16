@@ -2,7 +2,8 @@
   // Read Mode pull-down: reading ruler, zen, full screen, page tint — each on its own.
   import { kbd } from "../platform";
   import Icon from "../Icon.svelte";
-  import { read, RULER_SIZES, saveReadSettings, TINTS, type RulerSize, type Tint } from "../reading.svelte";
+  import { api } from "../api";
+  import { read, RULER_SIZES, saveReadSettings, TINTS, type PageLayout, type RulerSize, type Tint } from "../reading.svelte";
 
   interface Props {
     onclose: () => void;
@@ -27,10 +28,26 @@
     read.tint = tint;
     saveReadSettings();
   }
+
+  function setPages(layout: PageLayout) {
+    read.pages = layout;
+    saveReadSettings();
+  }
+
+  /** E-books (EPUB) are laid out again with the new text size; open ones update in place. */
+  async function setEpubSize(size: number) {
+    read.epubSize = Math.min(28, Math.max(7, size));
+    saveReadSettings();
+    const changed = await (await api()).epub_text_size(read.epubSize);
+    window.dispatchEvent(new CustomEvent("phdf:reflow", { detail: changed }));
+  }
 </script>
 
 <div class="dropdown" role="menu">
-  <div class="title">Read Mode</div>
+  <div class="head">
+    <div class="title">Read Mode</div>
+    <button class="x" onclick={onclose} title="Close (Esc)" aria-label="Close"><Icon name="close" size={12} /></button>
+  </div>
 
   <button class="item" role="menuitemcheckbox" aria-checked={read.ruler} onclick={toggleRuler}>
     <span class="check">{read.ruler ? "✓" : ""}</span>
@@ -61,6 +78,35 @@
   </button>
 
   <div class="sep"></div>
+  <button class="book-btn" class:on={read.book} onclick={() => ((read.book = !read.book), onclose())}>
+    <span class="book-ico"><i></i><i></i></span>
+    <span>
+      {read.book ? "Close book view" : "Read like a book"}
+      <small>{read.book ? "Back to the normal view, at the same page" : "Two pages at a time, turn with ← / →"}</small>
+    </span>
+  </button>
+
+  <div class="label">Pages</div>
+  <div class="layouts">
+    {#each [["single", "Single"], ["spread", "Two pages"], ["cover", "Cover alone"]] as [key, label]}
+      <button class="layout" class:on={read.pages === key} onclick={() => setPages(key as PageLayout)} aria-pressed={read.pages === key}>
+        <!-- a small drawing of the layout -->
+        <span class="mini {key}">
+          {#if key === "single"}<i></i>{:else if key === "spread"}<i></i><i></i>{:else}<i class="cover"></i><i></i><i></i>{/if}
+        </span>
+        {label}
+      </button>
+    {/each}
+  </div>
+
+  <div class="label">E-book text size</div>
+  <div class="sub">
+    <button class="chip" onclick={() => setEpubSize(read.epubSize - 1)} disabled={read.epubSize <= 7}>A−</button>
+    <span class="size">{read.epubSize} pt</span>
+    <button class="chip" onclick={() => setEpubSize(read.epubSize + 1)} disabled={read.epubSize >= 28}>A+</button>
+  </div>
+
+  <div class="sep"></div>
   <div class="label">Page tint</div>
   <div class="sub tints">
     {#each Object.entries(TINTS) as [key, tint]}
@@ -78,6 +124,34 @@
 </div>
 
 <style>
+  .size {
+    min-width: 44px;
+    text-align: center;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .x {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    margin-right: 2px;
+    border-radius: 6px;
+    color: var(--secondary);
+  }
+
+  .x:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+
   .dropdown {
     position: absolute;
     top: calc(100% + 6px);
@@ -85,7 +159,7 @@
     z-index: 21;
     width: 270px;
     padding: 6px;
-    border-radius: 11px;
+    border-radius: 14px;
     background: var(--popover-solid);
     backdrop-filter: saturate(180%) blur(24px);
     box-shadow:
@@ -108,7 +182,7 @@
     gap: 6px;
     width: 100%;
     padding: 5px 8px;
-    border-radius: 6px;
+    border-radius: 8px;
     text-align: left;
   }
 
@@ -145,9 +219,101 @@
     padding: 2px 8px 6px 28px;
   }
 
+  .book-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: calc(100% - 8px);
+    margin: 2px 4px 8px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    text-align: left;
+    font-weight: 600;
+    color: white;
+    background: linear-gradient(135deg, #2557c9, #4b2bb8); /* dark enough for white text */
+    box-shadow: 0 4px 14px rgb(94 155 255 / 0.3);
+  }
+
+  .book-btn small {
+    display: block;
+    font-weight: 400;
+    font-size: 11px;
+    opacity: 0.85;
+  }
+
+  .book-btn:hover {
+    filter: brightness(1.08);
+  }
+
+  .book-ico {
+    display: flex;
+    gap: 2px;
+  }
+
+  .book-ico i {
+    width: 11px;
+    height: 15px;
+    border-radius: 1px;
+    background: white;
+  }
+
+  .layouts {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 2px 4px 6px;
+  }
+
+  .layout {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 4px 6px;
+    border-radius: 9px;
+    font-size: 11px;
+    background: var(--hover);
+    color: var(--secondary);
+    transition: background 0.12s, color 0.12s;
+  }
+
+  .layout:hover {
+    color: var(--text);
+  }
+
+  .layout.on {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1.5px var(--accent);
+    font-weight: 600;
+  }
+
+  .mini {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 22px;
+  }
+
+  .mini i {
+    width: 13px;
+    height: 18px;
+    border-radius: 1px;
+    background: currentColor;
+    opacity: 0.55;
+  }
+
+  .mini.cover i.cover {
+    margin-right: 4px;
+  }
+
+  .layout.on .mini i {
+    opacity: 0.9;
+  }
+
   .chip {
     padding: 1px 9px;
-    border-radius: 5px;
+    border-radius: 6px;
     font-size: 11px;
     background: var(--hover);
   }

@@ -17,7 +17,7 @@ from phdf.db import Store
 from phdf.engine import default_engine
 from phdf.env import load_dotenv
 from phdf.paths import data_dir, frontend_dist
-from phdf.services import ai_cache
+from phdf.services import ai_cache, titlebar
 from phdf.services.render_server import RenderServer
 
 MAIN_WINDOW = "main"
@@ -72,7 +72,7 @@ def startup_paths(argv: list[str]) -> list[str]:
     paths = []
     for arg in argv:
         path = Path(arg)
-        if path.suffix.lower() in (".pdf", ".md") and path.is_file():
+        if path.suffix.lower() in (".pdf", ".epub", ".md") and path.is_file():
             paths.append(str(path.resolve()))
     return paths
 
@@ -85,6 +85,19 @@ def saved_window_ids(store: Store) -> list[str]:
             store.set_setting(SESSION_PREFIX + MAIN_WINDOW, legacy)
     ids = [key.removeprefix(SESSION_PREFIX) for key in store.settings_with_prefix(SESSION_PREFIX)]
     return ids or [MAIN_WINDOW]
+
+
+def per_monitor_dpi() -> None:
+    """Windows: be DPI aware per monitor (before pywebview makes the process "system" aware).
+
+    With monitors at different scaling (e.g. 150 % and 100 %), a system-aware window is
+    stretched by Windows on the other monitor: blurry, and the stretched edges leave pixels
+    where a click reaches the window behind (the owner's maximized window's top-right corner
+    closed the app behind it). Must run before any window exists; later calls are ignored."""
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # PMv2
 
 
 def main() -> None:
@@ -101,10 +114,15 @@ def main() -> None:
         url = str(index)
 
     store = Store(data_dir() / "phdf.db")
+    if store.get_setting("window.perMonitorDpi", True):  # Settings → Appearance
+        per_monitor_dpi()
+    engine = default_engine()
+    if size := store.get_setting("epub.fontsize"):  # e-book text size (Read menu)
+        engine.reflow = {**engine.reflow, "fontsize": float(size)}
     threading.Thread(
         target=ai_cache.cleanup, args=(ai_cache.folder(data_dir()),), daemon=True
     ).start()
-    core = Core(default_engine(), store)
+    core = Core(engine, store)
     render_server = RenderServer(core.render).start()
     core.render_base_url = render_server.base_url
     core.on_closed_document = render_server.forget
@@ -124,6 +142,8 @@ def main() -> None:
             return
         api._window = window
         core.windows[window_id] = api
+        # The native title bar in PhDF's colors (Windows), before the page sets it exactly.
+        window.events.shown += lambda: titlebar.apply(window, titlebar.os_dark())
         window.events.closing += api._on_closing
         window.events.closed += api._on_closed
         remember_geometry(window, key, store)

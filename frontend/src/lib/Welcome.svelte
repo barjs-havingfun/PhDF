@@ -73,7 +73,7 @@
     gap: 2px;
     margin-top: 14px;
     padding: 12px 34px;
-    border-radius: 14px;
+    border-radius: 18px;
     color: white;
     font: 650 17px/1.2 var(--font);
     letter-spacing: 0.03em;
@@ -125,7 +125,7 @@
   .app-icon {
     width: 72px;
     height: 72px;
-    border-radius: 18px;
+    border-radius: 22px;
     display: grid;
     place-items: center;
     font: 700 30px/1 var(--font);

@@ -105,7 +105,7 @@ export type Restyle = Partial<TextStyle> & { rect?: Rect };
 export class Tab {
   readonly kind = "pdf" as const;
   readonly id = nextId++;
-  readonly doc: OpenedDocument;
+  doc = $state() as OpenedDocument; // reactive: an e-book's pages change with its text size
 
   // Current view, written by the viewer while scrolling.
   page = $state(0);
@@ -185,6 +185,25 @@ export class Tab {
     this.revs = doc.revs;
     this.welcomeBack = !!doc.lastOpened && (page > 0 || scroll > 0.05);
     this.pendingJump = { page: this.page, scroll: this.scroll };
+  }
+
+  /** An e-book (EPUB…): laid out into pages by PhDF, no annotations in the file. */
+  get isBook() {
+    return this.doc.info.reflowable;
+  }
+
+  /** The e-book was laid out again (new text size): new pages, about the same place. */
+  reflow(change: { pageSizes: [number, number][]; revs: Revs }) {
+    const old = this.doc.pageSizes.length;
+    const pages = change.pageSizes.length;
+    const at = Math.min(pages - 1, Math.round(((this.page + this.scroll) / old) * pages));
+    this.doc.pageSizes = change.pageSizes;
+    this.doc.info.page_count = pages;
+    this.revs = change.revs;
+    this.textCache.clear();
+    this.linkCache.clear();
+    this.searchHits = [];
+    this.pendingJump = { page: at };
   }
 
   /** Shown instead of the document title (grading: the student). */

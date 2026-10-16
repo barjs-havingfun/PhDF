@@ -29,7 +29,7 @@
       const list = await (await api()).parking_list(tab.path);
       parked = list.items.filter((i) => !i.done).at(-1)?.thought ?? null;
     })();
-    const timer = setTimeout(() => (tab.welcomeBack = false), 25000);
+    const timer = setTimeout(() => (tab.welcomeBack = false), 6000);
     return () => clearTimeout(timer);
   });
 
@@ -69,7 +69,7 @@
     z-index: 7;
     width: 290px;
     padding: 10px 12px;
-    border-radius: 12px;
+    border-radius: 16px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -101,7 +101,7 @@
     place-items: center;
     width: 20px;
     height: 20px;
-    border-radius: 5px;
+    border-radius: 6px;
     color: var(--secondary);
   }
 
@@ -119,7 +119,7 @@
     width: 100%;
     margin-top: 6px;
     padding: 6px;
-    border-radius: 8px;
+    border-radius: 10px;
     text-align: left;
     background: var(--hover);
   }

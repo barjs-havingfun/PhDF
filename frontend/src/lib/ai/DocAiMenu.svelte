@@ -65,6 +65,15 @@
     { label: "Explain this page", scope: "page", task: "Explain this page in simple terms, including any difficult ideas or terms." },
     { label: "Key ideas & terms", scope: chapter ? "chapter" : "document", task: "List the key ideas and the important terms with short definitions." },
     { label: "Study questions", scope: chapter ? "chapter" : "document", task: "Write 8 study questions (with short answers) to check understanding." },
+    {
+      label: "Find similar research",
+      scope: "document",
+      task:
+        "Find research similar to this document: list 8-10 related papers, books or articles. For each give the authors, " +
+        "title, year, where it was published, one sentence on how it relates to this document, and a link (DOI, arXiv or " +
+        "publisher) when you know one. If you can search the web, check that each one exists; never invent a source, and " +
+        "mark any you are unsure of. Group them (same question, same method, opposing view, background).",
+    },
     { label: "Ask your own question…", scope: chapter ? "chapter" : "document", task: null },
   ]);
 
@@ -167,7 +176,7 @@
     z-index: 21;
     width: 290px;
     padding: 6px;
-    border-radius: 11px;
+    border-radius: 14px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -189,7 +198,7 @@
     gap: 8px;
     width: 100%;
     padding: 5px 8px;
-    border-radius: 6px;
+    border-radius: 8px;
     text-align: left;
   }
 

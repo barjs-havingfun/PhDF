@@ -76,6 +76,7 @@ class MuPdfDocument(PdfDocument):
             title=meta.get("title") or None,
             author=meta.get("author") or None,
             is_encrypted=self._doc.needs_pass,
+            reflowable=bool(self._doc.is_reflowable),
         )
 
     def page_size(self, page: int) -> tuple[float, float]:
@@ -258,6 +259,11 @@ class MuPdfDocument(PdfDocument):
         body = html.escape(text).replace("\n", "<br>")
         return page.add_freetext_annot(rect, body, richtext=True, style=css, border_width=0)
 
+    def relayout(self, layout: dict[str, float]) -> None:
+        """E-books: lay the text out into pages again (page count changes)."""
+        if self._doc.is_reflowable:
+            self._doc.layout(**layout)
+
     def _annotated_pages(self) -> list[int]:
         """Pages with an /Annots entry, read from the page objects without loading the pages
         (a 650-page book: ~3 ms instead of ~0.3 s the first time)."""
@@ -277,6 +283,8 @@ class MuPdfDocument(PdfDocument):
         raise KeyError(annot_id)
 
     def annotations(self) -> list[Annotation]:
+        if not self._doc.is_pdf:
+            return []  # e-books carry no PDF annotations
         result = []
         for number in self._annotated_pages():
             page = self._doc[number]
@@ -418,7 +426,8 @@ class MuPdfDocument(PdfDocument):
         self._dirty = True
 
     def to_bytes(self) -> bytes:
-        return self._doc.tobytes()
+        # A PDF of the document (an e-book is converted with its current layout).
+        return self._doc.tobytes() if self._doc.is_pdf else self._doc.convert_to_pdf()
 
     def save(self) -> None:
         if self._path is None:
@@ -457,5 +466,11 @@ class MuPdfEngine(PdfEngine):
         if self._renders % self._TRIM_EVERY == 0:
             pymupdf.TOOLS.store_shrink(100)
 
+    # E-book page layout: an A5-like page; the text size is the reader's choice (Read menu).
+    reflow: dict[str, float] = {"width": 420, "height": 595, "fontsize": 11}
+
     def open(self, path: str | Path) -> PdfDocument:
-        return MuPdfDocument(pymupdf.open(path), path)
+        doc = pymupdf.open(path)
+        if doc.is_reflowable:
+            doc.layout(**self.reflow)
+        return MuPdfDocument(doc, path)

@@ -81,7 +81,7 @@
     align-items: center;
     justify-content: center;
     padding: 0 24px;
-    border-radius: 7px;
+    border-radius: 9px;
     color: var(--secondary);
     font-size: 12px;
     touch-action: none;
@@ -155,7 +155,7 @@
     place-items: center;
     width: 16px;
     height: 16px;
-    border-radius: 4px;
+    border-radius: 5px;
     opacity: 0;
   }
 
@@ -173,7 +173,7 @@
     display: grid;
     place-items: center;
     width: 28px;
-    border-radius: 7px;
+    border-radius: 9px;
     color: var(--secondary);
   }
 

@@ -140,14 +140,14 @@
     display: flex;
     margin: 10px 10px 6px;
     padding: 2px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
   }
 
   .segmented button {
     flex: 1;
     padding: 2px 0;
-    border-radius: 5px;
+    border-radius: 6px;
     font-size: 12px;
     color: var(--secondary);
   }
@@ -198,7 +198,7 @@
     gap: 8px;
     width: 100%;
     padding: 5px 6px;
-    border-radius: 7px;
+    border-radius: 9px;
     text-align: left;
   }
 
@@ -245,7 +245,7 @@
     width: 100%;
     margin: 4px 0 8px;
     padding: 5px 8px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
     font-size: 12px;
     text-align: left;
@@ -266,7 +266,7 @@
     align-items: center;
     gap: 6px;
     padding: 3px 4px;
-    border-radius: 7px;
+    border-radius: 9px;
   }
 
   .mark.current,
@@ -278,7 +278,7 @@
     display: inline-block;
     min-width: 30px;
     padding: 1px 6px;
-    border-radius: 5px;
+    border-radius: 6px;
     background: #ff375f;
     color: white;
     font-size: 11px;
@@ -349,7 +349,7 @@
     font-size: 11px;
     color: var(--secondary);
     padding: 0 6px;
-    border-radius: 4px;
+    border-radius: 5px;
   }
 
   .thumb.current .num {

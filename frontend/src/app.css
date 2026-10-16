@@ -24,8 +24,8 @@
 
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI",
     "Inter", system-ui, "Cantarell", "Ubuntu", "Noto Sans", "DejaVu Sans", sans-serif;
-  --radius-s: 6px;
-  --radius-m: 10px;
+  --radius-s: 8px;
+  --radius-m: 13px;
   --toolbar-height: 52px;
   color-scheme: light;
 }
@@ -100,7 +100,7 @@ button:focus-visible {
 ::-webkit-scrollbar-thumb {
   background: rgb(128 128 128 / 0.45);
   border: 3px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   background-clip: content-box;
 }
 

@@ -118,7 +118,7 @@
     z-index: 41;
     min-width: 200px;
     padding: 5px;
-    border-radius: 9px;
+    border-radius: 12px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -153,7 +153,7 @@
     gap: 14px;
     width: 100%;
     padding: 3px 10px 3px 22px;
-    border-radius: 5px;
+    border-radius: 6px;
     text-align: left;
     white-space: nowrap;
   }

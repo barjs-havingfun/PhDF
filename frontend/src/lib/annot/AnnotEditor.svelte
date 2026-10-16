@@ -268,7 +268,7 @@
     min-height: 44px;
     padding: 6px 8px;
     border: none;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
     color: var(--text);
     font: 13px/1.4 var(--font);
@@ -290,13 +290,13 @@
   .seg {
     display: flex;
     padding: 2px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
   }
 
   .seg button {
     padding: 1px 7px;
-    border-radius: 5px;
+    border-radius: 6px;
     font-size: 12px;
     color: var(--secondary);
   }
@@ -318,7 +318,7 @@
   .bold {
     width: 24px;
     height: 22px;
-    border-radius: 6px;
+    border-radius: 8px;
     font-weight: 800;
     color: var(--secondary);
   }
@@ -337,7 +337,7 @@
   .size button {
     width: 20px;
     height: 22px;
-    border-radius: 5px;
+    border-radius: 6px;
     color: var(--secondary);
   }
 
@@ -350,7 +350,7 @@
     width: 38px;
     padding: 2px;
     border: none;
-    border-radius: 5px;
+    border-radius: 6px;
     background: var(--hover);
     color: var(--text);
     font: 12px var(--font);
@@ -386,7 +386,7 @@
     place-items: center;
     width: 28px;
     height: 26px;
-    border-radius: 6px;
+    border-radius: 8px;
     color: var(--secondary);
   }
 
@@ -400,7 +400,7 @@
     align-items: center;
     gap: 5px;
     padding: 3px 9px;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .text-btn:hover {
@@ -409,7 +409,7 @@
 
   .primary {
     padding: 3px 14px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--accent);
     color: var(--accent-text);
     font-weight: 500;

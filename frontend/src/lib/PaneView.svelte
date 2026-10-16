@@ -413,7 +413,7 @@
       y={c.y}
       paneId={pane.id}
       onedit={() => c.target.kind === "annot" && onAnnot(c.target.annot, new MouseEvent("click", { clientX: c.x, clientY: c.y }))}
-      onplace={placeFromContext}
+      onplace={pdf.isBook ? undefined : placeFromContext}
       {onpark}
       onclose={() => (context = null)}
     />
@@ -434,7 +434,7 @@
     z-index: 9;
     background: var(--toolbar);
     backdrop-filter: saturate(180%) blur(20px);
-    border-bottom: 0.5px solid var(--separator);
+    /* No separator line: toolbar, tabs and page area read as one seamless surface. */
   }
 
   .content {
@@ -517,7 +517,7 @@
   .views {
     display: flex;
     padding: 2px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
     margin-right: 4px;
   }
@@ -527,7 +527,7 @@
     align-items: center;
     gap: 4px;
     padding: 1px 9px;
-    border-radius: 5px;
+    border-radius: 6px;
     font-size: 12px;
     color: var(--secondary);
   }
@@ -541,7 +541,7 @@
   .badge {
     min-width: 16px;
     padding: 0 4px;
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--accent);
     color: var(--accent-text);
     font-size: 10px;
@@ -554,7 +554,7 @@
     place-items: center;
     width: 26px;
     height: 24px;
-    border-radius: 6px;
+    border-radius: 8px;
     color: var(--secondary);
   }
 
@@ -580,7 +580,7 @@
     align-items: center;
     gap: 8px;
     padding: 5px 6px 5px 12px;
-    border-radius: 10px;
+    border-radius: 13px;
     background: var(--popover);
     backdrop-filter: saturate(180%) blur(24px);
     box-shadow:
@@ -592,7 +592,7 @@
 
   .ocr-bar button {
     padding: 2px 10px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--hover);
   }
 
@@ -630,7 +630,7 @@
     position: absolute;
     bottom: 8px;
     z-index: 8;
-    border-radius: 10px;
+    border-radius: 13px;
     background: rgb(0 122 255 / 0.14);
     outline: 2px solid var(--accent);
     outline-offset: -2px;

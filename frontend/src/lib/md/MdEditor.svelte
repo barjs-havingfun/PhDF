@@ -30,7 +30,7 @@
   import { kbd } from "../platform";
   import { outsideClose } from "../outside";
   import { livePreview } from "./live";
-  import { DEFAULT_SIZE, loadTypography, typo, typographyVars, zoomText } from "./typography.svelte";
+  import { DEFAULT_SIZE, RANGES, loadTypography, setTextSize, typo, typographyVars, zoomText } from "./typography.svelte";
 
   interface Props {
     md: MdDoc;
@@ -108,6 +108,13 @@
       notify.error(String(e).replace(/^Error: /, ""));
     }
   }
+
+  // Zoom menu in the status line: slider, presets, reset.
+  let zoomMenu = $state(false);
+  let zoomWrap = $state<HTMLElement>();
+  $effect(() => {
+    if (zoomMenu) return outsideClose(() => zoomWrap, () => (zoomMenu = false));
+  });
 
   const words = $derived(md.text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0);
 
@@ -439,9 +446,29 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
   <footer class="status">
     <span>{words} {words === 1 ? "word" : "words"} · {Math.max(1, Math.round(words / 220))} min read</span>
     <span class="grow"></span>
-    <button class="zoom" title={kbd("Text size: Ctrl+wheel, Ctrl+= / Ctrl+-. Click to reset (Ctrl+0)")} onclick={() => zoomText(0)}>
-      {Math.round((typo.size / DEFAULT_SIZE) * 100)}%
-    </button>
+    <div class="zoom-wrap" bind:this={zoomWrap}>
+      <button class="zoom" class:on={zoomMenu} title={kbd("Text size (also Ctrl+wheel, Ctrl+= / Ctrl+-, Ctrl+0)")} onclick={() => (zoomMenu = !zoomMenu)}>
+        {Math.round((typo.size / DEFAULT_SIZE) * 100)}%
+      </button>
+      {#if zoomMenu}
+        <div class="zoom-menu" role="menu">
+          <input
+            type="range"
+            min={RANGES.size.min}
+            max={RANGES.size.max}
+            value={typo.size}
+            oninput={(e) => setTextSize(Number(e.currentTarget.value))}
+            aria-label="Note text size"
+          />
+          <div class="presets">
+            {#each [75, 100, 125, 150, 200] as p}
+              <button class:on={Math.round((typo.size / DEFAULT_SIZE) * 100) === p} onclick={() => setTextSize((DEFAULT_SIZE * p) / 100)}>{p}%</button>
+            {/each}
+          </div>
+          <button class="reset" onclick={() => zoomText(0)}>Reset to 100%</button>
+        </div>
+      {/if}
+    </div>
     <span class="saved" class:busy={md.saving || md.dirty}>{md.saving || md.dirty ? "Saving…" : md.exists ? "Saved ✓" : "Not saved yet"}</span>
   </footer>
 </div>
@@ -509,7 +536,7 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
   .aa-btn {
     height: 24px;
     padding: 0 8px;
-    border-radius: 6px;
+    border-radius: 8px;
     font: 600 13px/1 Georgia, serif;
     color: var(--secondary);
   }
@@ -533,7 +560,7 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
     min-width: 0;
     padding: 3px 6px;
     margin-left: -6px;
-    border-radius: 6px;
+    border-radius: 8px;
     font-weight: 600;
     font-size: 13px;
     text-align: left;
@@ -562,7 +589,7 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
     height: 26px;
     padding: 0 8px;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--hover);
     color: var(--text);
     font: 600 13px var(--font);
@@ -589,10 +616,62 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
 
   .zoom {
     padding: 0 6px;
-    border-radius: 4px;
+    border-radius: 5px;
     font-size: 11px;
     font-variant-numeric: tabular-nums;
     color: var(--tertiary);
+  }
+
+  .zoom-wrap {
+    position: relative;
+  }
+
+  .zoom.on {
+    background: var(--hover);
+    color: var(--text);
+  }
+
+  /* Opens upward from the status line. */
+  .zoom-menu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 6px);
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 220px;
+    padding: 10px;
+    border-radius: 13px;
+    background: var(--popover-solid);
+    box-shadow:
+      0 0 0 0.5px var(--separator),
+      0 8px 28px rgb(0 0 0 / 0.22);
+    color: var(--text);
+  }
+
+  .zoom-menu input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+
+  .zoom-menu .presets {
+    display: flex;
+    gap: 4px;
+  }
+
+  .zoom-menu .presets button,
+  .zoom-menu .reset {
+    flex: 1;
+    padding: 3px 0;
+    border-radius: 6px;
+    background: var(--hover);
+    font-size: 11px;
+  }
+
+  .zoom-menu .presets button.on {
+    background: var(--accent);
+    color: var(--accent-text);
   }
 
   .zoom:hover {
@@ -612,13 +691,13 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
     flex: none;
     display: flex;
     padding: 2px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
   }
 
   .segmented button {
     padding: 1px 10px;
-    border-radius: 5px;
+    border-radius: 6px;
     font-size: 12px;
     color: var(--secondary);
   }
@@ -749,7 +828,7 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
     padding: 7px 14px;
     border: none;
     border-left: 3px solid var(--accent);
-    border-radius: 10px 10px 0 0;
+    border-radius: 13px 13px 0 0;
     background: var(--pin-bg);
     color: var(--accent);
     font: 600 12px var(--font);
@@ -762,7 +841,7 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
   .preview :global(.pin-card + blockquote) {
     margin-top: 0;
     border-left: 3px solid var(--accent);
-    border-radius: 0 0 10px 10px;
+    border-radius: 0 0 13px 13px;
     background: var(--pin-bg);
     padding: 6px 14px 8px;
     color: var(--secondary);
@@ -780,7 +859,7 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
     --c: #0a84ff;
     padding: 8px 14px 10px;
     border-left: 4px solid var(--c);
-    border-radius: 8px;
+    border-radius: 10px;
     background: color-mix(in srgb, var(--c) 10%, transparent);
     color: var(--text);
     font-style: normal;
@@ -813,11 +892,11 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
     font-size: 0.9em;
     background: var(--hover);
     padding: 1px 5px;
-    border-radius: 5px;
+    border-radius: 6px;
   }
   .preview :global(pre) {
     padding: 12px 14px;
-    border-radius: 10px;
+    border-radius: 13px;
     background: var(--hover);
     overflow-x: auto;
     line-height: 1.5;
@@ -836,7 +915,7 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
     border-collapse: separate;
     border-spacing: 0;
     border: 0.5px solid var(--separator);
-    border-radius: 10px;
+    border-radius: 13px;
     font-size: 0.95em;
   }
   .preview :global(:is(th, td)) {
@@ -881,7 +960,7 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
 
   .preview :global(img) {
     max-width: 100%;
-    border-radius: 8px;
+    border-radius: 10px;
   }
 
   .preview :global(mark) {

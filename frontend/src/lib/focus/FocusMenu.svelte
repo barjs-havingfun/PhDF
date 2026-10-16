@@ -91,7 +91,7 @@
     z-index: 21;
     width: 300px;
     padding: 8px;
-    border-radius: 11px;
+    border-radius: 14px;
     background: var(--popover-solid);
     backdrop-filter: saturate(180%) blur(24px);
     box-shadow:
@@ -150,7 +150,7 @@
 
   .btn {
     padding: 3px 12px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--hover);
     font-weight: 500;
   }
@@ -166,7 +166,7 @@
 
   .chip {
     padding: 1px 7px;
-    border-radius: 5px;
+    border-radius: 6px;
     font-size: 11px;
     background: var(--hover);
     font-variant-numeric: tabular-nums;

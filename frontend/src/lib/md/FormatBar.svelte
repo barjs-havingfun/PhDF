@@ -183,7 +183,7 @@
     align-items: center;
     gap: 1px;
     padding: 2px;
-    border-radius: 9px;
+    border-radius: 12px;
     background: var(--hover);
   }
 
@@ -220,7 +220,7 @@
     min-width: 32px;
     height: 30px;
     padding: 0 6px;
-    border-radius: 7px;
+    border-radius: 9px;
     color: var(--secondary);
     transition:
       background 0.1s,
@@ -276,7 +276,7 @@
     z-index: 41;
     min-width: 200px;
     padding: 6px;
-    border-radius: 10px;
+    border-radius: 13px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -290,7 +290,7 @@
     gap: 14px;
     width: 100%;
     padding: 5px 12px 5px 26px;
-    border-radius: 6px;
+    border-radius: 8px;
     text-align: left;
     font-size: 13px;
   }

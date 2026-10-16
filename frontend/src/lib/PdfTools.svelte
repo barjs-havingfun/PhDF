@@ -367,7 +367,7 @@
     place-items: center;
     width: 34px;
     height: 34px;
-    border-radius: 9px;
+    border-radius: 12px;
     color: white;
     background: linear-gradient(135deg, #5e9bff, #7a4dff 55%, #ff5fa2);
   }
@@ -397,7 +397,7 @@
   .bar button,
   .answers button {
     padding: 5px 11px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
     font-size: 13px;
   }
@@ -410,7 +410,7 @@
   .save,
   .answers .primary {
     padding: 5px 14px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--accent);
     color: var(--accent-text);
     font-weight: 600;
@@ -421,7 +421,7 @@
     place-items: center;
     width: 28px;
     height: 28px;
-    border-radius: 7px;
+    border-radius: 9px;
     color: var(--secondary);
   }
 
@@ -445,7 +445,7 @@
     align-items: center;
     gap: 10px;
     padding: 14px 28px;
-    border-radius: 14px;
+    border-radius: 18px;
     font-size: 16px;
     font-weight: 600;
     color: white;
@@ -464,7 +464,7 @@
   .recent {
     width: 100%;
     padding: 6px 12px;
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--surface);
     box-shadow: var(--card-shadow);
     text-align: left;
@@ -534,7 +534,7 @@
     width: 54px;
     height: 24px;
     border: none;
-    border-radius: 5px;
+    border-radius: 6px;
     background: var(--hover);
     color: var(--text);
     text-align: center;
@@ -557,7 +557,7 @@
     align-items: center;
     gap: 5px;
     padding: 8px;
-    border-radius: 10px;
+    border-radius: 13px;
     cursor: pointer;
   }
 
@@ -626,7 +626,7 @@
     right: 16px;
     bottom: 14px;
     padding: 6px 12px;
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--popover-solid);
     box-shadow: var(--card-shadow);
     font-size: 12px;
@@ -647,7 +647,7 @@
     z-index: 67;
     min-width: 200px;
     padding: 5px;
-    border-radius: 9px;
+    border-radius: 12px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -658,7 +658,7 @@
     display: block;
     width: 100%;
     padding: 4px 12px;
-    border-radius: 5px;
+    border-radius: 6px;
     text-align: left;
   }
 
@@ -675,7 +675,7 @@
     transform: translateX(-50%);
     width: min(420px, 90vw);
     padding: 18px 20px 14px;
-    border-radius: 14px;
+    border-radius: 18px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),

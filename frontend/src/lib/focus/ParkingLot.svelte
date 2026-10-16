@@ -106,7 +106,7 @@
     z-index: 45;
     width: min(460px, 92vw);
     padding: 10px;
-    border-radius: 14px;
+    border-radius: 18px;
     background: var(--popover);
     backdrop-filter: saturate(180%) blur(30px);
     box-shadow:
@@ -128,7 +128,7 @@
     gap: 8px;
     padding: 0 10px;
     height: 38px;
-    border-radius: 9px;
+    border-radius: 12px;
     background: var(--hover);
     color: var(--secondary);
   }

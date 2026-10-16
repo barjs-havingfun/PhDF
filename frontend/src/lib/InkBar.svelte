@@ -31,7 +31,7 @@
     align-items: center;
     gap: 5px;
     padding: 5px 10px;
-    border-radius: 12px;
+    border-radius: 16px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -64,13 +64,13 @@
     place-items: center;
     width: 30px;
     height: 24px;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .width span {
     display: block;
     width: 18px;
-    border-radius: 4px;
+    border-radius: 5px;
   }
 
   .width.on,

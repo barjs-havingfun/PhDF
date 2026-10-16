@@ -70,7 +70,7 @@
     align-items: flex-start;
     gap: 2px;
     padding: 8px 10px;
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--surface);
     box-shadow: var(--card-shadow);
     text-align: left;
@@ -104,7 +104,7 @@
     height: 26px;
     padding: 0 8px;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--hover);
     color: var(--text);
     font: inherit;
@@ -119,7 +119,7 @@
 
   .btn {
     padding: 3px 10px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--surface);
     box-shadow: var(--card-shadow);
   }

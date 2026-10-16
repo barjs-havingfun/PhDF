@@ -37,7 +37,7 @@
     position: fixed;
     z-index: 45;
     padding: 6px;
-    border-radius: 11px;
+    border-radius: 14px;
     background: var(--popover);
     backdrop-filter: saturate(180%) blur(24px);
     box-shadow:

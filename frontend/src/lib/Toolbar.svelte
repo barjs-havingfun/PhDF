@@ -227,7 +227,7 @@
   <div class="group end">
     {#if active}
       {@const pdf = active}
-      <div class="tools">
+      <div class="tools" class:book={pdf.isBook}>
         <button
           class="tool"
           class:on={pdf.tool === "note"}
@@ -397,7 +397,7 @@
         <div class="menu right" role="menu">
           {#if active}
             {@const pdf = active}
-            <div class="narrow-tools">
+            <div class="narrow-tools" class:book={pdf.isBook}>
               <button role="menuitemcheckbox" aria-checked={pdf.tool === "note"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "note" ? "select" : "note"))}>Add Note</button>
               <button role="menuitemcheckbox" aria-checked={pdf.tool === "text"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "text" ? "select" : "text"))}>Add Text</button>
               <button role="menuitemcheckbox" aria-checked={pdf.tool === "draw"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "draw" ? "select" : "draw"))}>Draw</button>
@@ -454,7 +454,7 @@
     gap: 4px;
     height: 26px;
     padding: 0 8px;
-    border-radius: 7px;
+    border-radius: 9px;
     color: var(--secondary);
     font-size: 12px;
     font-weight: 500;
@@ -539,6 +539,12 @@
 
   .mini-clock.paused {
     opacity: 0.6;
+  }
+
+  /* E-books: no annotation tools (only the note button stays). */
+  .tools.book .tool:not(:last-child),
+  .narrow-tools.book button:not(:nth-child(5)) {
+    display: none;
   }
 
   .tools {
@@ -703,7 +709,7 @@
   .subtitle {
     font-size: 11px;
     color: var(--secondary);
-    border-radius: 4px;
+    border-radius: 5px;
     padding: 0 4px;
   }
 
@@ -718,7 +724,7 @@
     color: var(--text);
     background: var(--surface);
     border: none;
-    border-radius: 4px;
+    border-radius: 5px;
     outline: 2px solid var(--focus-ring);
   }
 
@@ -777,7 +783,7 @@
     height: 24px;
     padding: 0 4px;
     border: none;
-    border-radius: 5px;
+    border-radius: 6px;
     background: var(--hover);
     color: var(--text);
     font: inherit;
@@ -794,7 +800,7 @@
   .menu .presets button {
     width: auto;
     padding: 2px 7px;
-    border-radius: 5px;
+    border-radius: 6px;
     background: var(--hover);
     font-size: 11px;
   }
@@ -818,7 +824,7 @@
     z-index: 21;
     min-width: 170px;
     padding: 5px;
-    border-radius: 9px;
+    border-radius: 12px;
     background: var(--popover-solid);
     backdrop-filter: saturate(180%) blur(24px);
     box-shadow:
@@ -831,7 +837,7 @@
     justify-content: space-between;
     width: 100%;
     padding: 3px 10px 3px 22px;
-    border-radius: 5px;
+    border-radius: 6px;
     text-align: left;
     position: relative;
   }
@@ -884,7 +890,7 @@
     gap: 5px;
     height: 26px;
     padding: 0 8px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
     color: var(--secondary);
   }

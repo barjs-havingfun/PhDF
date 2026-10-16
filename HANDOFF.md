@@ -72,6 +72,18 @@ Done in v0.6.0 (2026-10-16, not yet tested by the owner):
   `PeekPage` uses `PageView`, so the selection fix applies there too.
 - **Live mode shows math**: `$…$` / `$$…$$` typeset with KaTeX (a state field in `live.ts`; a
   `$$` block may span lines); click it, or put the cursor in it, to edit the LaTeX.
+- **Two-page view** (Read → Pages: Single / Two pages / Two, cover alone; `read.pages`): the
+  viewer lays pages out in rows (`rows`, `layout.tops / lefts`); Fit Width fits a whole row;
+  ← / → step by row (`stepRow`); switching keeps the place.
+- **EPUB** (and other e-books MuPDF reads): opened like PDFs, laid out on an A5-like page with the
+  Read menu's **E-book text size** (`epub.fontsize`, `MuPdfEngine.reflow`); changing it lays open
+  books out again in place (`epub_text_size` → `phdf:reflow` → `Tab.reflow`). E-books keep no
+  annotations: the annotation tools are hidden (`tab.isBook`); copy, cite, Ask AI, notes,
+  search, AI Markdown (`to_bytes` converts to PDF) work.
+- **Book view** (Read → Read like a book, `read.book`, `focus/BookView.svelte`): one spread of two
+  pages filling the window (cover alone if Pages says so), bottom-corner turn buttons, ← / → /
+  Space, a short slide; Esc returns to the normal view at the same page.
+- **Note zoom menu**: click the % in the note's status line: slider, presets, reset.
 - **Menus close on any outside press** (`lib/outside.ts`, toolbar `data-menu` wrappers, note and
   terminal **Aa**). The terminal's **Aa** no longer folds the panel.
 - **#14 PDF right-click** (`annot/ContextMenu.svelte`, `Viewer` `oncontext`): on an annotation:
@@ -124,7 +136,7 @@ Also open:
 Obsidian note (Local REST API plugin); double-click a word → AI explains it; Turkish UI; app icon
 (owner designs a 1024×1024 PNG → `.ico` / `.icns`, wire into `phdf.spec` and the window).
 Smaller leftovers: two-way note ↔ vault sync, OCR of a selected area, password-protected PDFs,
-rotated text in the text layer, frameless window with Mac traffic lights.
+rotated text in the text layer. (Window frame: kept native, colored like the toolbar via DWM, `services/titlebar.py`; owner chose this over a frameless window.)
 
 **Ideas:** tags / collections / full-text search across PDFs, Zotero / BibTeX, sync through a
 folder, flashcards from highlights, text-to-speech, translation, dual-page mode, EPUB / XPS /
@@ -159,6 +171,12 @@ CBZ, plugins, mobile companion.
 - **Menus inside the toolbar / note header**: `backdrop-filter` and container queries make
   `position: fixed` relative to that bar, so a full-screen backdrop div only covers the bar. Close
   such menus with `outsideClose()` (`lib/outside.ts`) or a document `pointerdown` listener.
+- **Mixed-DPI monitors (Windows)**: pywebview makes the process *system* DPI aware, so on a monitor
+  with other scaling Windows stretches the window (blurry, and edge pixels let clicks reach the
+  window behind: the owner's 150 % + 100 % setup closed Chrome via PhDF's top-right corner).
+  `app.per_monitor_dpi()` sets Per-Monitor-V2 before any window (setting `window.perMonitorDpi`,
+  Settings → Appearance, default on). Not confirmed by the owner yet; a script can't bring a
+  test window to the front, so the corner couldn't be verified automatically.
 - **Platform differences** live in `lib/platform.ts` (`kbd()`, `copyText()`, `isMac`).
 - **Equation temp files**: only `.phdf-tmp/eq-*` are deleted; `term_start` cleans leftovers > 1 h.
 - **Screenshots of the app**: use `PrintWindow(..., PW_RENDERFULLCONTENT=2)`; don't force focus.

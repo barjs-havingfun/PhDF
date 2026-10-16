@@ -22,7 +22,7 @@ export interface OpenedDocument {
   docId: string;
   path: string;
   title: string;
-  info: { page_count: number; title: string | null; author: string | null; is_encrypted: boolean };
+  info: { page_count: number; title: string | null; author: string | null; is_encrypted: boolean; reflowable: boolean };
   pageSizes: [number, number][];
   position: Position;
   dirty: boolean;
@@ -184,6 +184,8 @@ interface PyApi {
   open_window(paths: string[], x?: number, y?: number): Promise<string>;
   close_window(): Promise<void>;
   toggle_fullscreen(): Promise<void>;
+  window_theme(dark: boolean): Promise<void>;
+  epub_text_size(size: number): Promise<{ docId: string; pageSizes: [number, number][]; revs: Revs }[]>;
   term_start(cwd?: string | null, cols?: number, rows?: number): Promise<string>;
   term_read(id: string, timeout?: number): Promise<{ data: string; alive: boolean }>;
   term_write(id: string, data: string): Promise<void>;

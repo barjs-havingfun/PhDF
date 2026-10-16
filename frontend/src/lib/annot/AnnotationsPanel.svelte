@@ -168,7 +168,7 @@
     font-weight: 500;
     color: var(--secondary);
     background: var(--hover);
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 0 6px;
   }
 
@@ -178,7 +178,7 @@
     place-items: center;
     width: 22px;
     height: 22px;
-    border-radius: 5px;
+    border-radius: 6px;
     color: var(--secondary);
   }
 
@@ -192,7 +192,7 @@
     gap: 5px;
     height: 26px;
     padding: 0 8px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
     color: var(--secondary);
   }
@@ -221,13 +221,13 @@
   .segmented {
     display: flex;
     padding: 2px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
   }
 
   .segmented button {
     padding: 0 8px;
-    border-radius: 5px;
+    border-radius: 6px;
     font-size: 11px;
     color: var(--secondary);
   }
@@ -277,7 +277,7 @@
     display: flex;
     gap: 8px;
     padding: 7px 8px;
-    border-radius: 8px;
+    border-radius: 10px;
     cursor: default;
   }
 
@@ -338,7 +338,7 @@
     place-items: center;
     width: 24px;
     height: 22px;
-    border-radius: 5px;
+    border-radius: 6px;
     color: var(--secondary);
     opacity: 0;
   }

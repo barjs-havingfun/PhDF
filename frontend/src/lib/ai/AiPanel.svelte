@@ -261,7 +261,7 @@
     display: flex;
     align-items: center;
     height: 22px;
-    border-radius: 5px;
+    border-radius: 6px;
     color: var(--secondary);
   }
 
@@ -291,7 +291,7 @@
     width: 18px;
     height: 18px;
     margin-right: 2px;
-    border-radius: 4px;
+    border-radius: 5px;
     opacity: 0;
     cursor: default;
   }
@@ -308,7 +308,7 @@
 
   .ai-chip {
     padding: 0 6px;
-    border-radius: 8px;
+    border-radius: 10px;
     font-size: 10px;
     font-weight: 600;
     background: var(--accent);
@@ -324,7 +324,7 @@
     place-items: center;
     width: 24px;
     height: 22px;
-    border-radius: 5px;
+    border-radius: 6px;
     color: var(--secondary);
     cursor: default;
   }
@@ -335,7 +335,7 @@
     gap: 4px;
     height: 22px;
     padding: 0 8px;
-    border-radius: 5px;
+    border-radius: 6px;
     font-size: 11px;
     color: var(--accent);
     cursor: default;
@@ -366,7 +366,7 @@
     z-index: 41;
     min-width: 190px;
     padding: 5px;
-    border-radius: 9px;
+    border-radius: 12px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -387,7 +387,7 @@
 
   .size button {
     padding: 2px 10px;
-    border-radius: 5px;
+    border-radius: 6px;
     background: var(--hover);
   }
 
@@ -400,7 +400,7 @@
     display: block;
     width: 100%;
     padding: 3px 10px 3px 22px;
-    border-radius: 5px;
+    border-radius: 6px;
     text-align: left;
     font-size: 12px;
   }
@@ -448,7 +448,7 @@
     align-items: center;
     gap: 6px;
     padding: 6px 8px;
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -458,7 +458,7 @@
 
   .pick .choice {
     padding: 2px 10px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--accent);
     color: var(--accent-text);
     font-weight: 500;
@@ -466,7 +466,7 @@
 
   .pick code {
     padding: 0 4px;
-    border-radius: 4px;
+    border-radius: 5px;
     background: rgb(255 255 255 / 0.22);
     font-size: 11px;
   }
@@ -509,7 +509,7 @@
     margin: 0 auto;
     padding: 12px 14px;
     overflow-y: auto;
-    border-radius: 10px;
+    border-radius: 13px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),

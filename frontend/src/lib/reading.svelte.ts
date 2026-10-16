@@ -18,17 +18,25 @@ export type Tint = keyof typeof TINTS;
 export const RULER_SIZES = { s: 40, m: 64, l: 100 } as const; // band height in CSS px
 export type RulerSize = keyof typeof RULER_SIZES;
 
+/** One page per row, two side by side, or two with the first page (the cover) alone. */
+export type PageLayout = "single" | "spread" | "cover";
+
 interface ReadSettings {
   ruler: boolean;
   rulerSize: RulerSize;
   tint: Tint;
+  pages: PageLayout;
+  epubSize: number;
 }
 
 export const read = $state({
   ruler: false,
   rulerSize: "m" as RulerSize,
   tint: "none" as Tint,
+  pages: "single" as PageLayout,
+  epubSize: 11, // e-book text size (pt); the backend lays EPUBs out with it
   zen: false, // not remembered: always start with the normal UI
+  book: false, // book view (two pages, turn with buttons); not remembered
   fullscreen: false,
 });
 
@@ -38,8 +46,24 @@ export async function loadReadSettings() {
 }
 
 export async function saveReadSettings() {
-  const { ruler, rulerSize, tint } = read;
-  await (await api()).set_setting("readmode", { ruler, rulerSize, tint });
+  const { ruler, rulerSize, tint, pages, epubSize } = read;
+  await (await api()).set_setting("readmode", { ruler, rulerSize, tint, pages, epubSize });
+}
+
+/** First page of the row (spread) a page is in. */
+export function rowStart(page: number, layout: PageLayout = read.pages): number {
+  if (layout === "single") return page;
+  if (layout === "spread") return page - (page % 2);
+  return page === 0 ? 0 : page - ((page - 1) % 2);
+}
+
+/** The page ← / → go to: the previous / next row, whatever the layout. */
+export function stepRow(page: number, delta: 1 | -1, count: number): number {
+  const start = rowStart(page);
+  if (read.pages === "single") return Math.min(Math.max(page + delta, 0), count - 1);
+  if (delta > 0) return Math.min(read.pages === "cover" && start === 0 ? 1 : start + 2, count - 1);
+  if (read.pages === "cover" && start <= 1) return 0;
+  return Math.max(start - 2, 0);
 }
 
 // --- Focus: pomodoro -----------------------------------------------------------------------------

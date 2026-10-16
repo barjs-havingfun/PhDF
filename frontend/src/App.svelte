@@ -18,6 +18,7 @@
   import Settings from "./lib/Settings.svelte";
   import Help from "./lib/Help.svelte";
   import PdfTools from "./lib/PdfTools.svelte";
+  import BookView from "./lib/focus/BookView.svelte";
   import AiPanel from "./lib/ai/AiPanel.svelte";
   import CommandPalette, { type Command } from "./lib/CommandPalette.svelte";
   import { citation } from "./lib/cite";
@@ -49,6 +50,7 @@
     tickReading,
     pomodoro,
     read,
+    stepRow,
   } from "./lib/reading.svelte";
   import LinkPeek, { type Peek } from "./lib/LinkPeek.svelte";
   import PaneView from "./lib/PaneView.svelte";
@@ -428,6 +430,7 @@
       add("Grading", "Stop grading", stopGrading);
     } else add("Grading", "Grade a folder of exams…", () => startGrading());
     add("Read & Focus", read.ruler ? "Hide reading ruler" : "Show reading ruler", () => ((read.ruler = !read.ruler), saveReadSettings()));
+    if (pdf) add("Read & Focus", "Read like a book (two pages)", () => (read.book = true));
     add("Read & Focus", "Zen mode", toggleZen, "Ctrl+.");
     add("Read & Focus", "Full screen", toggleFullscreen, "F11");
     for (const [key, t] of Object.entries(TINTS)) add("Read & Focus", `Page tint: ${t.label}`, () => setTint(key as Tint));
@@ -664,8 +667,8 @@
     else if (e.metaKey && key === "]") active?.goForward();
     else if (e.altKey && key === "arrowright") active?.goForward();
     else if (active && !mod && !e.altKey && !inTextField(e) && !peek) {
-      if (key === "arrowright") active.pendingJump = { page: active.page + 1 };
-      else if (key === "arrowleft") active.pendingJump = { page: Math.max(active.page - 1, 0) };
+      if (key === "arrowright") active.pendingJump = { page: stepRow(active.page, 1, active.pageCount) };
+      else if (key === "arrowleft") active.pendingJump = { page: stepRow(active.page, -1, active.pageCount) };
       else if (key === "home") active.navigate({ page: 0 });
       else if (key === "end") active.navigate({ page: active.pageCount - 1 });
       else handled = false;
@@ -737,6 +740,16 @@
     setRenderBaseUrl(appInfo.renderBaseUrl);
     invert = await py.get_setting("invertPages", false);
     await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace(), loadLayout(), loadInk(), loadTextStyle(), loadGradingSettings(), loadAppFont()]);
+    // The window's title bar follows the light / dark theme (Windows colors it like the toolbar).
+    const scheme = matchMedia("(prefers-color-scheme: dark)");
+    (await api()).window_theme(scheme.matches);
+    scheme.addEventListener("change", (e) => api().then((py) => py.window_theme(e.matches)));
+    // E-books laid out again (Read menu → text size): update their tabs.
+    window.addEventListener("phdf:reflow", (e) => {
+      for (const change of (e as CustomEvent<{ docId: string; pageSizes: [number, number][]; revs: Record<number, number> }[]>).detail) {
+        for (const tab of ws.allTabs()) if (tab.kind === "pdf" && tab.doc.docId === change.docId) tab.reflow(change);
+      }
+    });
     // First start: show the tour once.
     if (!(await (await api()).get_setting("help.seen", false))) {
       ui.helpOpen = true;
@@ -914,6 +927,9 @@
     <TerminalGuide onclose={() => (term.guideOpen = false)} />
   {/if}
 
+  {#if read.book && active}
+    <BookView tab={active} {invert} top={read.zen ? 0 : toolbarHeight} onclose={() => (read.book = false)} />
+  {/if}
   {#if ui.tools}
     <PdfTools path={ui.tools.path} onopenpath={(p) => openPath(p)} onclose={() => (ui.tools = null)} />
   {/if}
@@ -968,7 +984,7 @@
   header {
     position: absolute;
     inset: 0 0 auto 0;
-    z-index: 10;
+    z-index: 11; /* above the book view (10), so its menus open on top of it */
     background: var(--toolbar);
     backdrop-filter: saturate(180%) blur(20px);
   }
@@ -1003,7 +1019,7 @@
     gap: 6px;
     max-width: 280px;
     padding: 5px 10px;
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--popover);
     backdrop-filter: blur(20px);
     box-shadow:
@@ -1052,7 +1068,7 @@
     z-index: 55;
     display: grid;
     place-items: center;
-    border-radius: 12px;
+    border-radius: 16px;
     border: 2px dashed var(--accent);
     background: rgb(0 122 255 / 0.08);
     color: var(--accent);
@@ -1086,7 +1102,7 @@
     transform: translateX(-50%);
     z-index: 30;
     padding: 4px 14px;
-    border-radius: 14px;
+    border-radius: 18px;
     background: var(--popover);
     backdrop-filter: blur(20px);
     box-shadow: 0 0 0 0.5px var(--separator);
@@ -1114,7 +1130,7 @@
   .sheet {
     width: 340px;
     padding: 20px 20px 16px;
-    border-radius: 14px;
+    border-radius: 18px;
     background: var(--popover);
     backdrop-filter: saturate(180%) blur(30px);
     box-shadow:
@@ -1135,7 +1151,7 @@
     width: 52px;
     height: 52px;
     margin: 0 auto 10px;
-    border-radius: 13px;
+    border-radius: 17px;
     display: grid;
     place-items: center;
     font: 700 22px/1 var(--font);
@@ -1166,7 +1182,7 @@
 
   .sheet-actions button {
     padding: 4px 12px;
-    border-radius: 6px;
+    border-radius: 8px;
     font-weight: 500;
   }
 
@@ -1181,7 +1197,7 @@
 
   .toast button.action {
     padding: 2px 10px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--accent);
     color: var(--accent-text);
     font-weight: 500;
@@ -1204,7 +1220,7 @@
     gap: 10px;
     max-width: 80%;
     padding: 8px 12px;
-    border-radius: 10px;
+    border-radius: 13px;
     background: var(--popover);
     backdrop-filter: blur(20px);
     box-shadow:

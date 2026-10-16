@@ -203,14 +203,14 @@
   .stage {
     display: grid;
     overflow: hidden;
-    border-radius: 16px;
+    border-radius: 20px;
   }
 
   .card {
     grid-area: 1 / 1;
     min-height: 420px;
     padding: 26px 30px;
-    border-radius: 16px;
+    border-radius: 20px;
     background: color-mix(in srgb, var(--surface) 70%, transparent);
     box-shadow: var(--card-shadow);
     cursor: pointer;
@@ -246,7 +246,7 @@
 
   .nav {
     padding: 4px 14px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
   }
 
@@ -292,7 +292,7 @@
     max-height: 100%;
     overflow: auto;
     padding: 22px 26px 24px;
-    border-radius: 20px;
+    border-radius: 24px;
     background: color-mix(in srgb, var(--popover-solid) 72%, transparent);
     backdrop-filter: saturate(160%) blur(26px);
     box-shadow:
@@ -311,7 +311,7 @@
     flex: none;
     width: 44px;
     height: 44px;
-    border-radius: 11px;
+    border-radius: 14px;
     display: grid;
     place-items: center;
     font: 700 19px/1 var(--font);
@@ -337,7 +337,7 @@
     place-items: center;
     width: 26px;
     height: 26px;
-    border-radius: 7px;
+    border-radius: 9px;
     color: var(--secondary);
   }
 
@@ -347,7 +347,7 @@
 
   section {
     padding: 12px 14px;
-    border-radius: 11px;
+    border-radius: 14px;
     background: var(--surface);
     box-shadow: var(--card-shadow);
   }
@@ -376,7 +376,7 @@
   li :global(code) {
     font-size: 11.5px;
     padding: 0 4px;
-    border-radius: 4px;
+    border-radius: 5px;
     background: var(--hover);
   }
 

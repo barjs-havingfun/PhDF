@@ -83,3 +83,17 @@ def test_rename_note_keeps_it_with_its_pdf(tmp_path, monkeypatch, sample_pdf):
         api.rename_file(new, "Other")
     with pytest.raises(ValueError):
         api.rename_file(new, "bad/name")
+
+
+def test_file_dialog_filters_are_valid_for_pywebview():
+    """pywebview rejects filter names with characters like "-" (the Open dialog then fails)."""
+    import re
+    from pathlib import Path
+
+    from webview.util import parse_file_type
+
+    source = (Path(__file__).parents[1] / "backend" / "phdf" / "api.py").read_text("utf-8")
+    filters = re.findall(r'"([^"()]+ \(\*[^"]*\))"', source)
+    assert len(filters) >= 5
+    for f in filters:
+        parse_file_type(f)  # raises ValueError for an invalid filter

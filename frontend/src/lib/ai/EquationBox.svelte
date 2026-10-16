@@ -83,7 +83,7 @@
     max-width: 100%;
     max-height: 160px;
     margin: 4px auto 6px;
-    border-radius: 4px;
+    border-radius: 5px;
     background: white;
     box-shadow: 0 0 0 0.5px var(--separator);
   }
@@ -106,7 +106,7 @@
     flex-direction: column;
     overflow: hidden;
     padding: 10px 12px 12px;
-    border-radius: 12px;
+    border-radius: 16px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -138,7 +138,7 @@
     place-items: center;
     width: 22px;
     height: 22px;
-    border-radius: 6px;
+    border-radius: 8px;
     color: var(--secondary);
   }
 
@@ -186,7 +186,7 @@
     display: grid;
     place-items: center;
     padding: 18px 16px;
-    border-radius: 10px;
+    border-radius: 13px;
     background: var(--surface);
     color: var(--text);
     font-size: 22px;
@@ -213,7 +213,7 @@
     margin-top: 10px;
     padding: 6px 8px;
     border: none;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
     color: var(--text);
     font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, "DejaVu Sans Mono", monospace;
@@ -242,7 +242,7 @@
     align-items: center;
     gap: 4px;
     padding: 3px 10px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--hover);
   }
 

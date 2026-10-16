@@ -22,7 +22,7 @@
   import type { Point } from "../api";
   import PageView from "./PageView.svelte";
   import { mergeLines } from "./rects";
-  import { noteScroll, read, RULER_SIZES } from "../reading.svelte";
+  import { noteScroll, read, rowStart, RULER_SIZES } from "../reading.svelte";
 
   interface Props {
     tab: Tab;
@@ -55,23 +55,46 @@
 
   const cssScale = $derived(tab.zoom * PT_TO_PX);
   const sizes = $derived(tab.doc.pageSizes);
-  const maxW = $derived(Math.max(...sizes.map((s) => s[0])));
   const maxH = $derived(Math.max(...sizes.map((s) => s[1])));
 
-  // Page tops in CSS px, relative to the scroll content.
-  const tops = $derived.by(() => {
-    const out: number[] = [];
-    let y = topInset + 20;
-    for (const [, h] of sizes) {
-      out.push(y);
-      y += h * cssScale + GAP;
+  // Rows of pages: one per row, or two side by side (Read → Pages; "cover": page 1 alone).
+  const SPREAD_GAP = 8; // px between the two pages of a spread
+  const rows = $derived.by(() => {
+    const out: number[][] = [];
+    for (let i = 0; i < sizes.length; ) {
+      const start = rowStart(i, read.pages);
+      const end = read.pages === "single" || (read.pages === "cover" && start === 0) ? start : Math.min(start + 1, sizes.length - 1);
+      out.push(Array.from({ length: end - start + 1 }, (_, k) => start + k));
+      i = end + 1;
     }
     return out;
   });
-  const contentHeight = $derived(
-    tops.length ? tops[tops.length - 1] + sizes[sizes.length - 1][1] * cssScale + PAD_BOTTOM : 0,
-  );
-  const contentWidth = $derived(Math.max(viewWidth, maxW * cssScale + PAD_X * 2));
+  /** Widest row in PDF points (both pages of a spread). */
+  const maxRowW = $derived(Math.max(...rows.map((r) => r.reduce((w, p) => w + sizes[p][0], 0))));
+
+  // Each page's top and left in CSS px, relative to the scroll content.
+  const layout = $derived.by(() => {
+    const rowPx = (r: number[]) => r.reduce((w, p) => w + sizes[p][0] * cssScale, 0) + (r.length - 1) * SPREAD_GAP;
+    const width = Math.max(viewWidth, Math.max(...rows.map(rowPx)) + PAD_X * 2);
+    const tops: number[] = [];
+    const lefts: number[] = [];
+    let y = topInset + 20;
+    for (const r of rows) {
+      let x = (width - rowPx(r)) / 2;
+      let h = 0;
+      for (const p of r) {
+        tops[p] = y;
+        lefts[p] = x;
+        x += sizes[p][0] * cssScale + SPREAD_GAP;
+        h = Math.max(h, sizes[p][1] * cssScale);
+      }
+      y += h + GAP;
+    }
+    return { tops, lefts, width, height: y - GAP + PAD_BOTTOM };
+  });
+  const tops = $derived(layout.tops);
+  const contentHeight = $derived(sizes.length ? layout.height : 0);
+  const contentWidth = $derived(layout.width);
 
   // Re-render sharper images only once zooming settles; CSS scales the old ones meanwhile.
   let renderScale = $state(1);
@@ -117,6 +140,7 @@
       if (tops[mid] <= y) lo = mid;
       else hi = mid - 1;
     }
+    while (lo > 0 && tops[lo - 1] === tops[lo]) lo--; // the first page of its row
     return lo;
   }
 
@@ -136,7 +160,8 @@
   }
 
   function fitZoom(mode: FitMode): number {
-    const byWidth = (viewWidth - PAD_X * 2) / (maxW * PT_TO_PX);
+    const gaps = read.pages === "single" ? 0 : SPREAD_GAP;
+    const byWidth = (viewWidth - PAD_X * 2 - gaps) / (maxRowW * PT_TO_PX);
     if (mode === "width") return byWidth;
     const byHeight = (viewHeight - topInset - 2 * GAP) / (maxH * PT_TO_PX);
     return Math.min(byWidth, byHeight);
@@ -433,6 +458,14 @@
     zoomBy(Math.min(1.25, Math.max(0.8, Math.exp(-e.deltaY * 0.001))));
   }
 
+  let lastPages = read.pages;
+  $effect(() => {
+    const pages = read.pages;
+    if (pages === lastPages || !ready) return;
+    lastPages = pages;
+    applyZoom(tab.fit === "none" ? tab.zoom : fitZoom(tab.fit), tab.fit);
+  });
+
   // Perform jumps requested through the tab (links, outline, search, history, restore).
   $effect(() => {
     const jump = tab.pendingJump;
@@ -499,7 +532,7 @@
       <PageView
         {tab}
         index={i}
-        left={(contentWidth - size[0] * cssScale) / 2}
+        left={layout.lefts[i]}
         top={tops[i]}
         {cssScale}
         {renderScale}

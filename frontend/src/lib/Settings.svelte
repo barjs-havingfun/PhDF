@@ -32,6 +32,17 @@
 
   let agentReady = $state(false);
 
+  let perMonitorDpi = $state(true);
+  api()
+    .then((py) => py.get_setting<boolean>("window.perMonitorDpi", true))
+    .then((v) => (perMonitorDpi = v ?? true));
+
+  async function togglePerMonitorDpi() {
+    perMonitorDpi = !perMonitorDpi;
+    await (await api()).set_setting("window.perMonitorDpi", perMonitorDpi);
+    notify.show({ text: "Restart PhDF for this to take effect." }, 3000);
+  }
+
   async function pickAgent(command: string) {
     await setAgent(command);
     notify.show({ text: command ? "Default AI agent saved. New terminals start it." : "New terminals start a plain shell." }, 2200);
@@ -107,6 +118,13 @@
         </div>
       </div>
       <p class="hint">The font of PhDF's buttons, menus and notes set to “System”. Notes have their own font under <b>Aa</b>.</p>
+      <label class="check-row">
+        <input type="checkbox" checked={perMonitorDpi} onchange={togglePerMonitorDpi} />
+        <span>
+          Sharp on every monitor
+          <small>For monitors with different scaling (e.g. 150 % and 100 %). Takes effect after restarting PhDF.</small>
+        </span>
+      </label>
     </section>
 
     <section>
@@ -205,7 +223,7 @@
     max-height: calc(100vh - 120px);
     overflow-y: auto;
     padding: 14px 18px 18px;
-    border-radius: 14px;
+    border-radius: 18px;
     background: var(--popover);
     backdrop-filter: saturate(180%) blur(30px);
     box-shadow:
@@ -269,7 +287,7 @@
     height: 26px;
     padding: 0 8px;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--hover);
     color: var(--text);
     font: inherit;
@@ -284,7 +302,7 @@
   .btn {
     flex: none;
     padding: 3px 10px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--surface);
     box-shadow: var(--card-shadow);
   }
@@ -306,7 +324,7 @@
     place-items: center;
     width: 24px;
     height: 24px;
-    border-radius: 6px;
+    border-radius: 8px;
     color: var(--secondary);
   }
 
@@ -338,6 +356,19 @@
     color: var(--secondary);
   }
 
+  .check-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .check-row small {
+    display: block;
+    font-size: 11px;
+    color: var(--secondary);
+  }
+
   .fonts {
     display: flex;
     flex-wrap: wrap;
@@ -346,7 +377,7 @@
 
   .font {
     padding: 4px 10px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--surface);
     box-shadow: var(--card-shadow);
   }
@@ -369,7 +400,7 @@
     height: 26px;
     padding: 0 6px;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--hover);
     color: var(--text);
     font: inherit;
@@ -388,6 +419,6 @@
     font-size: 11px;
     background: var(--hover);
     padding: 0 4px;
-    border-radius: 4px;
+    border-radius: 5px;
   }
 </style>

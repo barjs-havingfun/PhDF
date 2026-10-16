@@ -43,6 +43,7 @@ from phdf.services import (
     ocr,
     parking,
     pdftools,
+    titlebar,
     webview_memory,
 )
 from phdf.services.terminal import AI_PROCESS_NAMES, Terminals, command_name
@@ -182,6 +183,8 @@ class Api:
         self._force_close = False
         self._terminals = Terminals()
         self._tools: dict[str, pdftools.ToolsSession] = {}  # PDF tools sessions of this window
+        self._dark = titlebar.os_dark()  # title bar theme (Windows)
+        self._fullscreen = False
 
     # --- app / windows ----------------------------------------------------------------------
 
@@ -205,7 +208,12 @@ class Api:
         if window is None:
             return None
         types = {
-            "document": ("Documents (*.pdf;*.md)", "PDF files (*.pdf)", "Markdown (*.md)"),
+            "document": (
+                "Documents (*.pdf;*.epub;*.md)",
+                "PDF files (*.pdf)",
+                "EPUB books (*.epub)",
+                "Markdown (*.md)",
+            ),
             "pdf": ("PDF files (*.pdf)",),
             "md": ("Markdown (*.md)",),
         }[kind] + ("All files (*.*)",)
@@ -426,9 +434,43 @@ class Api:
             ).start()
         return False
 
+    def window_theme(self, dark: bool) -> None:
+        """Match the native title bar to the page's light / dark theme (Windows)."""
+        self._dark = dark
+        titlebar.apply(self._window, dark, self._fullscreen)
+
+    def epub_text_size(self, size: float) -> list[dict[str, Any]]:
+        """Text size of e-books (EPUB): remembered, and every open e-book of this window is laid
+        out again. Returns their new page sizes (the page count changes)."""
+        size = min(max(float(size), 7), 28)
+        self._core.store.set_setting("epub.fontsize", size)
+        engine = self._core.engine
+        if hasattr(engine, "reflow"):
+            engine.reflow = {**engine.reflow, "fontsize": size}
+        changed = []
+        with self._core.lock:
+            for doc_id in self._open:
+                doc = self._core.doc(doc_id)
+                if not doc.info().reflowable or not hasattr(doc, "relayout"):
+                    continue
+                doc.relayout(engine.reflow)
+                self._core.bump(doc_id)
+                changed.append(
+                    {
+                        "docId": doc_id,
+                        "pageSizes": [[round(w, 2), round(h, 2)] for w, h in doc.page_sizes()],
+                        "revs": self._core.revs(doc_id),
+                    }
+                )
+        return changed
+
     def toggle_fullscreen(self) -> None:
         if self._window is not None:
             self._window.toggle_fullscreen()
+            # Square corners in full screen (else clicks in a corner reach the window behind);
+            # rounded and themed again after it.
+            self._fullscreen = not self._fullscreen
+            titlebar.apply(self._window, self._dark, self._fullscreen)
 
     def close_window(self) -> None:
         """Close this window after the page has dealt with unsaved changes."""

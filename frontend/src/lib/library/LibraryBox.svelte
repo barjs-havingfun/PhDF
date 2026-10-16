@@ -71,7 +71,7 @@
     width: 100%;
     margin-top: 24px;
     padding: 12px 14px 14px;
-    border-radius: 12px;
+    border-radius: 16px;
     background: var(--surface);
     box-shadow: var(--card-shadow);
   }
@@ -96,7 +96,7 @@
   .count {
     margin-left: 4px;
     padding: 0 6px;
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--hover);
   }
 
@@ -105,7 +105,7 @@
     height: 24px;
     padding: 0 8px;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--hover);
     color: var(--text);
     font: 12px var(--font);
@@ -126,7 +126,7 @@
     gap: 4px;
     min-width: 0;
     padding: 4px;
-    border-radius: 8px;
+    border-radius: 10px;
     text-align: left;
   }
 
@@ -142,7 +142,7 @@
     position: relative;
     display: block;
     aspect-ratio: 3 / 4;
-    border-radius: 4px;
+    border-radius: 5px;
     overflow: hidden;
     background: white;
     box-shadow: var(--page-shadow);

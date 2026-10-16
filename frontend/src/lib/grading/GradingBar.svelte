@@ -74,7 +74,7 @@
     gap: 8px;
     max-width: calc(100% - 24px);
     padding: 6px 8px;
-    border-radius: 14px;
+    border-radius: 18px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -87,7 +87,7 @@
     display: flex;
     align-items: center;
     gap: 3px;
-    border-radius: 8px;
+    border-radius: 10px;
   }
 
   .nav {
@@ -146,7 +146,7 @@
     width: 64px;
     padding: 4px 8px;
     border: none;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
     box-shadow: inset 0 0 0 1px var(--separator);
     color: var(--text);

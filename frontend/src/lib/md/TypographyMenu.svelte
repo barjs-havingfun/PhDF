@@ -66,7 +66,7 @@
     z-index: 31;
     width: 300px;
     padding: 10px;
-    border-radius: 11px;
+    border-radius: 14px;
     background: var(--popover-solid);
     backdrop-filter: saturate(180%) blur(24px);
     box-shadow:
@@ -87,7 +87,7 @@
     align-items: center;
     gap: 2px;
     padding: 6px 2px;
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--hover);
   }
 
@@ -137,7 +137,7 @@
 
   .reset {
     padding: 2px 10px;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 12px;
     background: var(--hover);
   }

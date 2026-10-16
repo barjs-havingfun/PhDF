@@ -93,7 +93,7 @@
     width: 100%;
     margin-top: 14px;
     padding: 12px 14px 12px;
-    border-radius: 12px;
+    border-radius: 16px;
     background: var(--surface);
     box-shadow: var(--card-shadow);
   }
@@ -117,7 +117,7 @@
     display: flex;
     flex-direction: column;
     padding: 8px 10px;
-    border-radius: 9px;
+    border-radius: 12px;
     background: var(--hover);
   }
 
@@ -179,7 +179,7 @@
     top: -6px;
     transform: translate(-50%, -100%);
     padding: 3px 8px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),

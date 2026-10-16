@@ -134,7 +134,7 @@
 
   .palette {
     width: min(620px, 92vw);
-    border-radius: 14px;
+    border-radius: 18px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -179,7 +179,7 @@
     justify-content: space-between;
     gap: 10px;
     padding: 6px 10px;
-    border-radius: 7px;
+    border-radius: 9px;
   }
 
   li.on {

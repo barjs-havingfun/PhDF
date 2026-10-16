@@ -196,7 +196,7 @@
     max-height: 100%;
     overflow: auto;
     padding: 18px 22px 20px;
-    border-radius: 16px;
+    border-radius: 20px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -215,7 +215,7 @@
     place-items: center;
     width: 40px;
     height: 40px;
-    border-radius: 10px;
+    border-radius: 13px;
     background: var(--accent);
     color: var(--accent-text);
   }
@@ -238,7 +238,7 @@
     place-items: center;
     width: 26px;
     height: 26px;
-    border-radius: 7px;
+    border-radius: 9px;
     color: var(--secondary);
   }
 
@@ -256,7 +256,7 @@
   .seg {
     display: flex;
     padding: 2px;
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--hover);
   }
 
@@ -265,7 +265,7 @@
     align-items: center;
     gap: 5px;
     padding: 3px 12px;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 12px;
     color: var(--secondary);
   }
@@ -284,7 +284,7 @@
 
   .what {
     padding: 10px 12px;
-    border-radius: 10px;
+    border-radius: 13px;
     background: var(--surface);
     box-shadow: var(--card-shadow);
   }
@@ -320,7 +320,7 @@
     align-items: center;
     gap: 6px;
     padding: 6px 6px 6px 10px;
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--window);
     box-shadow: inset 0 0 0 0.5px var(--separator);
   }
@@ -344,7 +344,7 @@
     align-items: center;
     gap: 4px;
     padding: 3px 9px;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 11.5px;
     background: var(--hover);
   }

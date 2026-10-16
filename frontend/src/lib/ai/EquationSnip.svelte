@@ -135,7 +135,7 @@
     align-items: center;
     gap: 10px;
     padding: 6px 6px 6px 12px;
-    border-radius: 10px;
+    border-radius: 13px;
     background: var(--popover-solid);
     box-shadow:
       0 0 0 0.5px var(--separator),
@@ -147,7 +147,7 @@
 
   .hint button {
     padding: 2px 10px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--hover);
   }
 </style>

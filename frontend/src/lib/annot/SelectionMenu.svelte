@@ -91,6 +91,7 @@
 
 <Popover anchor={sel.box} width={422} {onclose}>
   <div class="row">
+    {#if !tab.isBook}<!-- e-books keep no annotations: copy, cite and Ask AI only -->
     {#each COLORS as c}
       <button class="dot" style="--c:{c.value}" title="Highlight {c.name}" onclick={() => annotate("highlight", c.value)}
       ></button>
@@ -105,6 +106,7 @@
     <span class="sep"></span>
     <button class="icon" title="Note in MD" onclick={noteInMd}><Icon name="mdnote" size={16} /></button>
     <button class="icon" title="Send to Obsidian" onclick={toObsidian}><Icon name="obsidian" size={16} /></button>
+    {/if}
     <button class="icon" title="Copy" onclick={copy}><Icon name="copy" size={16} /></button>
     <button class="icon" title={kbd("Copy with citation (Ctrl+Shift+C)")} onclick={copyCited}><Icon name="quote" size={16} /></button>
     <button class="icon" class:on={aiMenu} title="Ask AI" onclick={() => (aiMenu = !aiMenu)}><Icon name="sparkle" size={16} /></button>
@@ -151,7 +153,7 @@
     place-items: center;
     width: 28px;
     height: 26px;
-    border-radius: 6px;
+    border-radius: 8px;
     color: var(--text);
   }
 
@@ -171,7 +173,7 @@
 
   .ai-btn {
     padding: 3px 9px;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 12px;
     background: var(--hover);
   }

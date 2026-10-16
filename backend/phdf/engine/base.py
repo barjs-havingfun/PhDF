@@ -18,6 +18,7 @@ class DocumentInfo:
     title: str | None = None
     author: str | None = None
     is_encrypted: bool = False
+    reflowable: bool = False  # an e-book (EPUB…): laid out into pages; no annotations in the file
 
 
 @dataclass(frozen=True)

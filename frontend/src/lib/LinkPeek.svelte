@@ -258,7 +258,7 @@
     z-index: 41;
     background: var(--popover);
     backdrop-filter: saturate(180%) blur(24px);
-    border-radius: 12px;
+    border-radius: 16px;
     box-shadow:
       0 0 0 0.5px var(--separator),
       0 12px 40px rgb(0 0 0 / 0.25);
@@ -321,7 +321,7 @@
   .zoom {
     display: flex;
     align-items: center;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--hover);
   }
 
@@ -356,7 +356,7 @@
     place-items: center;
     width: 24px;
     height: 24px;
-    border-radius: 6px;
+    border-radius: 8px;
     color: var(--secondary);
   }
 
@@ -368,7 +368,7 @@
 
   .text-btn {
     padding: 3px 10px;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .text-btn:disabled {
@@ -377,7 +377,7 @@
 
   .primary {
     padding: 3px 12px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--accent);
     color: var(--accent-text);
     font-weight: 500;
