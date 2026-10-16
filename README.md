@@ -3,10 +3,13 @@
 A lightweight, reader-first PDF app for heavy readers — with position memory, a built-in
 Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 
-> **Status:** early development (v0.5.5 — grading mode, movable notes). See [`HANDOFF.md`](HANDOFF.md) for the
+> **Status:** early development (v0.5.7 — text styles, AI equation → LaTeX). See [`HANDOFF.md`](HANDOFF.md) for the
 > full roadmap and design decisions.
 
 ## Keyboard shortcuts
+
+On macOS use ⌘ for Ctrl and ⌥ for Alt (the app shows them that way); ⌃⌘F is full screen and
+⌘[ / ⌘] go back / forward.
 
 | Action | Keys |
 |---|---|
@@ -35,7 +38,11 @@ new window.
 **AI terminal:** Ctrl+` opens your shell in the PDF's folder above the note — run `claude` or
 `codex`. Drag its header to dock it at the bottom, drag the divider to resize, click the header to
 fold it away. Select text → ✦ *Ask AI* to explain, summarize or translate it, or to ask your own
-question; ✦ in the toolbar asks about the whole document, a chapter or a page. New to
+question; ✦ in the toolbar asks about the whole document, a chapter or a page. **▾ next to ✦ →
+Equation → LaTeX**: drag a rectangle around an equation and the AI writes its LaTeX; check it in
+the preview and insert it into the note at your cursor as `$$ … $$` (the note's Preview typesets
+`$…$` / `$$…$$` math with KaTeX). The image is a temporary file in a hidden `.phdf-tmp` folder
+where the terminal runs and is deleted as soon as the answer arrives. New to
 `claude` / `codex`? **How to** in the terminal's header shows how to install them for your OS. The
 **?** button explains everything in the app.
 
@@ -60,7 +67,8 @@ exports it.
 
 **Annotations & notes:** select text to highlight / underline / strike it or send it to the
 PDF's integrated note (**Note in MD**). The note is `<pdf name>.md` next to the PDF and opens beside
-it in the same tab (drag a sticky note or text box to move it; click a drawing, then drag it); each quote starts with a pin like `⎘ phdf · p.12 · §2.1 · #k7q2` — click
+it in the same tab (drag a sticky note or text box to move it; click a drawing, then drag it;
+text boxes have Sans / Serif / Mono, a size and bold); each quote starts with a pin like `⎘ phdf · p.12 · §2.1 · #k7q2` — click
 **Go to PDF ↗** to jump to the highlight, or click the highlight to jump to its note.
 
 ## Upcoming features
@@ -116,6 +124,15 @@ npm --prefix frontend run build
 uv run pyinstaller phdf.spec --noconfirm
 ```
 
+Files can be passed on the command line (`phdf book.pdf notes.md`), which is also how
+"Open with" works.
+
+### macOS
+
+The build is `dist/PhDF.app`. It is not signed yet, so the first time right-click it → **Open**
+(or allow it in System Settings → Privacy & Security). The AI terminal starts your login shell
+(zsh), so `claude` / `codex` are found as in Terminal.app.
+
 ### Linux
 
 pywebview uses GTK + WebKit2 on Linux. Install the system packages first, e.g. on Debian/Ubuntu:
@@ -123,6 +140,11 @@ pywebview uses GTK + WebKit2 on Linux. Install the system packages first, e.g. o
 ```sh
 sudo apt install libgirepository-2.0-dev libcairo2-dev pkg-config gir1.2-webkit2-4.1
 ```
+
+To get PhDF in the app menu and in "Open with" for PDFs, copy
+`packaging/linux/phdf.desktop` to `~/.local/share/applications/` (it runs `phdf`, so the command
+must be on your PATH). OCR needs one TrueType font (DejaVu, Liberation or Noto — found
+automatically, also through `fc-match`).
 
 ## License
 

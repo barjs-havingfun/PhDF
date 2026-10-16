@@ -42,10 +42,11 @@ export function setAutomated(on: boolean) {
   if (s) s.drawer = on && !!s.tab;
 }
 
-const progressKey = (folder: string) => `grading.progress.${folder.toLowerCase()}`;
+const progressKey = (key: string) => `grading.progress.${key}`;
 
 export class GradingSession {
   readonly folder: string;
+  readonly key: string;
   readonly title: string;
   readonly table: MdDoc;
   exams = $state<Exam[]>([]);
@@ -61,8 +62,9 @@ export class GradingSession {
   private host: Host;
   private order: string[] = [];
 
-  private constructor(folder: string, title: string, tablePath: string, host: Host) {
+  private constructor(folder: string, key: string, title: string, tablePath: string, host: Host) {
     this.folder = folder;
+    this.key = key;
     this.title = title;
     this.table = new MdDoc(tablePath);
     this.host = host;
@@ -76,8 +78,8 @@ export class GradingSession {
       notify.error(`No PDF files in ${folder}.`);
       return null;
     }
-    const s = new GradingSession(found.folder, found.title, found.table, host);
-    const saved = await py.get_setting<Progress | null>(progressKey(s.folder), null);
+    const s = new GradingSession(found.folder, found.key, found.title, found.table, host);
+    const saved = await py.get_setting<Progress | null>(progressKey(s.key), null);
     const names = new Map(found.files.map((f) => [f.rel, f.name]));
     // Keep earlier numbering; new files are added at the end.
     s.order = [...(saved?.order ?? []), ...found.files.map((f) => f.rel).filter((r) => !saved?.order.includes(r))];
@@ -195,6 +197,6 @@ export class GradingSession {
 
   private saveProgress() {
     const progress: Progress = { order: this.order, done: this.done, index: this.index };
-    api().then((py) => py.set_setting(progressKey(this.folder), progress));
+    api().then((py) => py.set_setting(progressKey(this.key), progress));
   }
 }

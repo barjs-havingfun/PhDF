@@ -23,7 +23,7 @@
   --card-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 3px rgb(0 0 0 / 0.06);
 
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI",
-    "Inter", system-ui, sans-serif;
+    "Inter", system-ui, "Cantarell", "Ubuntu", "Noto Sans", "DejaVu Sans", sans-serif;
   --radius-s: 6px;
   --radius-m: 10px;
   --toolbar-height: 52px;

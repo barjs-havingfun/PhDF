@@ -1,6 +1,7 @@
 <script lang="ts">
   // The terminal panel. Its header: click to collapse/expand like a drawer, drag to dock it at the
   // side or the bottom, buttons to move / restart / close.
+  import { kbd } from "../platform";
   import { onMount } from "svelte";
   import { capture } from "../dnd.svelte";
   import Icon from "../Icon.svelte";
@@ -87,7 +88,7 @@
       <button class="btn" title="Dock at the side" onclick={() => moveTo("side")}><Icon name="dockSide" size={14} /></button>
     {/if}
     <button class="btn" title="Restart the shell" onclick={() => restart()}><Icon name="restart" size={14} /></button>
-    <button class="btn" title="Hide terminal (Ctrl+`)" onclick={closeTerminal}><Icon name="close" size={13} /></button>
+    <button class="btn" title={kbd("Hide terminal (Ctrl+`)")} onclick={closeTerminal}><Icon name="close" size={13} /></button>
   </header>
   <div class="body" bind:this={body}></div>
 </section>

@@ -15,7 +15,9 @@ import {
   type Revs,
   type SearchHit,
   type TextLine,
+  type TextStyle,
 } from "./api";
+import type { EqJob } from "./ai/equation.svelte";
 import { MdDoc } from "./md.svelte";
 import { pinBlock, sectionFor } from "./pin";
 
@@ -50,6 +52,29 @@ export function saveInk() {
   api().then((py) => py.set_setting("ink", { ...ink }));
 }
 
+/** Font, size and weight for new text boxes (shared by all tabs, remembered). */
+export const textStyle = $state<TextStyle>({ font: "sans", size: 12, bold: false });
+export const TEXT_SIZES = [8, 10, 12, 14, 18, 24, 36];
+
+export async function loadTextStyle() {
+  const saved = await (await api()).get_setting<TextStyle | null>("textStyle", null);
+  if (saved) Object.assign(textStyle, saved);
+}
+
+export function saveTextStyle() {
+  api().then((py) => py.set_setting("textStyle", { ...textStyle }));
+}
+
+/** The box a text needs at a given style (PDF points), from its top-left corner. */
+export function textBoxRect(x: number, y: number, text: string, s: TextStyle): Rect {
+  const lines = text.split("\n");
+  const longest = Math.max(1, ...lines.map((l) => l.length));
+  const em = s.font === "mono" ? 0.62 : 0.56;
+  const w = Math.max(40, Math.min(420, longest * s.size * em * (s.bold ? 1.08 : 1) + 12));
+  const h = lines.length * s.size * 1.4 + 6;
+  return [x, y, x + w, y + h];
+}
+
 /** One undoable annotation change. */
 interface Op {
   label: string;
@@ -61,6 +86,21 @@ const HL_START = "<!-- phdf:highlights";
 const HL_END = "<!-- /phdf:highlights -->";
 
 let nextId = 1;
+
+const PAGE_CACHE = 80; // pages whose text layer / links are kept per tab
+
+/** Small LRU: a Map keeps insertion order, so re-inserting marks an entry as recent. */
+function cached<T>(cache: Map<number, Promise<T>>, page: number, load: () => Promise<T>): Promise<T> {
+  let p = cache.get(page);
+  if (p) cache.delete(page);
+  else p = load();
+  cache.set(page, p);
+  if (cache.size > PAGE_CACHE) cache.delete(cache.keys().next().value!);
+  return p;
+}
+
+/** A new style (and the box it needs) for an existing text box. */
+export type Restyle = Partial<TextStyle> & { rect?: Rect };
 
 export class Tab {
   readonly kind = "pdf" as const;
@@ -101,6 +141,10 @@ export class Tab {
   scanningText = $state(false);
   ocrProgress = $state<{ done: number; total: number } | null>(null);
   private ocrCancel = false;
+
+  /** Equation → LaTeX: the page is in "draw a rectangle" mode, then the job and its preview. */
+  snipping = $state(false);
+  equation = $state<EqJob | null>(null);
 
   /** An annotation being dragged: drawn as an outline at its new place until released. */
   moving = $state<{ id: string; dx: number; dy: number } | null>(null);
@@ -155,15 +199,11 @@ export class Tab {
   }
 
   textLines(page: number): Promise<TextLine[]> {
-    let p = this.textCache.get(page);
-    if (!p) this.textCache.set(page, (p = api().then((py) => py.text_layer(this.doc.docId, page))));
-    return p;
+    return cached(this.textCache, page, () => api().then((py) => py.text_layer(this.doc.docId, page)));
   }
 
   links(page: number): Promise<PdfLink[]> {
-    let p = this.linkCache.get(page);
-    if (!p) this.linkCache.set(page, (p = api().then((py) => py.links(this.doc.docId, page))));
-    return p;
+    return cached(this.linkCache, page, () => api().then((py) => py.links(this.doc.docId, page)));
   }
 
   async loadOutline() {
@@ -249,14 +289,17 @@ export class Tab {
     await this.loadAnnotations();
     const change = await (await api()).add_annotation(
       this.doc.docId, a.page, a.kind, a.rects, a.color, a.contents, a.strokes, a.width, a.id ?? null,
+      a.font, a.font_size, a.bold ?? false,
     ); // prettier-ignore
     this.apply(change);
     this.annotations!.push(change.annotation!);
     return change.annotation!;
   }
 
-  private async _update(id: string, color?: string | null, contents?: string | null) {
-    const change = await (await api()).update_annotation(this.doc.docId, id, color, contents);
+  private async _update(id: string, color?: string | null, contents?: string | null, style?: Restyle | null) {
+    const change = await (await api()).update_annotation(
+      this.doc.docId, id, color, contents, style?.font ?? null, style?.size ?? null, style?.bold ?? null, style?.rect ?? null,
+    ); // prettier-ignore
     this.apply(change);
     const i = this.annotations?.findIndex((a) => a.id === id) ?? -1;
     if (i >= 0 && change.annotation) this.annotations![i] = change.annotation;
@@ -284,8 +327,12 @@ export class Tab {
     contents = "",
     strokes: Point[][] | null = null,
     width: number | null = null,
+    style: TextStyle | null = null,
   ) {
-    const created = await this._add({ page, kind, rects, color, contents, strokes, width });
+    const created = await this._add({
+      page, kind, rects, color, contents, strokes, width,
+      font: style?.font ?? null, font_size: style?.size ?? null, bold: style?.bold ?? null,
+    }); // prettier-ignore
     const snapshot = { ...created };
     this.record({
       label: `Add ${kind}`,
@@ -295,15 +342,19 @@ export class Tab {
     return created;
   }
 
-  async updateAnnotation(id: string, color?: string | null, contents?: string | null) {
+  async updateAnnotation(id: string, color?: string | null, contents?: string | null, style?: Restyle | null) {
     const before = this.annotations?.find((a) => a.id === id);
-    const updated = await this._update(id, color, contents);
+    const updated = await this._update(id, color, contents, style);
     if (before) {
       const prev = { color: before.color, contents: before.contents };
+      const prevStyle: Restyle | null = style
+        ? { font: before.font ?? "sans", size: before.font_size ?? 12, bold: !!before.bold, rect: before.rects[0] }
+        : null;
       this.record({
-        label: "Edit annotation",
-        undo: async () => void (await this._update(id, color != null ? prev.color : null, contents != null ? prev.contents : null)),
-        redo: async () => void (await this._update(id, color, contents)),
+        label: style ? "Change text style" : "Edit annotation",
+        undo: async () =>
+          void (await this._update(id, color != null ? prev.color : null, contents != null ? prev.contents : null, prevStyle)),
+        redo: async () => void (await this._update(id, color, contents, style)),
       });
     }
     return updated;

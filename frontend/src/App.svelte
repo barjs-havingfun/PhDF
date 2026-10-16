@@ -1,6 +1,7 @@
 <script lang="ts">
   // App shell: toolbar, sidebar, side-by-side panes with tabs (PDFs and Markdown notes), tab drag
   // & drop, link peek, saving annotations, keyboard shortcuts and per-window session restore.
+  import { kbd, copyText } from "./lib/platform";
   import { onMount } from "svelte";
   import {
     api,
@@ -20,7 +21,7 @@
   import DocAiMenu from "./lib/ai/DocAiMenu.svelte";
   import CommandPalette, { type Command } from "./lib/CommandPalette.svelte";
   import { citation } from "./lib/cite";
-  import { loadInk } from "./lib/tab.svelte";
+  import { loadInk, loadTextStyle } from "./lib/tab.svelte";
   import TerminalGuide from "./lib/ai/TerminalGuide.svelte";
   import { HEADER_HEIGHT, closeTerminal, loadLayout, openTerminal, saveLayout, term } from "./lib/ai/terminal.svelte";
   import FocusMenu from "./lib/focus/FocusMenu.svelte";
@@ -92,6 +93,7 @@
   let focusMenu = $state(false);
   let parking = $state(false);
   let aiMenu = $state(false);
+  let aiTools = $state(false);
 
   /** Focused tab of any kind; `active` is the same tab when it is a PDF. */
   const current = $derived(ws.activeTab);
@@ -231,7 +233,7 @@
     if (!pages.length) return notify.show({ text: "Every page already has text." });
     try {
       await tab.runOcr(pages, await ocrLanguages());
-      notify.show({ text: "Text recognized. Save with Ctrl+S to keep it in the PDF." });
+      notify.show({ text: kbd("Text recognized. Save with Ctrl+S to keep it in the PDF.") });
     } catch (e) {
       notify.error(`OCR failed: ${e}`);
     }
@@ -242,7 +244,7 @@
   function toggleZen() {
     read.zen = !read.zen;
     readMenu = false;
-    if (read.zen) notify.show({ text: "Zen mode — press Esc or Ctrl+. to exit." }, 3000);
+    if (read.zen) notify.show({ text: kbd("Zen mode — press Esc or Ctrl+. to exit.") }, 3000);
   }
 
   async function toggleFullscreen() {
@@ -325,7 +327,7 @@
       .map((n) => (n instanceof Element ? n : n?.parentElement)?.closest<HTMLElement>(".page")?.dataset.page)
       .filter((p): p is string => p !== undefined)
       .map(Number);
-    await navigator.clipboard.writeText(citation(active, sel.toString(), pages.length ? pages : [active.page]));
+    await copyText(citation(active, sel.toString(), pages.length ? pages : [active.page]));
     notify.show({ text: "Copied with citation." }, 1800);
   }
 
@@ -334,6 +336,14 @@
     if (!active) return;
     const n = await active.exportHighlightsToNote();
     notify.show({ text: `${n} highlight${n === 1 ? "" : "s"} written under the line in ${active.md?.name}.` });
+  }
+
+  /** Equation → LaTeX: draw a rectangle on the page (see EquationSnip). */
+  function startSnip() {
+    aiTools = false;
+    if (!active) return;
+    active.tool = "select";
+    active.snipping = true;
   }
 
   // --- grading mode -----------------------------------------------------------------------------
@@ -434,6 +444,7 @@
     add("AI", term.open ? "Hide terminal" : "Open terminal", toggleTerminal, "Ctrl+`");
     add("AI", "How to set up Claude Code / Codex", () => (term.guideOpen = true));
     if (pdf) add("AI", "Ask the AI about this document…", () => (aiMenu = true));
+    if (pdf) add("AI", "Equation → LaTeX (AI)", () => startSnip());
     add("App", "Open…", () => pickAndOpen(), "Ctrl+O");
     add("App", "New note…", () => newNote());
     add("App", "New tab", () => newTab(), "Ctrl+T");
@@ -678,7 +689,7 @@
 
     if (mod && e.shiftKey && (key === " " || e.code === "Space")) parking = !parking;
     else if (mod && key === ".") toggleZen();
-    else if (key === "f11") toggleFullscreen();
+    else if (key === "f11" || (e.metaKey && e.ctrlKey && key === "f")) toggleFullscreen(); // ⌃⌘F on a Mac
     else if (key === "escape" && read.zen && !peek && !parking) toggleZen();
     else if (mod && key === "o") pickAndOpen();
     else if (mod && key === "s") saveCurrent();
@@ -697,7 +708,8 @@
     else if (mod && key === "-" && active) viewer()?.zoomBy(1 / 1.2);
     else if (mod && key === "0" && active) viewer()?.setZoom(1);
     else if (mod && key === "\\") toggleSidebar();
-    else if (e.altKey && key === "arrowleft") active?.goBack();
+    else if ((e.altKey && key === "arrowleft") || (e.metaKey && key === "[")) active?.goBack(); // ⌘[ ⌘] on a Mac
+    else if (e.metaKey && key === "]") active?.goForward();
     else if (e.altKey && key === "arrowright") active?.goForward();
     else if (active && !mod && !e.altKey && !inTextField(e) && !peek) {
       if (key === "arrowright") active.pendingJump = { page: active.page + 1 };
@@ -772,7 +784,7 @@
     const appInfo = await py.app_info();
     setRenderBaseUrl(appInfo.renderBaseUrl);
     invert = await py.get_setting("invertPages", false);
-    await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace(), loadLayout(), loadInk(), loadGradingSettings()]);
+    await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace(), loadLayout(), loadInk(), loadTextStyle(), loadGradingSettings()]);
     const sidebar = await py.get_setting("sidebar", { open: false, mode: "pages" as const });
     sidebarOpen = sidebar.open;
     sidebarMode = sidebar.mode;
@@ -803,6 +815,8 @@
     // Grading was on when this window closed: carry on where it stopped.
     const gradingFolder = await py.get_setting<string | null>(gradingKey(), null);
     if (gradingFolder) await startGrading(gradingFolder);
+    // Files PhDF was started with ("Open with", command line).
+    for (const path of await py.startup_paths()) await openPath(path);
   });
 </script>
 
@@ -819,15 +833,15 @@
     <header bind:clientHeight={toolbarHeight} class:hidden={read.zen}>
       <div class="toolbar">
         <div class="group">
-          <button class="tool" title="Sidebar (Ctrl+\)" onclick={toggleSidebar} disabled={!active}>
+          <button class="tool" title={kbd("Sidebar (Ctrl+\\)")} onclick={toggleSidebar} disabled={!active}>
             <Icon name="sidebar" />
           </button>
-          <button class="tool nav" title="Back (Alt+←)" onclick={() => active?.goBack()} disabled={!active?.back.length}>
+          <button class="tool nav" title={kbd("Back (Alt+←)")} onclick={() => active?.goBack()} disabled={!active?.back.length}>
             <Icon name="left" />
           </button>
           <button
             class="tool nav"
-            title="Forward (Alt+→)"
+            title={kbd("Forward (Alt+→)")}
             onclick={() => active?.goForward()}
             disabled={!active?.forward.length}
           >
@@ -860,7 +874,7 @@
           <button
             class="pill park"
             class:on={parking}
-            title="Parking lot — park a stray thought (Ctrl+Shift+Space)"
+            title={kbd("Parking lot — park a stray thought (Ctrl+Shift+Space)")}
             onclick={() => (parking = !parking)}
           >
             <Icon name="park" size={15} /> <span class="pill-label">Park</span>
@@ -884,7 +898,7 @@
                 /> of {active.pageCount}
               </span>
             {:else}
-              <button class="subtitle" onclick={startGoto} title="Go to page (Ctrl+G)">
+              <button class="subtitle" onclick={startGoto} title={kbd("Go to page (Ctrl+G)")}>
                 Page {active.page + 1} of {active.pageCount}
               </button>
             {/if}
@@ -943,13 +957,13 @@
             </div>
 
             <div class="segmented zoom">
-              <button title="Zoom out (Ctrl+-)" onclick={() => viewer()?.zoomBy(1 / 1.2)}>
+              <button title={kbd("Zoom out (Ctrl+-)")} onclick={() => viewer()?.zoomBy(1 / 1.2)}>
                 <Icon name="minus" size={14} />
               </button>
               <button class="zoom-label" onclick={() => (zoomMenu = !zoomMenu)} title="Zoom options">
                 {Math.round(active.zoom * 100)}%
               </button>
-              <button title="Zoom in (Ctrl++)" onclick={() => viewer()?.zoomBy(1.2)}>
+              <button title={kbd("Zoom in (Ctrl++)")} onclick={() => viewer()?.zoomBy(1.2)}>
                 <Icon name="plus" size={14} />
               </button>
               {#if zoomMenu}
@@ -963,7 +977,7 @@
                     Fit Page
                   </button>
                   <button role="menuitemradio" aria-checked={false} onclick={() => setFit("none")}>
-                    Actual Size <span class="shortcut">Ctrl+0</span>
+                    Actual Size <span class="shortcut">{kbd("Ctrl+0")}</span>
                   </button>
                 </div>
               {/if}
@@ -997,12 +1011,25 @@
               <button class="tool" class:on={aiMenu} title="Ask the AI about this document, chapter or page" onclick={() => (aiMenu = !aiMenu)}>
                 <Icon name="sparkle" />
               </button>
+              <button class="tool caret" class:on={aiTools} title="More AI tools" onclick={() => (aiTools = !aiTools)}>
+                <Icon name="chevron" size={12} />
+              </button>
               {#if aiMenu}
                 <DocAiMenu tab={active} paneId={ws.focused.id} onclose={() => (aiMenu = false)} />
               {/if}
+              {#if aiTools}
+                <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+                <div class="menu-backdrop" onclick={() => (aiTools = false)}></div>
+                <div class="menu right ai-tools" role="menu">
+                  <button role="menuitem" onclick={startSnip}>
+                    Equation → LaTeX (AI)
+                    <span class="sub">Draw a rectangle around an equation; the AI writes its LaTeX into your note.</span>
+                  </button>
+                </div>
+              {/if}
             </div>
           {/if}
-          <button class="tool" class:on={term.open} title="AI terminal (Ctrl+`)" onclick={toggleTerminal} disabled={!info}>
+          <button class="tool" class:on={term.open} title={kbd("AI terminal (Ctrl+`)")} onclick={toggleTerminal} disabled={!info}>
             <Icon name="terminal" />
           </button>
 
@@ -1037,8 +1064,8 @@
                     <div class="menu-sep"></div>
                   </div>
                   <div class="narrow-zoom">
-                    <button role="menuitem" onclick={() => viewer()?.zoomBy(1.2)}>Zoom In <span class="shortcut">Ctrl++</span></button>
-                    <button role="menuitem" onclick={() => viewer()?.zoomBy(1 / 1.2)}>Zoom Out <span class="shortcut">Ctrl+-</span></button>
+                    <button role="menuitem" onclick={() => viewer()?.zoomBy(1.2)}>Zoom In <span class="shortcut">{kbd("Ctrl++")}</span></button>
+                    <button role="menuitem" onclick={() => viewer()?.zoomBy(1 / 1.2)}>Zoom Out <span class="shortcut">{kbd("Ctrl+-")}</span></button>
                     <button role="menuitemradio" aria-checked={pdf.fit === "width"} onclick={() => ((moreMenu = false), setFit("width"))}>Fit Width</button>
                     <button role="menuitemradio" aria-checked={pdf.fit === "page"} onclick={() => ((moreMenu = false), setFit("page"))}>Fit Page</button>
                     <button role="menuitemcheckbox" aria-checked={invert} onclick={() => ((moreMenu = false), toggleInvert())}>Dark Pages</button>
@@ -1065,7 +1092,7 @@
               </div>
             {/if}
           </div>
-          <button class="tool" title="Open PDF or Markdown (Ctrl+O)" onclick={() => pickAndOpen()} disabled={!info}>
+          <button class="tool" title={kbd("Open PDF or Markdown (Ctrl+O)")} onclick={() => pickAndOpen()} disabled={!info}>
             <Icon name="open" />
           </button>
         </div>
@@ -1355,12 +1382,65 @@
     color: var(--text);
   }
 
-  .park {
+  /* Park stands out: a purple button (text like the other buttons); on hover a light streak
+     sweeps across it from left to right. */
+  .pill.park {
+    position: relative;
+    overflow: hidden;
     margin-left: 4px;
+    /* Same purple as the outline, dark on the left to light on the right. */
+    background: linear-gradient(90deg, rgb(120 50 190 / 0.45), rgb(200 130 250 / 0.45));
+    box-shadow:
+      inset 0 0 0 1px rgb(175 82 222 / 0.45),
+      0 0 6px rgb(175 82 222 / 0.18);
+    transition: box-shadow 0.2s, filter 0.2s;
+  }
+
+  .pill.park:hover,
+  .pill.park.on {
+    filter: brightness(1.15);
+    box-shadow:
+      inset 0 0 0 1px rgb(175 82 222 / 0.6),
+      0 0 8px rgb(175 82 222 / 0.28);
+  }
+
+  .pill.park::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.4) 50%, transparent 65%);
+    transform: translateX(-110%);
+    pointer-events: none;
+  }
+
+  .pill.park:hover::after {
+    transform: translateX(110%);
+    transition: transform 0.6s ease-out;
   }
 
   .ai-drop {
+    display: flex;
     margin-left: 0;
+  }
+
+  .tool.caret {
+    width: 16px;
+    margin-left: -3px;
+  }
+
+  .menu.ai-tools {
+    width: 270px;
+  }
+
+  .menu.ai-tools button {
+    flex-direction: column;
+    padding: 5px 10px;
+  }
+
+  .menu.ai-tools .sub {
+    font-size: 11px;
+    opacity: 0.75;
+    white-space: normal;
   }
 
   .mini-clock {

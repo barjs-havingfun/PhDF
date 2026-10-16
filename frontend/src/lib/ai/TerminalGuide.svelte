@@ -1,6 +1,7 @@
 <script lang="ts">
   // Terminal "How to": install and sign in to Claude Code or Codex, step by step, per OS.
   // Commands are from the official docs (code.claude.com/docs/en/setup, github.com/openai/codex).
+  import { copyText } from "../platform";
   import { onMount } from "svelte";
   import { api } from "../api";
   import Icon from "../Icon.svelte";
@@ -57,7 +58,7 @@
   }
 
   async function copy(command: string) {
-    await navigator.clipboard.writeText(command);
+    await copyText(command);
     copied = command;
     setTimeout(() => (copied = null), 1500);
   }

@@ -11,6 +11,7 @@ after saving.
 
 import os
 import shutil
+import subprocess
 import sys
 import urllib.request
 from dataclasses import dataclass
@@ -128,10 +129,27 @@ def unicode_font() -> str | None:
         paths = [
             Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
             Path("/Library/Fonts/Arial.ttf"),
+            Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
         ]
     else:
         paths = [
-            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-            Path("/usr/share/fonts/TTF/DejaVuSans.ttf"),
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),  # Debian, Ubuntu
+            Path("/usr/share/fonts/TTF/DejaVuSans.ttf"),  # Arch
+            Path("/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf"),  # Fedora
+            Path("/usr/share/fonts/dejavu/DejaVuSans.ttf"),  # openSUSE
+            Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
+            Path("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"),
         ]
-    return next((str(p) for p in paths if p.is_file()), None)
+    found = next((str(p) for p in paths if p.is_file()), None)
+    if found is None and sys.platform.startswith("linux") and shutil.which("fc-match"):
+        # Ask fontconfig for any TrueType sans font.
+        try:
+            out = subprocess.run(
+                ["fc-match", "-f", "%{file}", "sans:fontformat=TrueType"],
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip()  # fmt: skip
+            if out.lower().endswith(".ttf") and Path(out).is_file():
+                found = out
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return found

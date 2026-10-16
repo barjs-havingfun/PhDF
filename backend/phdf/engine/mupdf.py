@@ -1,6 +1,9 @@
 """MuPDF (PyMuPDF) implementation of the engine interface."""
 
+import contextlib
+import html
 import os
+import re
 import secrets
 import string
 from pathlib import Path
@@ -31,6 +34,11 @@ _KINDS: dict[int, AnnotKind] = {
     pymupdf.PDF_ANNOT_INK: "ink",
 }
 _MARKUP = ("highlight", "underline", "strikeout")
+# Free text is written as rich text (CSS in /DS): the only way to get bold, and it renders
+# Turkish and other accented letters with MuPDF's built-in fonts.
+_FAMILIES = {"sans": "sans-serif", "serif": "serif", "mono": "monospace"}
+_DA_FONTS = {"Helv": "sans", "TiRo": "serif", "Cour": "mono"}
+DEFAULT_FONT_SIZE = 12.0
 _ID_CHARS = string.ascii_lowercase + string.digits
 
 
@@ -170,8 +178,9 @@ class MuPdfDocument(PdfDocument):
         quote = ""
         if kind in _MARKUP:
             quote = " ".join(page.get_textbox(r).strip() for r in rects).strip()
+        font = size = bold = None
         if kind == "freetext":
-            color = self._freetext_color(annot)
+            color, font, size, bold = self._freetext_style(annot)
         else:
             colors = annot.colors or {}
             color = _hex(colors.get("stroke") or colors.get("fill"))
@@ -191,28 +200,88 @@ class MuPdfDocument(PdfDocument):
             modified=info.get("modDate") or None,
             strokes=strokes,
             width=width,
+            font=font,
+            font_size=size,
+            bold=bold,
         )
 
-    def _freetext_color(self, annot: pymupdf.Annot) -> str:
-        """Free text stores its colour in the /DA string, e.g. "1 0 0 rg /Helv 12 Tf"."""
+    def _freetext_style(self, annot: pymupdf.Annot) -> tuple[str, str, float, bool]:
+        """(colour, font, size, bold) of a free text: from its rich-text CSS (/DS) when it has
+        one, else from the plain /DA string, e.g. "1 0 0 rg /Helv 12 Tf"."""
+        color, font, size, bold = "#000000", "sans", DEFAULT_FONT_SIZE, False
         kind, da = self._doc.xref_get_key(annot.xref, "DA")
         parts = da.strip("()").split() if kind == "string" else []
         if "rg" in parts and (i := parts.index("rg")) >= 3:
-            try:
-                return _hex([float(v) for v in parts[i - 3 : i]])
-            except ValueError:
-                pass
-        return "#000000"
+            with contextlib.suppress(ValueError):
+                color = _hex([float(v) for v in parts[i - 3 : i]])
+        if "Tf" in parts and (i := parts.index("Tf")) >= 2:
+            font = _DA_FONTS.get(parts[i - 2].lstrip("/"), "sans")
+            with contextlib.suppress(ValueError):
+                size = float(parts[i - 1])
+        kind, ds = self._doc.xref_get_key(annot.xref, "DS")
+        if kind == "string" and ds:
+            css = {
+                k.strip().lower(): v.strip()
+                for k, _, v in (d.partition(":") for d in ds.split(";"))
+                if v.strip()
+            }
+            family = css.get("font-family", "").lower()
+            if "mono" in family or "courier" in family:
+                font = "mono"
+            elif "serif" in family and "sans" not in family:
+                font = "serif"
+            elif family:
+                font = "sans"
+            if m := re.match(r"[\d.]+", css.get("font-size", "")):
+                size = float(m.group())
+            bold = css.get("font-weight", "normal").lower() in (
+                "bold",
+                "bolder",
+                "600",
+                "700",
+                "800",
+                "900",
+            )
+            if re.fullmatch(r"#[0-9a-fA-F]{6}", css.get("color", "")):
+                color = css["color"].lower()
+        return color, font, size, bold
+
+    def _add_freetext(
+        self, page: pymupdf.Page, rect: pymupdf.Rect, text: str, color: str,
+        font: str | None, size: float | None, bold: bool,
+    ) -> pymupdf.Annot:  # fmt: skip
+        css = (
+            f"font-family:{_FAMILIES.get(font or 'sans', 'sans-serif')};"
+            f"font-size:{size or DEFAULT_FONT_SIZE:g}pt;"
+            f"font-weight:{'bold' if bold else 'normal'};color:{color}"
+        )
+        body = html.escape(text).replace("\n", "<br>")
+        return page.add_freetext_annot(rect, body, richtext=True, style=css, border_width=0)
+
+    def _annotated_pages(self) -> list[int]:
+        """Pages with an /Annots entry, read from the page objects without loading the pages
+        (a 650-page book: ~3 ms instead of ~0.3 s the first time)."""
+        doc = self._doc
+        return [
+            i
+            for i in range(doc.page_count)
+            if doc.xref_get_key(doc.page_xref(i), "Annots")[0] != "null"
+        ]
 
     def _find(self, annot_id: str) -> tuple[pymupdf.Page, pymupdf.Annot]:
-        for page in self._doc:
+        for number in self._annotated_pages():
+            page = self._doc[number]
             for annot in page.annots():
                 if self._annot_id(annot) == annot_id:
                     return page, annot
         raise KeyError(annot_id)
 
     def annotations(self) -> list[Annotation]:
-        return [self._to_model(page, a) for page in self._doc for a in page.annots()]
+        result = []
+        for number in self._annotated_pages():
+            page = self._doc[number]
+            result.extend(self._to_model(page, a) for a in page.annots())
+        return result
 
     def add_annotation(
         self,
@@ -224,6 +293,9 @@ class MuPdfDocument(PdfDocument):
         strokes: list[list[tuple[float, float]]] | None = None,
         width: float | None = None,
         annot_id: str | None = None,
+        font: str | None = None,
+        font_size: float | None = None,
+        bold: bool = False,
     ) -> Annotation:
         p = self._doc[page]
         rgb = _rgb(color)
@@ -237,9 +309,7 @@ class MuPdfDocument(PdfDocument):
         elif kind == "note":
             annot = p.add_text_annot(boxes[0].tl, contents, icon="Note")
         elif kind == "freetext":
-            annot = p.add_freetext_annot(
-                boxes[0], contents, fontsize=12, text_color=rgb, border_width=0
-            )
+            annot = self._add_freetext(p, boxes[0], contents, color, font, font_size, bold)
         elif kind == "ink":
             if not strokes:
                 raise ValueError("ink annotations need strokes")
@@ -257,20 +327,32 @@ class MuPdfDocument(PdfDocument):
         return self._to_model(p, annot)
 
     def update_annotation(
-        self, annot_id: str, color: str | None = None, contents: str | None = None
+        self,
+        annot_id: str,
+        color: str | None = None,
+        contents: str | None = None,
+        font: str | None = None,
+        font_size: float | None = None,
+        bold: bool | None = None,
+        rect: Rect | None = None,
     ) -> Annotation:
         page, annot = self._find(annot_id)
         kind = _KINDS.get(annot.type[0], "other")
+        if kind == "freetext":
+            # Rich text is laid out when created: re-create the box (same id) with the changes.
+            old = self._to_model(page, annot)
+            page.delete_annot(annot)
+            return self.add_annotation(
+                page.number, "freetext", [rect or old.rects[0]], color or old.color,
+                old.contents if contents is None else contents, annot_id=old.id,
+                font=font or old.font, font_size=font_size or old.font_size,
+                bold=old.bold if bold is None else bold,
+            )  # fmt: skip
         if contents is not None:
             annot.set_info(content=contents)
-        if kind == "freetext":
-            # Free text keeps its colour in the appearance string; re-apply it on every update.
-            rgb = _rgb(color) if color else _rgb(self._to_model(page, annot).color)
-            annot.update(text_color=rgb)
-        else:
-            if color is not None:
-                annot.set_colors(stroke=_rgb(color))
-            annot.update()
+        if color is not None:
+            annot.set_colors(stroke=_rgb(color))
+        annot.update()
         self._dirty = True
         return self._to_model(page, annot)
 
@@ -290,13 +372,13 @@ class MuPdfDocument(PdfDocument):
             return self.add_annotation(
                 page.number, "ink", [], model.color, model.contents, strokes, model.width, model.id
             )
-        if model.kind not in ("note", "freetext"):
+        if model.kind == "freetext":
+            x0, y0, x1, y1 = model.rects[0]
+            return self.update_annotation(model.id, rect=(x0 + dx, y0 + dy, x1 + dx, y1 + dy))
+        if model.kind != "note":
             raise ValueError(f"cannot move {model.kind!r} annotations")
         annot.set_rect(annot.rect + (dx, dy, dx, dy))
-        if model.kind == "freetext":
-            annot.update(text_color=_rgb(model.color))
-        else:
-            annot.update()
+        annot.update()
         self._dirty = True
         return self._to_model(page, annot)
 

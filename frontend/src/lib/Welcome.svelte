@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kbd } from "./platform";
   import type { RecentDocument } from "./api";
   import Icon from "./Icon.svelte";
   import { ui } from "./notify.svelte";
@@ -53,7 +54,7 @@
   {/if}
   <LibraryBox {onopenpath} />
   <StatsBox />
-  <p class="hint small">Ctrl+K find any command · Ctrl+O open · Ctrl+S save annotations</p>
+  <p class="hint small">{kbd("Ctrl+K find any command · Ctrl+O open · Ctrl+S save annotations")}</p>
 </section>
 
 <style>

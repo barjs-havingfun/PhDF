@@ -131,7 +131,7 @@
     { tag: t.emphasis, fontStyle: "italic" },
     { tag: t.strikethrough, textDecoration: "line-through" },
     { tag: [t.link, t.url], color: "var(--accent)" },
-    { tag: t.monospace, fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" },
+    { tag: t.monospace, fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace' },
     { tag: t.quote, color: "var(--secondary)", fontStyle: "italic" },
     { tag: [t.processingInstruction, t.meta], color: "var(--tertiary)" },
   ]);
@@ -197,6 +197,8 @@
           pinClicks,
           EditorView.updateListener.of((u) => {
             if (u.docChanged) md.edit(u.state.doc.toString());
+            // Remember where the user writes (equations are inserted there).
+            if ((u.selectionSet || u.docChanged) && u.view.hasFocus) md.cursor = u.state.selection.main.head;
           }),
         ],
       }),
@@ -215,6 +217,17 @@
       const head = Math.min(view.state.selection.main.head, text.length);
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: head } });
     }
+  });
+
+  // Show an inserted block (e.g. an equation) and put the cursor after it.
+  $effect(() => {
+    const r = md.reveal;
+    if (!r) return;
+    queueMicrotask(() => {
+      if (mode === "preview" || !view) return;
+      const pos = Math.min(r.pos, view.state.doc.length);
+      view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });
+    });
   });
 
   // Scroll to a pin (and put the cursor on the empty line under it when asked to focus).
@@ -469,6 +482,11 @@
     font-style: italic;
   }
 
+  .preview :global(.math-block) {
+    overflow-x: auto;
+    margin: 0.6em 0;
+  }
+
   .preview :global(blockquote) {
     margin-left: auto;
     padding-left: 12px;
@@ -477,7 +495,7 @@
   }
 
   .preview :global(code) {
-    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-family: ui-monospace, SFMono-Regular, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
     font-size: 0.92em;
     background: var(--hover);
     padding: 1px 4px;

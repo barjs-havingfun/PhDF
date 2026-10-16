@@ -13,6 +13,7 @@
 <script lang="ts">
   // Link preview (R11): links open small first. Internal links show a clip of the target
   // page; web links open in a small floating window. From here: enlarge, open, or close.
+  import { kbd, copyText } from "./platform";
   import { onMount } from "svelte";
   import { api } from "./api";
   import Icon from "./Icon.svelte";
@@ -109,18 +110,18 @@
 
 {#snippet pageTools()}
   <div class="zoom">
-    <button class="icon-btn" title="Zoom out (Ctrl+-)" onclick={() => pageView?.zoomBy(1 / 1.2)}>
+    <button class="icon-btn" title={kbd("Zoom out (Ctrl+-)")} onclick={() => pageView?.zoomBy(1 / 1.2)}>
       <Icon name="minus" size={13} />
     </button>
     <span class="pct">{Math.round(zoom * 100)}%</span>
-    <button class="icon-btn" title="Zoom in (Ctrl++ or Ctrl+wheel)" onclick={() => pageView?.zoomBy(1.2)}>
+    <button class="icon-btn" title={kbd("Zoom in (Ctrl++ or Ctrl+wheel)")} onclick={() => pageView?.zoomBy(1.2)}>
       <Icon name="plus" size={13} />
     </button>
   </div>
   <button
     class="icon-btn"
     class:on={selectMode}
-    title={selectMode ? "Select text (Ctrl+C to copy) — click for pan mode" : "Pan — click to select text"}
+    title={selectMode ? kbd("Select text (Ctrl+C to copy) — click for pan mode") : "Pan — click to select text"}
     onclick={() => (selectMode = !selectMode)}
   >
     <Icon name="text" size={14} />
@@ -171,7 +172,7 @@
         {webOpen ? "Opened in a small preview window." : "Opening a small preview window…"}
       </p>
       <footer>
-        <button class="text-btn" onclick={() => navigator.clipboard.writeText(link.uri!)}>Copy Link</button>
+        <button class="text-btn" onclick={() => copyText(link.uri!)}>Copy Link</button>
         <button class="text-btn" onclick={enlargeWeb} disabled={!webOpen}>Enlarge</button>
         <button class="primary" onclick={openInBrowser}>Open in Browser</button>
       </footer>

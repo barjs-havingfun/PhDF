@@ -1,6 +1,6 @@
 # PhDF — Project Handoff & Roadmap
 
-> Status: **Phase 5.5 done (v0.5.5)** — GitHub repo not created yet. Ask the owner before starting each new phase.
+> Status: **Phase 5.7 done (v0.5.7)** — GitHub repo not created yet. Ask the owner before starting each new phase.
 > Last updated: 2026-10-15
 > Original requirements: `notes.md`
 
@@ -412,6 +412,60 @@ For teachers / TAs grading a folder of exam PDFs one by one.
 - Also in v0.5.5: **move annotations** — drag a sticky note or text box; a drawing after clicking it
   (`move_annotation`; ink is re-created with the same id). Undoable. Highlights don't move.
 
+### v0.5.6 — macOS / Linux review & optimization (owner asked)
+- [x] macOS: shortcut labels shown as ⌘ / ⌥ / ⇧ (`lib/platform.ts` `kbd()` — titles, menus,
+      palette, Help); ⌃⌘F full screen, ⌘[ / ⌘] back / forward; `.app` Info.plist (version,
+      Retina, dark mode, macOS 11+)
+- [x] Clipboard falls back to `execCommand("copy")` where the async API is refused (WebKitGTK,
+      older WKWebView) — `copyText()`
+- [x] AI tools are found outside PATH too (a Finder-started app has a short PATH): ~/.local/bin,
+      ~/.claude/local, Homebrew, /usr/local/bin, npm / Volta folders
+- [x] OCR font on Linux: Debian / Arch / Fedora / openSUSE DejaVu paths, Liberation, Noto, then
+      `fc-match`; Linux UI / mono fonts in the CSS stacks
+- [x] Grading progress key: `os.path.normcase` (case-insensitive only on Windows; the old
+      lower-cased keys on Windows stay valid)
+- [x] Files on the command line open at start (`phdf a.pdf b.md`, "Open with");
+      `packaging/linux/phdf.desktop`
+- [x] Faster: annotations are read only from pages with an /Annots entry (655-page book:
+      340 ms → 6 ms when a document opens; finding one for an edit likewise); window geometry is
+      written once a move/resize settles; text-layer / link caches keep the last 80 pages per
+      tab; the move-cursor hover check runs once per frame and only when something is movable
+- Not tested on a real Mac / Linux machine yet (no hardware here) — CI builds them; the owner
+  should try a build there.
+
+### Phase 5.7 — Text styles & AI equation converter → `v0.5.7` (done)
+**Text boxes (Add text)**
+- Font **Sans / Serif / Mono**, size **8–36 pt** (presets + any number), **bold**; chosen when
+  placing and changeable later on an existing box (click it → the editor shows the same controls).
+- How: FreeText with rich text (`richtext=True`, CSS `style="font-family; font-size; font-weight;
+  color"` → `/DS`). Plain FreeText can't do bold (MuPDF maps HeBo/TiBo/CoBo to the regular
+  fonts); rich text renders bold + Turkish letters correctly (tested). Old boxes (plain /DA) keep
+  working and are converted when edited. The box size follows the font size. Contents must also
+  be written to `/Contents` (rich text leaves it empty).
+
+**AI equation converter (owner's design)**
+- The ✦ button stays as it is (whole-document AI menu). **New: a small ▾ next to it** opens a menu
+  with **“Equation → LaTeX (AI)”**.
+- Choosing it turns the page into a **snipping view** (dimmed, crosshair, like a screenshot tool):
+  drag a rectangle over an equation; Esc cancels.
+- The rectangle is rendered to a **PNG** (high resolution) in a hidden temp folder in the
+  terminal's working folder (`.phdf-tmp/eq-<id>.png`, so Claude Code / Codex may read and write
+  there without leaving their workspace). PhDF sends the AI in the terminal:
+  *read the image, write only its LaTeX to `.phdf-tmp/eq-<id>.tex`*. If no AI runs in the
+  terminal, the usual “start Claude / Codex” offer appears.
+- A **preview box** waits for the answer (spinner, Cancel), then shows the **rendered equation**
+  (KaTeX) and the **editable LaTeX**, with **Insert** and **Copy**.
+- **Insert** puts `$$ … $$` (with a small `p. 12` source line) **at the cursor** in the side note;
+  if the note was never clicked, at its end; the note opens if it was closed.
+- Afterwards the PNG and .tex are **deleted** (also on Cancel; leftovers cleaned when the
+  terminal starts), so nothing bloats the folder.
+- Also: the Markdown preview renders `$…$` / `$$…$$` math with KaTeX.
+- Done as planned. Notes: quick +/− clicks on the size are merged into one change (one undo
+  step); the box height is `lines × size × 1.4 + 6` (MuPDF clips rich text that doesn't fit);
+  the AI's answer is cleaned of `$$`, `\[ \]`, code fences. The equation flow was tested with a
+  fake AI that writes the .tex — **not yet with real Claude Code / Codex** (their permission
+  prompts and image reading are the parts to watch).
+
 ### Phase 6 — postponed
 The owner postponed the planned Phase 6 (“didn't make much sense for now”); its items moved to
 **Upcoming features** below. The number is kept free, so the next phase is Phase 7.
@@ -430,6 +484,28 @@ The owner postponed the planned Phase 6 (“didn't make much sense for now”); 
 - **App icon** — the owner is designing it (give a 1024×1024 PNG → `.ico` / `.icns`, wire into
   `phdf.spec` and the window)
 - (done in Phase 5.1: the AI can read the whole PDF via the Markdown export — ✦ AI menu)
+
+### Owner's notes for the next round (2026-10-16, not started — wait for "start")
+1. **Default AI agent**: let the user pick a default agent (Claude Code, Codex or another one);
+   later, whenever the AI is needed and none runs in the terminal, start the default one
+   automatically instead of asking every time.
+2. **Equation → LaTeX: an OK step**: after the rectangle is drawn, show the box with an **OK**
+   button; only OK sends the request to the AI in the terminal (today it is sent at once).
+3. **Swap terminal and note** in the right panel: the AI terminal and the integrated .md can trade
+   places (terminal below the note, or note above the terminal), remembered.
+4. **"How to use PhDF" as cards**: opening it shows the first section as one big card; click
+   (or →) goes to the next card until the end; ← back; a close button.
+5. **Markdown: edit in preview**: a mode where the rendered note can be edited directly (like
+   Obsidian's live preview), not only Edit / Preview tabs.
+6. **Other AI agents**: everywhere the app or docs talk about the AI (terminal guide, Help,
+   README, prompts, "no AI is running" offer), say that any terminal AI agent can be installed and
+   used the same way; keep Claude Code and Codex as the examples. Detection (`term_ai`) and the
+   default-agent setting (1) should accept other names too.
+7. **Highlighting behaves oddly**: owner reports it; reproduce first (ask the owner what exactly
+   happens: wrong lines, gaps, offset, selection jumping?) before changing anything.
+8. **Remove all em dashes (—)**: from the app's texts and the docs (scope to confirm: UI
+   strings, Help, README, HANDOFF, generated notes such as `# Grades — <folder>` and
+   `Parking Lot — <book>`; code comments too?). Use a plain hyphen, colon or comma instead.
 
 ---
 
@@ -512,6 +588,14 @@ The owner postponed the planned Phase 6 (“didn't make much sense for now”); 
   `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT=2)`. Don't force the window to the foreground in
   scripted tests. Phase 1 was verified with a scripted end-to-end run (restore, selection, search,
   internal/external link peek, history, zoom, thumbnails, tabs, dark pages, saved positions).
+- **Free text is rich text since v0.5.7** (`/DS` CSS). Every change re-creates the box with the
+  same /NM id (`update_annotation`, `move_annotation`) — MuPDF lays rich text out only on creation.
+  Never keep a `pymupdf.Annot` from `list(doc[i].annots())` after the page object is gone: that
+  segfaults (seen while testing, a test-script bug, not in PhDF).
+- **Equation temp files**: `services/equations.py` only deletes `.phdf-tmp/eq-*` files;
+  `term_start` cleans leftovers older than an hour.
+- **Platform differences live in `lib/platform.ts`** (`isMac`, `kbd()`, `copyText()`). Write
+  shortcut labels as "Ctrl+…" wrapped in `kbd()`; key handlers already accept Ctrl or ⌘.
 - **`MdDoc.flush()` is queued:** two `write_text` calls on the same note at once raced on its
   `.phdf-tmp` file (PermissionError on Windows) — seen when grading wrote the table twice.
 - **Grading's table is shared:** every exam tab gets the same `MdDoc` via `tab.attachNote()`;
@@ -522,5 +606,5 @@ The owner postponed the planned Phase 6 (“didn't make much sense for now”); 
 
 1. Owner: create the GitHub repo (install `gh` or use the web UI), push, confirm CI is green on
    Windows and see what macOS/Linux report.
-2. Phase 6 is postponed (its items are under *Upcoming features*). Next, on the owner's
-   "start": Phase 7 PDF Tools, or something picked from Upcoming features; then v1.0.
+2. Next on the owner's "start": Phase 7 PDF Tools, or something from *Upcoming features*
+   (Phase 6 is postponed); then v1.0. Try the equation converter with real Claude / Codex.

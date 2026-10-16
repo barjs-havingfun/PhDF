@@ -1,5 +1,6 @@
 <script lang="ts">
   // Read Mode pull-down: reading ruler, zen, full screen, page tint — each on its own.
+  import { kbd } from "../platform";
   import Icon from "../Icon.svelte";
   import { read, RULER_SIZES, saveReadSettings, TINTS, type RulerSize, type Tint } from "../reading.svelte";
 
@@ -51,7 +52,7 @@
   <button class="item" role="menuitemcheckbox" aria-checked={read.zen} onclick={onzen}>
     <span class="check">{read.zen ? "✓" : ""}</span>
     <span class="text">
-      Zen mode <span class="key">Ctrl+.</span>
+      Zen mode <span class="key">{kbd("Ctrl+.")}</span>
       <small>Hide toolbar, tabs and sidebar</small>
     </span>
   </button>

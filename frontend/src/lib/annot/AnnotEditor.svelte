@@ -2,9 +2,9 @@
   // Edit an annotation (colour, comment, delete, link to the note) — or, with `placing`, write
   // the text of a new sticky note / free text before it is created.
   import { untrack } from "svelte";
-  import type { Annotation } from "../api";
+  import type { Annotation, TextFont, TextStyle } from "../api";
   import Icon from "../Icon.svelte";
-  import type { Tab } from "../tab.svelte";
+  import { saveTextStyle, TEXT_SIZES, textBoxRect, textStyle, type Tab } from "../tab.svelte";
   import { COLORS, DEFAULT_COLOR, KIND_LABEL } from "./colors";
   import Popover from "./Popover.svelte";
 
@@ -33,6 +33,19 @@
     untrack(() => annot?.color ?? (placing?.kind === "freetext" ? "#1d1d1f" : DEFAULT_COLOR)),
   );
   let field = $state<HTMLTextAreaElement>();
+  // Free text: font, size, bold (new boxes start with the last ones used).
+  let style = $state<TextStyle>(
+    untrack(() =>
+      annot?.kind === "freetext"
+        ? { font: annot.font ?? "sans", size: annot.font_size ?? 12, bold: !!annot.bold }
+        : { ...textStyle },
+    ),
+  );
+  const FONTS: { value: TextFont; label: string }[] = [
+    { value: "sans", label: "Sans" },
+    { value: "serif", label: "Serif" },
+    { value: "mono", label: "Mono" },
+  ];
 
   const bodyLabel = $derived(kind === "note" || kind === "freetext" ? "Text" : "Comment");
   const markup = $derived(kind === "highlight" || kind === "underline" || kind === "strikeout");
@@ -45,21 +58,49 @@
   async function commit() {
     if (placing) {
       if (!text.trim()) return onclose();
-      const size = placing.kind === "note" ? 20 : 0;
-      const w = Math.max(80, Math.min(260, text.length * 6.5 + 16));
-      const lines = Math.max(1, text.split("\n").length);
       const rect: [number, number, number, number] =
         placing.kind === "note"
-          ? [placing.x, placing.y, placing.x + size, placing.y + size]
-          : [placing.x, placing.y, placing.x + w, placing.y + 18 * lines + 6];
-      const created = await tab.addAnnotation(placing.page, placing.kind, [rect], color, text);
+          ? [placing.x, placing.y, placing.x + 20, placing.y + 20]
+          : textBoxRect(placing.x, placing.y, text, style);
+      const isText = placing.kind === "freetext";
+      const created = await tab.addAnnotation(placing.page, placing.kind, [rect], color, text, null, null, isText ? style : null);
+      if (isText) rememberStyle();
       tab.selectedAnnot = created.id;
       tab.tool = "select";
       return onclose();
     }
-    if (annot && text !== annot.contents) await tab.updateAnnotation(annot.id, null, text);
+    if (annot && text !== annot.contents) {
+      // A text box grows or shrinks with its text.
+      const restyle =
+        annot.kind === "freetext" ? { ...style, rect: textBoxRect(annot.rects[0][0], annot.rects[0][1], text, style) } : null;
+      await tab.updateAnnotation(annot.id, null, text, restyle);
+    }
     onclose();
   }
+
+  function rememberStyle() {
+    Object.assign(textStyle, style);
+    saveTextStyle();
+  }
+
+  /** Change the font / size / weight; an existing box is redrawn at once. */
+  async function restyle(change: Partial<TextStyle>) {
+    style = {
+      font: change.font ?? style.font,
+      size: Math.min(Math.max(change.size ?? style.size, 6), 72),
+      bold: change.bold ?? style.bold,
+    };
+    rememberStyle();
+    if (!annot) return;
+    // Quick clicks (+ + +) become one change and one undo step.
+    clearTimeout(restyleTimer);
+    restyleTimer = setTimeout(async () => {
+      if (!annot) return;
+      const [x0, y0] = annot.rects[0];
+      annot = await tab.updateAnnotation(annot.id, null, null, { ...style, rect: textBoxRect(x0, y0, text, style) });
+    }, 300);
+  }
+  let restyleTimer: ReturnType<typeof setTimeout> | undefined;
 
   async function recolor(value: string) {
     color = value;
@@ -117,6 +158,32 @@
       ></button>
     {/if}
   </div>
+
+  {#if kind === "freetext"}
+    <div class="type" role="group" aria-label="Text style">
+      <div class="seg">
+        {#each FONTS as f}
+          <button class:on={style.font === f.value} class="f-{f.value}" onclick={() => restyle({ font: f.value })}>{f.label}</button>
+        {/each}
+      </div>
+      <button class="bold" class:on={style.bold} title="Bold" aria-pressed={style.bold} onclick={() => restyle({ bold: !style.bold })}>B</button>
+      <div class="size">
+        <button title="Smaller" onclick={() => restyle({ size: style.size - 1 })}>−</button>
+        <input
+          type="number"
+          min="6"
+          max="72"
+          list="phdf-text-sizes"
+          value={style.size}
+          onchange={(e) => restyle({ size: Number((e.currentTarget as HTMLInputElement).value) || style.size })}
+          aria-label="Font size"
+        />
+        <datalist id="phdf-text-sizes">{#each TEXT_SIZES as s}<option value={s}></option>{/each}</datalist>
+        <button title="Bigger" onclick={() => restyle({ size: style.size + 1 })}>+</button>
+        <span class="pt">pt</span>
+      </div>
+    </div>
+  {/if}
 
   <textarea
     bind:this={field}
@@ -211,6 +278,96 @@
 
   textarea:focus {
     box-shadow: 0 0 0 3px var(--focus-ring);
+  }
+
+  .type {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 4px 8px;
+  }
+
+  .seg {
+    display: flex;
+    padding: 2px;
+    border-radius: 7px;
+    background: var(--hover);
+  }
+
+  .seg button {
+    padding: 1px 7px;
+    border-radius: 5px;
+    font-size: 12px;
+    color: var(--secondary);
+  }
+
+  .seg button.on {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  }
+
+  .f-serif {
+    font-family: Georgia, "Times New Roman", serif;
+  }
+
+  .f-mono {
+    font-family: ui-monospace, Consolas, monospace;
+  }
+
+  .bold {
+    width: 24px;
+    height: 22px;
+    border-radius: 6px;
+    font-weight: 800;
+    color: var(--secondary);
+  }
+
+  .bold.on {
+    background: var(--accent);
+    color: var(--accent-text);
+  }
+
+  .size {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+  }
+
+  .size button {
+    width: 20px;
+    height: 22px;
+    border-radius: 5px;
+    color: var(--secondary);
+  }
+
+  .size button:hover,
+  .bold:not(.on):hover {
+    background: var(--hover);
+  }
+
+  .size input {
+    width: 38px;
+    padding: 2px;
+    border: none;
+    border-radius: 5px;
+    background: var(--hover);
+    color: var(--text);
+    font: 12px var(--font);
+    text-align: center;
+    outline: none;
+    user-select: text;
+    appearance: textfield;
+  }
+
+  .size input::-webkit-inner-spin-button {
+    display: none;
+  }
+
+  .pt {
+    margin-left: 3px;
+    font-size: 11px;
+    color: var(--tertiary);
   }
 
   .actions {

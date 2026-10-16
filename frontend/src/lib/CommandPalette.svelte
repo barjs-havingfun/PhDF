@@ -10,6 +10,7 @@
 
 <script lang="ts">
   // Ctrl+K: type to find any action, recent document or page.
+  import { kbd } from "./platform";
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
 
@@ -111,7 +112,7 @@
           onmousemove={() => (index = i)}
         >
           <span class="t">{c.title}</span>
-          {#if c.keys}<span class="keys">{c.keys}</span>{/if}
+          {#if c.keys}<span class="keys">{kbd(c.keys)}</span>{/if}
         </li>
       {:else}
         <li class="empty">Nothing found.</li>

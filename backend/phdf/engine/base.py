@@ -75,6 +75,9 @@ class Annotation:
     modified: str | None = None
     strokes: list[list[tuple[float, float]]] | None = None  # ink only
     width: float | None = None  # ink line width
+    font: str | None = None  # free text: "sans" / "serif" / "mono"
+    font_size: float | None = None  # free text, in points
+    bold: bool | None = None  # free text
 
 
 class PdfDocument(ABC):
@@ -126,14 +129,26 @@ class PdfDocument(ABC):
         strokes: list[list[tuple[float, float]]] | None = None,
         width: float | None = None,
         annot_id: str | None = None,
+        font: str | None = None,
+        font_size: float | None = None,
+        bold: bool = False,
     ) -> Annotation:
-        """`strokes` (lists of points) and `width` are used for "ink" annotations. `annot_id`
-        re-creates an annotation with its old id (undo of a delete keeps note pins working)."""
+        """`strokes` (lists of points) and `width` are used for "ink" annotations; `font`,
+        `font_size` and `bold` for "freetext". `annot_id` re-creates an annotation with its old
+        id (undo of a delete keeps note pins working)."""
 
     @abstractmethod
     def update_annotation(
-        self, annot_id: str, color: str | None = None, contents: str | None = None
-    ) -> Annotation: ...
+        self,
+        annot_id: str,
+        color: str | None = None,
+        contents: str | None = None,
+        font: str | None = None,
+        font_size: float | None = None,
+        bold: bool | None = None,
+        rect: Rect | None = None,
+    ) -> Annotation:
+        """Change what is given; `font` / `font_size` / `bold` / `rect` apply to free text."""
 
     @abstractmethod
     def delete_annotation(self, annot_id: str) -> int:

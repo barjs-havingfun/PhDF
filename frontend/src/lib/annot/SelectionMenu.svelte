@@ -1,5 +1,6 @@
 <script lang="ts">
   // Appears over selected PDF text: highlight in a colour, underline, strike, note in MD, copy.
+  import { kbd, copyText } from "../platform";
   import type { AnnotKind } from "../api";
   import Icon from "../Icon.svelte";
   import { api } from "../api";
@@ -77,13 +78,13 @@
   }
 
   async function copyCited() {
-    await navigator.clipboard.writeText(citation(tab, sel.text, [...sel.byPage.keys()]));
+    await copyText(citation(tab, sel.text, [...sel.byPage.keys()]));
     notify.show({ text: "Copied with citation." }, 1800);
     onclose();
   }
 
   async function copy() {
-    await navigator.clipboard.writeText(sel.text);
+    await copyText(sel.text);
     onclose();
   }
 </script>
@@ -105,7 +106,7 @@
     <button class="icon" title="Note in MD" onclick={noteInMd}><Icon name="mdnote" size={16} /></button>
     <button class="icon" title="Send to Obsidian" onclick={toObsidian}><Icon name="obsidian" size={16} /></button>
     <button class="icon" title="Copy" onclick={copy}><Icon name="copy" size={16} /></button>
-    <button class="icon" title="Copy with citation (Ctrl+Shift+C)" onclick={copyCited}><Icon name="quote" size={16} /></button>
+    <button class="icon" title={kbd("Copy with citation (Ctrl+Shift+C)")} onclick={copyCited}><Icon name="quote" size={16} /></button>
     <button class="icon" class:on={aiMenu} title="Ask AI" onclick={() => (aiMenu = !aiMenu)}><Icon name="sparkle" size={16} /></button>
   </div>
   {#if aiMenu}

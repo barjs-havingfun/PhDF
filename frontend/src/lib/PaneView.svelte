@@ -2,6 +2,7 @@
   // One pane: its tab bar (overlaying the top, under the window toolbar) and the active tab —
   // a PDF (with annotations panel and, optionally, its integrated note beside it), a standalone
   // Markdown note, or the welcome page. Shows drop zones while a tab is being dragged.
+  import { kbd } from "./platform";
   import type { Annotation, PdfLink, RecentDocument } from "./api";
   import AnnotationsPanel from "./annot/AnnotationsPanel.svelte";
   import AnnotEditor from "./annot/AnnotEditor.svelte";
@@ -12,6 +13,9 @@
   import InkBar from "./InkBar.svelte";
   import WhereWasI from "./WhereWasI.svelte";
   import GradingBar from "./grading/GradingBar.svelte";
+  import EquationBox from "./ai/EquationBox.svelte";
+  import EquationSnip from "./ai/EquationSnip.svelte";
+  import { startEquation } from "./ai/equation.svelte";
   import GradingDrawer from "./grading/GradingDrawer.svelte";
   import { grading } from "./grading/grading.svelte";
   import { HEADER_HEIGHT, saveLayout, term } from "./ai/terminal.svelte";
@@ -94,7 +98,7 @@
       const langs = await ocrLanguages();
       if (all) await tab.loadNoTextPages();
       await tab.runOcr(all ? [...(tab.noTextPages ?? [])] : [tab.page], langs);
-      notify.show({ text: "Text recognized. Save with Ctrl+S to keep it in the PDF." });
+      notify.show({ text: kbd("Text recognized. Save with Ctrl+S to keep it in the PDF.") });
     } catch (e) {
       notify.error(`OCR failed: ${e}`);
     }
@@ -235,6 +239,16 @@
           />
           <AnnotationsPanel tab={pdf} {topInset} />
           {#if pdf.tool === "draw"}<InkBar {topInset} />{/if}
+          {#if pdf.snipping}
+            <EquationSnip
+              tab={pdf}
+              {topInset}
+              onpick={(page, rect, at) => {
+                pdf.snipping = false;
+                startEquation(pdf, page, rect, at, pane.id);
+              }}
+            />
+          {/if}
           {#if pdf.welcomeBack && grading.session?.tab !== pdf}<WhereWasI tab={pdf} {topInset} />{/if}
           {#if grading.session && grading.session.tab === pdf}
             {#if grading.automated && grading.session.drawer}
@@ -346,6 +360,9 @@
     {#key editing.annot.id}
       <AnnotEditor tab={pdf} anchor={editing.anchor} annot={editing.annot} onclose={() => (editing = null)} />
     {/key}
+  {/if}
+  {#if pdf?.equation}
+    <EquationBox tab={pdf} />
   {/if}
   {#if pdf && placing}
     <AnnotEditor tab={pdf} anchor={placing.anchor} {placing} onclose={() => (placing = null)} />

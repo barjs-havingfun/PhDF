@@ -5,6 +5,7 @@
 <script lang="ts">
   // Left sidebar: document outline, page thumbnails or bookmarks — in grading mode, the exams
   // of the folder instead of the outline.
+  import { kbd } from "./platform";
   import { pageImageUrl } from "./api";
   import { grading } from "./grading/grading.svelte";
   import Icon from "./Icon.svelte";
@@ -88,7 +89,7 @@
       {/if}
     {:else if mode === "bookmarks"}
       <button class="add-mark" onclick={() => tab.toggleBookmark()}>
-        {tab.isBookmarked(tab.page) ? "Remove bookmark from" : "Bookmark"} page {tab.page + 1} <span class="key">Ctrl+B</span>
+        {tab.isBookmarked(tab.page) ? "Remove bookmark from" : "Bookmark"} page {tab.page + 1} <span class="key">{kbd("Ctrl+B")}</span>
       </button>
       {#if !tab.bookmarks.length}
         <p class="empty">No bookmarks yet.</p>

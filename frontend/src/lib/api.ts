@@ -79,6 +79,18 @@ export interface Annotation {
   modified: string | null;
   strokes: Point[][] | null;
   width: number | null;
+  font: TextFont | null; // free text
+  font_size: number | null;
+  bold: boolean | null;
+}
+
+export type TextFont = "sans" | "serif" | "mono";
+
+/** How a free-text box is written. */
+export interface TextStyle {
+  font: TextFont;
+  size: number;
+  bold: boolean;
 }
 
 export interface AnnotChange {
@@ -125,6 +137,7 @@ export interface PdfLink {
 
 export interface GradingFolder {
   folder: string;
+  key: string; // for settings: lower-cased only where paths ignore case
   title: string;
   table: string; // the grades table (.md)
   files: { rel: string; name: string }[];
@@ -138,6 +151,7 @@ export interface SearchHit {
 interface PyApi {
   app_info(): Promise<AppInfo>;
   pick_pdf(): Promise<string | null>;
+  startup_paths(): Promise<string[]>;
   pick_file(kind: "document" | "pdf" | "md"): Promise<string | null>;
   pick_new_md(name?: string): Promise<string | null>;
   open_window(paths: string[], x?: number, y?: number): Promise<string>;
@@ -191,13 +205,23 @@ interface PyApi {
     strokes?: Point[][] | null,
     width?: number | null,
     annotId?: string | null,
+    font?: TextFont | null,
+    fontSize?: number | null,
+    bold?: boolean,
   ): Promise<AnnotChange>;
   update_annotation(
     docId: string,
     id: string,
     color?: string | null,
     contents?: string | null,
+    font?: TextFont | null,
+    fontSize?: number | null,
+    bold?: boolean | null,
+    rect?: Rect | null,
   ): Promise<AnnotChange>;
+  equation_snip(docId: string, page: number, rect: Rect, folder?: string | null): Promise<{ png: string; tex: string }>;
+  equation_result(texPath: string): Promise<string | null>;
+  equation_cleanup(pngPath: string): Promise<void>;
   delete_annotation(docId: string, id: string): Promise<AnnotChange>;
   move_annotation(docId: string, id: string, dx: number, dy: number): Promise<AnnotChange>;
   save_document(docId: string): Promise<{ dirty: boolean; revs: Revs }>;

@@ -72,7 +72,7 @@ async function createXterm() {
   host.className = "phdf-xterm";
   host.style.cssText = "position:absolute;inset:0;padding:4px 0 0 8px;";
   xterm = new Terminal({
-    fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace',
+    fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", "Ubuntu Mono", "Liberation Mono", monospace',
     fontSize: 13,
     cursorBlink: true,
     scrollback: 5000,
@@ -112,6 +112,11 @@ async function startShell() {
       }
     }
   })();
+}
+
+/** The folder the shell was started in (null: the backend used the home folder). */
+export function terminalFolder(): string | null {
+  return cwd;
 }
 
 /** Make sure the terminal exists and its shell runs (started in `folder` the first time). */

@@ -79,3 +79,29 @@ def test_graded_copy_leaves_the_original_alone(tmp_path, monkeypatch):
     assert api.grading_copy(str(root), "s1/quiz.pdf") == path  # the marked copy is reused
     with pytest.raises(ValueError):
         api.grading_copy(str(root), "../outside.pdf")
+
+
+def test_startup_paths_keep_only_existing_pdfs_and_notes(tmp_path):
+    from phdf.app import startup_paths
+
+    pdf, note = tmp_path / "a.PDF", tmp_path / "n.md"
+    write_pdf(pdf)
+    note.write_text("# n", encoding="utf-8")
+    args = [str(pdf), str(note), str(tmp_path / "missing.pdf"), "--flag", str(tmp_path)]
+    assert startup_paths(args) == [str(pdf.resolve()), str(note.resolve())]
+
+
+def test_startup_paths_are_handed_out_once(tmp_path, monkeypatch):
+    api = make_api(tmp_path, monkeypatch)
+    api._core.startup_paths = ["x.pdf"]
+    assert api.startup_paths() == ["x.pdf"]
+    assert api.startup_paths() == []
+
+
+def test_grading_key_ignores_case_only_on_windows(tmp_path, monkeypatch):
+    import os
+
+    root = tmp_path / "MixedCase"
+    write_pdf(root / "e.pdf")
+    key = make_api(tmp_path, monkeypatch).grading_scan(str(root))["key"]
+    assert key == os.path.normcase(str(root))

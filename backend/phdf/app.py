@@ -7,6 +7,8 @@ Variables can also come from a `.env` file in the project root (see `.env.exampl
 import mimetypes
 import os
 import sys
+import threading
+from pathlib import Path
 
 import webview
 
@@ -31,10 +33,17 @@ def fix_mimetypes() -> None:
 def remember_geometry(window: webview.Window, key: str, store: Store) -> None:
     """Save a window's size, position and maximized state as it changes."""
     geo = dict(store.get_setting(key) or {})
+    timer: threading.Timer | None = None
 
     def save(**changes: object) -> None:
+        # Dragging a window fires many events: write once it has settled.
+        nonlocal timer
         geo.update(changes)
-        store.set_setting(key, geo)
+        if timer:
+            timer.cancel()
+        timer = threading.Timer(0.4, store.set_setting, args=(key, dict(geo)))
+        timer.daemon = True
+        timer.start()
 
     def on_resized(width: int, height: int) -> None:
         if not geo.get("maximized") and width > 200 and height > 200:
@@ -48,6 +57,23 @@ def remember_geometry(window: webview.Window, key: str, store: Store) -> None:
     window.events.moved += on_moved
     window.events.maximized += lambda: save(maximized=True)
     window.events.restored += lambda: save(maximized=False)
+
+    def flush() -> None:
+        if timer and timer.is_alive():
+            timer.cancel()
+            store.set_setting(key, dict(geo))
+
+    window.events.closed += flush
+
+
+def startup_paths(argv: list[str]) -> list[str]:
+    """PDF / Markdown files given on the command line ("Open with", a Linux .desktop file)."""
+    paths = []
+    for arg in argv:
+        path = Path(arg)
+        if path.suffix.lower() in (".pdf", ".md") and path.is_file():
+            paths.append(str(path.resolve()))
+    return paths
 
 
 def saved_window_ids(store: Store) -> list[str]:
@@ -78,6 +104,7 @@ def main() -> None:
     render_server = RenderServer(core.render).start()
     core.render_base_url = render_server.base_url
     core.on_closed_document = render_server.forget
+    core.startup_paths = startup_paths(sys.argv[1:])
 
     def create_window(window_id: str, x: int | None = None, y: int | None = None) -> None:
         api = Api(core, window_id)

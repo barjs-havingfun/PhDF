@@ -302,13 +302,19 @@
   }
 
   let overMovable = $state(false);
+  let hoverFrame = 0;
 
   function onMove(e: PointerEvent) {
     if (!dragging) {
-      // A move cursor over things that can be dragged.
-      const pt = tab.tool === "draw" || e.buttons ? null : pdfPoint(e.clientX, e.clientY);
-      const hit = pt && annotationAt(pt.page, pt.x, pt.y);
-      overMovable = !!hit && MOVABLE.includes(hit.kind) && (hit.kind !== "ink" || tab.selectedAnnot === hit.id);
+      // A move cursor over things that can be dragged (checked at most once per frame).
+      if (hoverFrame || !tab.annotations?.some((a) => MOVABLE.includes(a.kind))) return;
+      const { clientX, clientY, buttons } = e;
+      hoverFrame = requestAnimationFrame(() => {
+        hoverFrame = 0;
+        const pt = tab.tool === "draw" || buttons ? null : pdfPoint(clientX, clientY);
+        const hit = pt && annotationAt(pt.page, pt.x, pt.y);
+        overMovable = !!hit && MOVABLE.includes(hit.kind) && (hit.kind !== "ink" || tab.selectedAnnot === hit.id);
+      });
       return;
     }
     if (Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) <= 3 && !tab.moving) return;

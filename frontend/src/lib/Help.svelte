@@ -1,6 +1,7 @@
 <script lang="ts">
   // "How to use PhDF": a short tour of every feature, opened from the ? button.
   import Icon from "./Icon.svelte";
+  import { kbd } from "./platform";
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -23,6 +24,7 @@
         "Toolbar: sticky <b>note</b>, free <b>text</b> and <b>draw</b> tools; the list button shows every annotation.",
         "Click an annotation to recolour, comment or delete it (<b>Delete</b> also works); <b>Ctrl+Z</b> undoes. Save into the PDF with <b>Ctrl+S</b>.",
         "<b>Drag</b> a sticky note or text box to move it; to move a drawing, click it first, then drag.",
+        "Text boxes: pick <b>Sans / Serif / Mono</b>, the size and <b>B</b>old when you place one — or click a box later to change them.",
         "<b>Ctrl+B</b> bookmarks a page (list in the sidebar's <i>Marks</i>); ⋯ → <i>Export Highlights to Note</i> collects every highlight under a line at the end of the book's note.",
         "Scanned page? A bar offers <i>Recognize Text</i> (OCR) so you can select and search it.",
       ],
@@ -71,6 +73,7 @@
         "It sits above the note; drag the line between them to resize, click its header to fold it away, drag the header (or ⇩) to dock it at the bottom.",
         "Select text → ✦ <i>Ask AI</i>: <i>Explain / Summarize / Translate</i> send at once; <i>My own question…</i> lets you type first.",
         "✦ in the toolbar asks about the <b>whole document</b>, the current chapter or page (summaries, key ideas, study questions).",
+        "▾ next to ✦ → <i>Equation → LaTeX</i>: drag a rectangle around an equation; the AI writes its LaTeX, you check it and <i>Insert into Note</i> (at your cursor, as <code>$$ … $$</code>). The note's Preview shows the math.",
       ],
     },
     {
@@ -122,7 +125,7 @@
           <ul>
             {#each s.items as item}
               <!-- static, trusted strings written above -->
-              <li>{@html item}</li>
+              <li>{@html kbd(item)}</li>
             {/each}
           </ul>
         </section>
@@ -132,7 +135,7 @@
         <table>
           <tbody>
             {#each shortcuts as [what, keys]}
-              <tr><td>{what}</td><td class="keys">{keys}</td></tr>
+              <tr><td>{what}</td><td class="keys">{kbd(keys)}</td></tr>
             {/each}
           </tbody>
         </table>

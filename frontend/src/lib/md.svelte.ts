@@ -11,6 +11,10 @@ export class MdDoc {
   saving = $state(false);
   /** Bumped when the text changes from outside the editor (load, reload, inserted pins). */
   revision = $state(0);
+  /** Last cursor position in the editor (null until the user has clicked into it). */
+  cursor: number | null = null;
+  /** Ask the editor to show a position (after an insert). */
+  reveal = $state<{ pos: number; nonce: number } | null>(null);
 
   private savedText = "";
   private mtime: number | null = null;
@@ -65,6 +69,23 @@ export class MdDoc {
     this.revision++;
     this.flush();
     return at;
+  }
+
+  /** Insert a block as its own paragraph at the cursor (end of that line), or at the end. */
+  insertBlock(block: string) {
+    const text = this.text;
+    let at = text.length;
+    if (this.cursor !== null && this.cursor <= text.length) {
+      const nl = text.indexOf("\n", this.cursor);
+      at = nl < 0 ? text.length : nl;
+    }
+    const before = text.slice(0, at).replace(/\s*$/, "");
+    const after = text.slice(at).replace(/^\s*/, "");
+    const head = before ? `${before}\n\n` : "";
+    const next = `${head}${block.trim()}\n\n${after}`;
+    this.cursor = head.length + block.trim().length;
+    this.reveal = { pos: this.cursor, nonce: Date.now() };
+    this.replaceText(next.replace(/\n+$/, "\n"));
   }
 
   /** Replace the whole text from outside the editor (e.g. regenerated highlights). */

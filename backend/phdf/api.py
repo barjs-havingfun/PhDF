@@ -12,6 +12,7 @@ old ids as aliases: the frontend can keep using the id it was given for the whol
 
 import base64
 import json
+import os
 import re
 import shutil
 import sys
@@ -34,7 +35,7 @@ from phdf.docid import document_id
 from phdf.engine import PdfDocument, PdfEngine, Rect
 from phdf.engine.base import EDITABLE_KINDS
 from phdf.paths import data_dir
-from phdf.services import grading, ocr, parking, webview_memory
+from phdf.services import equations, grading, ocr, parking, webview_memory
 from phdf.services.terminal import Terminals
 
 FIT_MODES = ("width", "page", "none")
@@ -64,6 +65,7 @@ class Core:
         self.create_window: WindowFactory | None = None
         self.on_closed_document: Callable[[str], None] | None = None  # e.g. drop image cache
         self.windows: dict[str, Api] = {}
+        self.startup_paths: list[str] = []  # files from the command line, opened once
         self._docs: dict[str, PdfDocument] = {}
         self._paths: dict[str, str] = {}
         self._refs: Counter[str] = Counter()
@@ -186,6 +188,11 @@ class Api:
             "windowId": self._window_id,
             "platform": {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux"),
         }
+
+    def startup_paths(self) -> list[str]:
+        """Files PhDF was started with; handed to the first window that asks."""
+        paths, self._core.startup_paths = self._core.startup_paths, []
+        return paths
 
     def pick_file(self, kind: str = "document") -> str | None:
         """File dialog. kind: "document" (PDF or Markdown), "pdf" or "md"."""
@@ -317,6 +324,9 @@ class Api:
         strokes: list[list[tuple[float, float]]] | None = None,
         width: float | None = None,
         annot_id: str | None = None,
+        font: str | None = None,
+        font_size: float | None = None,
+        bold: bool = False,
     ) -> dict[str, Any]:
         if kind not in EDITABLE_KINDS:
             raise ValueError(f"unsupported annotation kind {kind!r}")
@@ -332,14 +342,27 @@ class Api:
                 strokes,
                 width,
                 annot_id,  # type: ignore[arg-type]
+                font,
+                font_size,
+                bold,
             )
             return self._changed(doc_id, page, {"annotation": asdict(annot)})
 
     def update_annotation(
-        self, doc_id: str, annot_id: str, color: str | None = None, contents: str | None = None
+        self,
+        doc_id: str,
+        annot_id: str,
+        color: str | None = None,
+        contents: str | None = None,
+        font: str | None = None,
+        font_size: float | None = None,
+        bold: bool | None = None,
+        rect: list[float] | None = None,
     ) -> dict[str, Any]:
         with self._core.lock:
-            annot = self._core.doc(doc_id).update_annotation(annot_id, color, contents)
+            annot = self._core.doc(doc_id).update_annotation(
+                annot_id, color, contents, font, font_size, bold, tuple(rect) if rect else None
+            )
             return self._changed(doc_id, annot.page, {"annotation": asdict(annot)})
 
     def delete_annotation(self, doc_id: str, annot_id: str) -> dict[str, Any]:
@@ -585,6 +608,8 @@ class Api:
         """The exam PDFs in a folder and where its grades table goes."""
         return {
             "folder": str(Path(folder)),
+            # Settings key: case-insensitive only where the file system is (Windows).
+            "key": os.path.normcase(str(Path(folder))),
             "title": Path(folder).name,
             "table": str(grading.table_path(folder)),
             "files": grading.scan(folder),
@@ -634,7 +659,25 @@ class Api:
 
     def term_start(self, cwd: str | None = None, cols: int = 80, rows: int = 24) -> str:
         """Start the user's shell (in `cwd`, e.g. the open PDF's folder). Returns a session id."""
+        equations.cleanup(equations.work_dir(cwd), older_than=3600)  # leftovers of earlier runs
         return self._terminals.start(cwd, cols, rows)
+
+    # --- equation → LaTeX (through the AI in the terminal) -----------------------------------
+
+    def equation_snip(
+        self, doc_id: str, page: int, rect: list[float], folder: str | None = None
+    ) -> dict[str, str]:
+        """Render a region of a page to a PNG the AI can read, next to where it will write the
+        LaTeX. Both live in a hidden temp folder inside the terminal's working folder."""
+        with self._core.lock:
+            png = self._core.doc(doc_id).render_page(page, equations.SCALE, tuple(rect))  # type: ignore[arg-type]
+        return equations.prepare(equations.work_dir(folder), png)
+
+    def equation_result(self, tex_path: str) -> str | None:
+        return equations.result(tex_path)
+
+    def equation_cleanup(self, png_path: str) -> None:
+        equations.remove(png_path)
 
     def term_read(self, session_id: str, timeout: float = 0.5) -> dict[str, Any]:
         """Long poll: new output (waits up to `timeout`), and whether the shell still runs."""
@@ -663,7 +706,18 @@ class Api:
     def ai_tools(self) -> dict[str, bool]:
         """Which AI command-line tools are installed on this computer (found on PATH)."""
         home = Path.home()
-        extra = [home / ".local" / "bin"]  # the native installers put them here
+        # A Mac app started from Finder (or a Linux launcher) gets a short PATH, so also look
+        # where the installers, Homebrew and npm put these tools.
+        extra = [
+            home / ".local" / "bin",
+            home / ".claude" / "local",
+            home / ".npm-global" / "bin",
+            home / ".volta" / "bin",
+            Path("/opt/homebrew/bin"),
+            Path("/usr/local/bin"),
+        ]
+        if appdata := os.environ.get("APPDATA"):
+            extra.append(Path(appdata) / "npm")
         found = {}
         for tool in ("claude", "codex"):
             found[tool] = bool(shutil.which(tool)) or any(

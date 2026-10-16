@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kbd } from "./platform";
   import { drag } from "./dnd.svelte";
   import Icon from "./Icon.svelte";
   import type { AnyTab as Tab } from "./tab.svelte";
@@ -53,11 +54,11 @@
       <span class="label">
         {#if tab.kind === "md"}<span class="md-badge">MD</span>{/if}{tab.title}
       </span>
-      {#if tab.dirty}<span class="dirty" title="Unsaved annotations (Ctrl+S)"></span>{/if}
+      {#if tab.dirty}<span class="dirty" title={kbd("Unsaved annotations (Ctrl+S)")}></span>{/if}
     </div>
   {/each}
   {#if dropIndex === pane.tabs.length}<span class="marker"></span>{/if}
-  <button class="new" class:active={pane.activeId === null} onclick={onnew} title="New tab (Ctrl+T)">
+  <button class="new" class:active={pane.activeId === null} onclick={onnew} title={kbd("New tab (Ctrl+T)")}>
     <Icon name="plus" size={14} />
   </button>
 </div>
