@@ -1,9 +1,9 @@
 # PhDF
 
-A lightweight, reader-first PDF app for heavy readers — with position memory, a built-in
+A lightweight, reader-first PDF app for heavy readers - with position memory, a built-in
 Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 
-> **Status:** early development (v0.5.7 — text styles, AI equation → LaTeX). See [`HANDOFF.md`](HANDOFF.md) for the
+> **Status:** early development (v0.5.8 - terminal tabs, default AI agent, steadier text selection). See [`HANDOFF.md`](HANDOFF.md) for the
 > full roadmap and design decisions.
 
 ## Keyboard shortcuts
@@ -35,32 +35,34 @@ On macOS use ⌘ for Ctrl and ⌥ for Alt (the app shows them that way); ⌃⌘F
 up to three side by side (drag the divider to resize); drop it outside the window to open it in a
 new window.
 
-**AI terminal:** Ctrl+` opens your shell in the PDF's folder above the note — run `claude` or
-`codex`. Drag its header to dock it at the bottom, drag the divider to resize, click the header to
-fold it away. Select text → ✦ *Ask AI* to explain, summarize or translate it, or to ask your own
+**AI terminal:** Ctrl+` opens your shell in the PDF's folder above the note. The first time, it
+asks for your **default AI agent** (Claude Code, Codex, Gemini CLI, or the command of any other terminal AI);
+from then on new terminals start it by themselves (change it in the terminal's header or in
+Settings). **+** in the header opens more terminals as tabs, each with its own shell. Drag its
+header to dock it at the bottom, drag the divider to resize, click the header to fold it away. Select text → ✦ *Ask AI* to explain, summarize or translate it, or to ask your own
 question; ✦ in the toolbar asks about the whole document, a chapter or a page. **▾ next to ✦ →
 Equation → LaTeX**: drag a rectangle around an equation and the AI writes its LaTeX; check it in
 the preview and insert it into the note at your cursor as `$$ … $$` (the note's Preview typesets
 `$…$` / `$$…$$` math with KaTeX). The image is a temporary file in a hidden `.phdf-tmp` folder
 where the terminal runs and is deleted as soon as the answer arrives. New to
-`claude` / `codex`? **How to** in the terminal's header shows how to install them for your OS. The
+terminal AIs? **How to** in the terminal's header shows how to install Claude Code, Codex or Gemini CLI for your OS. The
 **?** button explains everything in the app.
 
 **Read & Focus:** the *Read* menu (top left) turns on a reading ruler, zen mode, full screen
-or a page tint — each on its own. *Focus* has a small pomodoro and shows how long the chapter
+or a page tint - each on its own. *Focus* has a small pomodoro and shows how long the chapter
 and the document will take at your reading pace (fast scrolling doesn't count). The lightbulb
 (Ctrl+Shift+Space) parks a stray thought in `<book>.parking.md` next to the PDF; it shows up in the
 **Parking** tab of the note panel.
 
 **OCR, export & Obsidian:** scanned pages show a *Recognize Text* bar (language files are
-downloaded on first use — no Tesseract install needed). The ⋯ menu exports the document as
+downloaded on first use - no Tesseract install needed). The ⋯ menu exports the document as
 Markdown (to a file or your Obsidian vault) and copies notes to Obsidian; *Send to Obsidian* in
 the selection menu adds the quote to the book's note in your vault (set it in ⋯ → Settings).
 
 **Grading:** the *Grade* button (top right, next to **?**) asks for a folder of exam PDFs (subfolders included, e.g. a
 Moodle download) and opens them one by one. Mark them with any tool; **Done** saves and opens the
 next one, **Prev** goes back, the sidebar's *Exams* list jumps anywhere. The originals are never
-changed — the marked copies are saved in `graded/`. Beside the exam is the folder's grades table,
+changed - the marked copies are saved in `graded/`. Beside the exam is the folder's grades table,
 `<folder>.grades.md` (`# | Name | Grade | Comment`, add your own columns; names start empty). With *Automated* on, a
 drawer asks who wrote each exam and the grade typed next to Done goes into the table; *CSV*
 exports it.
@@ -68,12 +70,12 @@ exports it.
 **Annotations & notes:** select text to highlight / underline / strike it or send it to the
 PDF's integrated note (**Note in MD**). The note is `<pdf name>.md` next to the PDF and opens beside
 it in the same tab (drag a sticky note or text box to move it; click a drawing, then drag it;
-text boxes have Sans / Serif / Mono, a size and bold); each quote starts with a pin like `⎘ phdf · p.12 · §2.1 · #k7q2` — click
+text boxes have Sans / Serif / Mono, a size and bold); each quote starts with a pin like `⎘ phdf · p.12 · §2.1 · #k7q2` - click
 **Go to PDF ↗** to jump to the highlight, or click the highlight to jump to its note.
 
 ## Upcoming features
 
-Not scheduled yet — ideas waiting for their turn:
+Not scheduled yet - ideas waiting for their turn:
 
 - `phdf://` links: click a quote's pin in Obsidian to open PhDF at that page
 - Send quotes to the note that is open in Obsidian right now
@@ -101,12 +103,12 @@ npm --prefix frontend install
 npm --prefix frontend run build
 uv run phdf
 
-# option 2: hot reload — run the Vite dev server, then start the app in dev mode
+# option 2: hot reload - run the Vite dev server, then start the app in dev mode
 npm --prefix frontend run dev
 PHDF_DEV=1 uv run phdf          # PowerShell: $env:PHDF_DEV=1; uv run phdf
 ```
 
-Settings like `PHDF_DEV` can also go in a `.env` file — copy `.env.example` to `.env`
+Settings like `PHDF_DEV` can also go in a `.env` file - copy `.env.example` to `.env`
 (it is git-ignored).
 
 Checks:
@@ -143,7 +145,7 @@ sudo apt install libgirepository-2.0-dev libcairo2-dev pkg-config gir1.2-webkit2
 
 To get PhDF in the app menu and in "Open with" for PDFs, copy
 `packaging/linux/phdf.desktop` to `~/.local/share/applications/` (it runs `phdf`, so the command
-must be on your PATH). OCR needs one TrueType font (DejaVu, Liberation or Noto — found
+must be on your PATH). OCR needs one TrueType font (DejaVu, Liberation or Noto - found
 automatically, also through `fc-match`).
 
 ## License

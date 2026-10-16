@@ -1,6 +1,7 @@
 // Small differences between Windows / Linux and macOS in the page.
 
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+export const isWindows = /Win/.test(navigator.platform || navigator.userAgent);
 
 /** A shortcut label as the user's keyboard shows it: "Ctrl+Shift+C" → "⇧⌘C" on a Mac. */
 export function kbd(label: string): string {

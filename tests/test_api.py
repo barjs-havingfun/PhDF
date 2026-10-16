@@ -60,3 +60,26 @@ def test_saved_window_ids_migrates_legacy_session(tmp_path):
     assert store.get_setting("session.main") == {"paths": ["/a.pdf"], "active": 0}
     store.set_setting("session.abc", {})
     assert saved_window_ids(store) == ["abc", "main"]
+
+
+def test_rename_note_keeps_it_with_its_pdf(tmp_path, monkeypatch, sample_pdf):
+    from phdf.api import Api, Core
+    from phdf.db import Store
+    from phdf.engine import default_engine
+
+    monkeypatch.setenv("PHDF_DATA_DIR", str(tmp_path / "data"))
+    api = Api(Core(default_engine(), Store(tmp_path / "db.sqlite")), "main")
+    note = sample_pdf.with_suffix(".md")
+    note.write_text("# hi", encoding="utf-8")
+    new = api.rename_file(str(note), "  My notes ")
+    assert new == str(note.with_name("My notes.md"))
+    assert note.with_name("My notes.md").read_text(encoding="utf-8") == "# hi"
+    assert api.md_for_pdf(str(sample_pdf))["path"] == new  # still the PDF's note
+    other = note.with_name("Other.md")
+    other.write_text("x", encoding="utf-8")
+    import pytest
+
+    with pytest.raises(ValueError):
+        api.rename_file(new, "Other")
+    with pytest.raises(ValueError):
+        api.rename_file(new, "bad/name")

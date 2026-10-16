@@ -48,6 +48,20 @@
     folder: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
     check: "M5 12.5l4.5 4.5L19 7",
     link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
+    bold: "M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z",
+    italic: "M10 5h8M6 19h8M14 5l-4 14",
+    highlighter: "M15 4l5 5-9 9H6v-5zM13 6l5 5M4 21h16",
+    code: "M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5.5l-3 13",
+    sigma: "M17 6.5V5H7l6 7-6 7h10v-1.5",
+    comment: "M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z",
+    eraser: "M9 20h11M6 15l7.5-7.5a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11.5 20H9l-3-3a1.4 1.4 0 0 1 0-2z",
+    listBullet: "M9 6h11M9 12h11M9 18h11M4.5 6h.5M4.5 12h.5M4.5 18h.5",
+    listNumber: "M10 6h10M10 12h10M10 18h10M4 4.5l1.5-1V8.5M3.5 14.5a1.4 1.4 0 0 1 2.8.3L3.5 18.5h3",
+    listTask: "M4 4.5h4.5V9H4zM4 15h4.5v4.5H4zM5 17.3l1.1 1.1 1.6-2.2M11.5 7h8.5M11.5 17.3h8.5",
+    heading: "M5 5v14M13 5v14M5 12h8M16.5 10.5L19 9v10",
+    table: "M4 5h16v14H4zM4 10h16M4 14.5h16M10 5v14",
+    clipboard: "M9 3.5h6V7H9zM9 5.2H7a1 1 0 0 0-1 1V20a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6.2a1 1 0 0 0-1-1h-2",
+    grip: "M9 6h.5M15 6h.5M9 12h.5M15 12h.5M9 18h.5M15 18h.5",
   } as const;
 
   export type IconName = keyof typeof PATHS;

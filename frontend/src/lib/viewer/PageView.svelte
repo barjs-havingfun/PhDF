@@ -3,6 +3,68 @@
   // One canvas shared by every page (a document can have thousands of pages).
   const measure = document.createElement("canvas").getContext("2d")!;
   measure.font = "100px sans-serif";
+
+  // Text selection. The text layer is absolutely placed spans with gaps between them; over a gap
+  // the browser puts the selection's end at the end of the layer, so a slow drag selects the rest
+  // of the page. Like PDF.js, an "end of content" box covers the gaps while selecting and is moved
+  // right next to the selection's moving end, so a gap resolves to where the pointer is.
+  const layers = new Map<HTMLElement, HTMLElement>(); // text layer -> its end-of-content box
+  let prevRange: Range | null = null;
+  let pointerDown = false;
+
+  function reset(end: HTMLElement, layer: HTMLElement) {
+    layer.append(end);
+    layer.classList.remove("selecting");
+  }
+
+  function resetAll() {
+    for (const [layer, end] of layers) reset(end, layer);
+    prevRange = null;
+  }
+
+  function onSelectionChange() {
+    const sel = getSelection();
+    if (!sel?.rangeCount) return resetAll();
+    const range = sel.getRangeAt(0);
+    for (const [layer, end] of layers) {
+      if (range.intersectsNode(layer)) layer.classList.add("selecting");
+      else reset(end, layer);
+    }
+    // The end that moved: the start when the end stayed put (dragging backwards).
+    const modifyStart =
+      !!prevRange &&
+      (range.compareBoundaryPoints(Range.END_TO_END, prevRange) === 0 ||
+        range.compareBoundaryPoints(Range.START_TO_END, prevRange) === 0);
+    prevRange = range.cloneRange();
+    let anchor: Node | null = modifyStart ? range.startContainer : range.endContainer;
+    if (anchor.nodeType === Node.TEXT_NODE) anchor = anchor.parentNode;
+    if (!(anchor instanceof HTMLElement) || !anchor.parentElement) return;
+    const layer = anchor.parentElement;
+    const end = layers.get(layer);
+    if (!end) return; // not a span of a text layer
+    if (!modifyStart && range.endOffset === 0) {
+      // The end sits before a span's first letter: put the box after the previous span instead,
+      // or it would land inside the selection.
+      let prev = anchor.previousElementSibling;
+      while (prev && prev.tagName !== "SPAN") prev = prev.previousElementSibling;
+      if (prev) anchor = prev;
+    }
+    layer.insertBefore(end, modifyStart ? anchor : (anchor as Element).nextSibling);
+  }
+
+  document.addEventListener("selectionchange", onSelectionChange);
+  document.addEventListener("pointerdown", () => (pointerDown = true));
+  document.addEventListener("pointerup", () => {
+    pointerDown = false;
+    resetAll();
+  });
+  document.addEventListener("keyup", () => {
+    if (!pointerDown) resetAll();
+  });
+  window.addEventListener("blur", () => {
+    pointerDown = false;
+    resetAll();
+  });
 </script>
 
 <script lang="ts">
@@ -31,6 +93,7 @@
     $props();
 
   const size = $derived(tab.doc.pageSizes[index]);
+  const pending = $derived(tab.pendingInk.filter((s) => s.page === index)); // saved strokes not yet in the image
   let lines = $state<TextLine[]>([]);
   let links = $state<PdfLink[]>([]);
   // Keep showing the last image while a sharper one loads after zooming.
@@ -46,9 +109,15 @@
   $effect(() => {
     if (!src) return;
     const target = src;
+    const rev = tab.revs[index] ?? 0;
     const img = new Image();
     img.onload = () => {
-      if (target === src) shownSrc = target;
+      if (target !== src) return;
+      shownSrc = target;
+      // Strokes drawn on this page are now part of the image: stop drawing them on top.
+      if (tab.pendingInk.some((s) => s.page === index && s.rev !== null && s.rev <= rev)) {
+        tab.pendingInk = tab.pendingInk.filter((s) => !(s.page === index && s.rev !== null && s.rev <= rev));
+      }
     };
     img.src = target;
   });
@@ -58,6 +127,23 @@
     void tab.revs[index]; // reload after OCR added a text layer
     tab.textLines(index).then((l) => (lines = l));
     tab.links(index).then((l) => (links = l));
+  });
+
+  let textEl = $state<HTMLElement>();
+  $effect(() => {
+    const layer = textEl;
+    if (!layer) return;
+    const end = document.createElement("div");
+    end.className = "end-of-content";
+    layer.append(end);
+    layers.set(layer, end);
+    const down = () => layer.classList.add("selecting");
+    layer.addEventListener("pointerdown", down);
+    return () => {
+      layers.delete(layer);
+      layer.removeEventListener("pointerdown", down);
+      end.remove();
+    };
   });
 
   function spanStyle(span: TextLine["spans"][number]) {
@@ -108,15 +194,20 @@
         <div class="hit" class:active={i === activeHit} style={box(rect)}></div>
       {/each}
 
-      <div class="text">
+      <div class="text" bind:this={textEl}>
         {#each lines as line}
           {#each line.spans as span}<span style={spanStyle(span)}>{span.text}</span>{/each}<br />
         {/each}
       </div>
 
-      {#if stroke}
+      {#if stroke || pending.length}
         <svg class="ink" viewBox="0 0 {size[0]} {size[1]}" width={size[0]} height={size[1]}>
-          <polyline points={stroke.map((p) => p.join(",")).join(" ")} style="stroke:{ink.color};stroke-width:{ink.width}" />
+          {#each pending as s}
+            <polyline points={s.points.map((p) => p.join(",")).join(" ")} style="stroke:{s.color};stroke-width:{s.width}" />
+          {/each}
+          {#if stroke}
+            <polyline points={stroke.map((p) => p.join(",")).join(" ")} style="stroke:{ink.color};stroke-width:{ink.width}" />
+          {/if}
         </svg>
       {/if}
 
@@ -185,12 +276,14 @@
   .text {
     position: absolute;
     inset: 0;
+    z-index: 0;
     user-select: text;
     cursor: text;
   }
 
   .text span {
     position: absolute;
+    z-index: 1;
     white-space: pre;
     color: transparent;
     font-family: sans-serif;
@@ -204,6 +297,19 @@
 
   .text br::selection {
     background: transparent;
+  }
+
+  /* Covers the gaps between spans only while selecting (see the module script). */
+  .text :global(.end-of-content) {
+    position: absolute;
+    inset: 100% 0 0;
+    z-index: 0;
+    cursor: inherit;
+    user-select: none;
+  }
+
+  .text:global(.selecting) :global(.end-of-content) {
+    top: 0;
   }
 
   .hit {

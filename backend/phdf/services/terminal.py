@@ -7,6 +7,7 @@ the JS bridge simple and still feels instant.
 
 import contextlib
 import os
+import re
 import shutil
 import sys
 import threading
@@ -15,8 +16,20 @@ from pathlib import Path
 
 import psutil
 
-AI_PROCESS_NAMES = {"claude", "codex"}  # matched against child process names (no extension)
+AI_PROCESS_NAMES = {"claude", "codex", "gemini"}  # child process names (no extension)
 MAX_BUFFER = 1 << 20  # unread output kept if the page stops polling (1 MB)
+
+
+def command_name(command: str) -> str | None:
+    """The program a command line starts, as a process name: 'gemini' for
+    '"C:\\Tools\\gemini.exe" --yolo', 'aider' for 'aider --model x'."""
+    command = command.strip()
+    if command.startswith(('"', "'")):
+        program = command[1:].split(command[0], 1)[0]
+    else:
+        program = command.split(maxsplit=1)[0] if command else ""
+    name = Path(program).stem.lower()
+    return name or None
 
 
 def default_shell() -> list[str]:
@@ -85,18 +98,18 @@ class Session:
         if self._alive and cols > 0 and rows > 0:
             self._proc.setwinsize(rows, cols)
 
-    def running_ai(self) -> str | None:
-        """'claude' / 'codex' if one of them runs inside this shell."""
+    def running_ai(self, names: set[str] = AI_PROCESS_NAMES) -> str | None:
+        """The AI CLI (one of `names`, e.g. 'claude' / 'codex') running inside this shell."""
         try:
             for child in psutil.Process(self._proc.pid).children(recursive=True):
                 name = Path(child.name()).stem.lower()
-                if name in AI_PROCESS_NAMES:
+                if name in names:
                     return name
                 # npm-installed CLIs run as node with the tool's script on the command line
                 if name == "node":
                     cmd = " ".join(child.cmdline()).lower()
-                    for ai in AI_PROCESS_NAMES:
-                        if ai in cmd:
+                    for ai in names:
+                        if re.search(rf"(?<!\w){re.escape(ai)}(?!\w)", cmd):
                             return ai
         except (psutil.Error, OSError):
             pass

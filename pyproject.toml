@@ -1,6 +1,6 @@
 [project]
 name = "phdf"
-version = "0.5.7"
+version = "0.6.0"
 description = "A lightweight, reader-first PDF app with Markdown and Obsidian integration."
 readme = "README.md"
 license = "AGPL-3.0-or-later"

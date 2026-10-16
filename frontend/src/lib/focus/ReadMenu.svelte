@@ -29,8 +29,6 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="menu-backdrop" onclick={onclose}></div>
 <div class="dropdown" role="menu">
   <div class="title">Read Mode</div>
 
@@ -80,12 +78,6 @@
 </div>
 
 <style>
-  .menu-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 20;
-  }
-
   .dropdown {
     position: absolute;
     top: calc(100% + 6px);

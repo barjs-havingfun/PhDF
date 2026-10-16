@@ -6,6 +6,11 @@
     byPage: Map<number, PdfRect[]>; // PDF-space rects per page, one per line
     box: DOMRect; // on screen, for placing the menu
   }
+
+  /** What was right-clicked: an annotation or a spot on a page (PDF points). */
+  export type ContextTarget =
+    | { kind: "annot"; annot: import("../api").Annotation }
+    | { kind: "page"; page: number; x: number; y: number };
 </script>
 
 <script lang="ts">
@@ -16,6 +21,7 @@
   import { ink, type Jump, type Tab } from "../tab.svelte";
   import type { Point } from "../api";
   import PageView from "./PageView.svelte";
+  import { mergeLines } from "./rects";
   import { noteScroll, read, RULER_SIZES } from "../reading.svelte";
 
   interface Props {
@@ -27,9 +33,11 @@
     onannot: (annot: Annotation, event: MouseEvent) => void;
     /** Click on a page while the note/text tool is active. */
     onplace: (page: number, x: number, y: number, event: MouseEvent) => void;
+    /** Right-click on an annotation or an empty spot (on selected text: `onselection`). */
+    oncontext: (target: ContextTarget, event: MouseEvent) => void;
   }
 
-  let { tab, topInset, invert, onlink, onselection, onannot, onplace }: Props = $props();
+  let { tab, topInset, invert, onlink, onselection, onannot, onplace, oncontext }: Props = $props();
 
   const PT_TO_PX = 96 / 72;
   const GAP = 14;
@@ -227,22 +235,22 @@
     return { text: sel.toString(), byPage, box: range.getBoundingClientRect() };
   }
 
-  /** Union rects that sit on the same text line. */
-  function mergeLines(rects: Rect[]): Rect[] {
-    const sorted = [...rects].sort((a, b) => a[1] - b[1] || a[0] - b[0]);
-    const lines: Rect[] = [];
-    for (const r of sorted) {
-      const last = lines[lines.length - 1];
-      const overlap = last ? Math.min(last[3], r[3]) - Math.max(last[1], r[1]) : 0;
-      if (last && overlap > 0.5 * Math.min(last[3] - last[1], r[3] - r[1])) {
-        lines[lines.length - 1] = [Math.min(last[0], r[0]), Math.min(last[1], r[1]), Math.max(last[2], r[2]), Math.max(last[3], r[3])];
-      } else lines.push(r);
-    }
-    return lines;
-  }
 
   // Freehand ink (draw tool): one stroke per press, added as an ink annotation on release.
-  let drawing = $state<{ page: number; points: Point[] } | null>(null);
+  // Points go into a plain array (no reactive proxy per point) and the live line is redrawn at
+  // most once per frame; after release the stroke stays on screen until the page image with the
+  // saved drawing has loaded (`tab.pendingInk`, cleared by PageView).
+  let drawing: { page: number; points: Point[] } | null = null;
+  let liveStroke = $state.raw<{ page: number; points: Point[] } | null>(null);
+  let strokeFrame = 0;
+
+  function showStroke() {
+    if (strokeFrame) return;
+    strokeFrame = requestAnimationFrame(() => {
+      strokeFrame = 0;
+      liveStroke = drawing ? { page: drawing.page, points: drawing.points.slice() } : null;
+    });
+  }
 
   function startStroke(e: PointerEvent) {
     const pt = pdfPoint(e.clientX, e.clientY);
@@ -254,6 +262,7 @@
       // synthetic event
     }
     drawing = { page: pt.page, points: [[pt.x, pt.y]] };
+    showStroke();
     return true;
   }
 
@@ -262,17 +271,33 @@
     const el = scroller.querySelector<HTMLElement>(`.page[data-page="${drawing.page}"]`);
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const x = (e.clientX - r.left) / cssScale;
-    const y = (e.clientY - r.top) / cssScale;
-    const [lx, ly] = drawing.points[drawing.points.length - 1];
-    if (Math.hypot(x - lx, y - ly) >= 1) drawing.points.push([x, y]);
+    // The browser may batch several pen positions into one event: use them all (smoother lines).
+    for (const ev of e.getCoalescedEvents?.() ?? [e]) {
+      const x = (ev.clientX - r.left) / cssScale;
+      const y = (ev.clientY - r.top) / cssScale;
+      const [lx, ly] = drawing.points[drawing.points.length - 1];
+      if (Math.hypot(x - lx, y - ly) >= 0.75) drawing.points.push([x, y]);
+    }
+    showStroke();
   }
 
   async function endStroke() {
     const stroke = drawing;
     drawing = null;
+    cancelAnimationFrame(strokeFrame);
+    strokeFrame = 0;
+    liveStroke = null;
     if (!stroke || stroke.points.length < 2) return;
-    await tab.addAnnotation(stroke.page, "ink", [], ink.color, "", [stroke.points], ink.width);
+    const pending = { page: stroke.page, points: stroke.points, color: ink.color, width: ink.width, rev: null as number | null };
+    tab.pendingInk = [...tab.pendingInk, pending];
+    try {
+      await tab.addAnnotation(stroke.page, "ink", [], ink.color, "", [stroke.points], ink.width);
+      // Shown until the page image of this revision (with the drawing in it) has loaded.
+      tab.pendingInk = tab.pendingInk.map((s) => (s === pending ? { ...s, rev: tab.revs[stroke.page] ?? 0 } : s));
+    } catch (e) {
+      tab.pendingInk = tab.pendingInk.filter((s) => s !== pending);
+      throw e;
+    }
   }
 
   // Reading ruler: a band that follows the pointer; everything else is dimmed.
@@ -376,6 +401,23 @@
     });
   }
 
+  function onContextMenu(e: MouseEvent) {
+    e.preventDefault(); // no browser menu
+    const pt = pdfPoint(e.clientX, e.clientY);
+    if (!pt) return;
+    // On selected text: the selection menu (copy, highlight, Ask AI…), opened at the pointer.
+    const sel = readSelection();
+    const range = sel ? getSelection()?.getRangeAt(0) : null;
+    const pad = 4;
+    const onSel = [...(range?.getClientRects() ?? [])].some(
+      (r) => e.clientX >= r.left - pad && e.clientX <= r.right + pad && e.clientY >= r.top - pad && e.clientY <= r.bottom + pad,
+    );
+    if (sel && onSel) return onselection({ ...sel, box: new DOMRect(e.clientX - 1, e.clientY - 1, 2, 2) });
+    const hit = annotationAt(pt.page, pt.x, pt.y);
+    if (hit) tab.selectedAnnot = hit.id;
+    oncontext(hit ? { kind: "annot", annot: hit } : { kind: "page", ...pt }, e);
+  }
+
   function annotationAt(page: number, x: number, y: number): Annotation | undefined {
     const pad = 2;
     // Last drawn wins, like in the PDF itself.
@@ -387,7 +429,8 @@
   function onWheel(e: WheelEvent) {
     if (!e.ctrlKey) return;
     e.preventDefault();
-    zoomBy(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+    // In proportion to the scroll: a touchpad pinch zooms smoothly, a wheel notch about 10%.
+    zoomBy(Math.min(1.25, Math.max(0.8, Math.exp(-e.deltaY * 0.001))));
   }
 
   // Perform jumps requested through the tab (links, outline, search, history, restore).
@@ -447,6 +490,7 @@
   onpointerdown={onPointerDown}
   onpointermove={(e) => (onPointerMove(e), onMove(e), onRulerMove(e))}
   onpointerup={onPointerUp}
+  oncontextmenu={onContextMenu}
 >
   <div class="content" style="height:{contentHeight}px;width:{contentWidth}px">
     {#each mounted as i (i)}
@@ -463,7 +507,7 @@
         {invert}
         hits={hits?.rects ?? []}
         activeHit={hits?.active ?? -1}
-        stroke={drawing?.page === i ? drawing.points : null}
+        stroke={liveStroke?.page === i ? liveStroke.points : null}
         {onlink}
       />
     {/each}

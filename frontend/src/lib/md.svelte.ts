@@ -54,6 +54,13 @@ export class MdDoc {
     await this.load();
   }
 
+  /** Rename the file in its folder (throws with a readable message, e.g. the name is taken). */
+  async rename(name: string) {
+    await this.flush();
+    this.path = await (await api()).rename_file(this.path, name);
+    if (this.exists) this.mtime = await (await api()).file_mtime(this.path);
+  }
+
   /** Called by the editor on every edit. */
   edit(text: string) {
     this.text = text;

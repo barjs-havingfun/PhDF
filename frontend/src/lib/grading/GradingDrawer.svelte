@@ -25,7 +25,7 @@
 
 <div class="drawer" style="top:{topInset}px" role="dialog" aria-label="Who wrote this exam?">
   <div class="row">
-    <span class="label">Exam {session.index + 1} — who is it?</span>
+    <span class="label">Exam {session.index + 1}: who is it?</span>
     <input bind:this={input} bind:value={session.ident} onkeydown={onKey} placeholder="Name or student number" spellcheck="false" />
     <button class="ok" onclick={() => session.confirmIdent()}>OK</button>
   </div>

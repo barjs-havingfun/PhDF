@@ -1,6 +1,7 @@
 <script lang="ts">
-  // Terminal "How to": install and sign in to Claude Code or Codex, step by step, per OS.
-  // Commands are from the official docs (code.claude.com/docs/en/setup, github.com/openai/codex).
+  // Terminal "How to": install and sign in to Claude Code, Codex or Gemini CLI, step by step, per
+  // OS. Commands are from the official docs (code.claude.com/docs/en/setup, github.com/openai/codex,
+  // the @google/gemini-cli README). Any other terminal AI works the same way in PhDF.
   import { copyText } from "../platform";
   import { onMount } from "svelte";
   import { api } from "../api";
@@ -10,11 +11,11 @@
   let { onclose }: { onclose: () => void } = $props();
 
   type Os = "windows" | "macos" | "linux";
-  type Tool = "claude" | "codex";
+  type Tool = "claude" | "codex" | "gemini";
 
   let os = $state<Os>("windows");
   let tool = $state<Tool>("claude");
-  let installed = $state<Record<Tool, boolean>>({ claude: false, codex: false });
+  let installed = $state<Record<Tool, boolean>>({ claude: false, codex: false, gemini: false });
   let copied = $state<string | null>(null);
 
   onMount(async () => {
@@ -35,21 +36,30 @@
       macos: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
       linux: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
     },
+    gemini: {
+      windows: "npm install -g @google/gemini-cli",
+      macos: "npm install -g @google/gemini-cli",
+      linux: "npm install -g @google/gemini-cli",
+    },
   };
 
-  const NAME: Record<Tool, string> = { claude: "Claude Code", codex: "Codex" };
-  const MAKER: Record<Tool, string> = { claude: "Anthropic", codex: "OpenAI" };
-  const SITE: Record<Tool, string> = { claude: "claude.ai", codex: "chatgpt.com" };
+  const NAME: Record<Tool, string> = { claude: "Claude Code", codex: "Codex", gemini: "Gemini CLI" };
+  const MAKER: Record<Tool, string> = { claude: "Anthropic", codex: "OpenAI", gemini: "Google" };
+  const SITE: Record<Tool, string> = { claude: "claude.ai", codex: "chatgpt.com", gemini: "npmjs.com" };
 
   const installExplain = $derived(
-    os === "windows"
-      ? `<code>irm</code> downloads ${MAKER[tool]}'s official install script from ${SITE[tool]}, and <code>iex</code> runs it. It installs ${NAME[tool]} for your Windows user only — no administrator rights needed, nothing else on your computer changes.`
-      : `<code>curl</code> downloads ${MAKER[tool]}'s official install script from ${SITE[tool]}, and <code>| ${tool === "claude" ? "bash" : "sh"}</code> runs it. It installs ${NAME[tool]} into your home folder only — no <code>sudo</code>, nothing else on your computer changes.`,
+    tool === "gemini"
+      ? `It needs <b>Node.js 20 or newer</b> first (see the link at the bottom). <code>npm</code> then downloads Google's official <code>@google/gemini-cli</code> package and installs the <code>gemini</code> command for your user.`
+      : os === "windows"
+      ? `<code>irm</code> downloads ${MAKER[tool]}'s official install script from ${SITE[tool]}, and <code>iex</code> runs it. It installs ${NAME[tool]} for your Windows user only: no administrator rights needed, nothing else on your computer changes.`
+      : `<code>curl</code> downloads ${MAKER[tool]}'s official install script from ${SITE[tool]}, and <code>| ${tool === "claude" ? "bash" : "sh"}</code> runs it. It installs ${NAME[tool]} into your home folder only: no <code>sudo</code>, nothing else on your computer changes.`,
   );
 
   const account = $derived(
-    tool === "claude"
-      ? "a browser window opens: sign in with your Claude account. Claude Code needs a <b>Pro, Max, Team or Enterprise</b> plan (or an Anthropic Console account) — the free plan doesn't include it."
+    tool === "gemini"
+      ? "choose <b>Sign in with Google</b> and finish in the browser. A personal Google account has a free tier (about 1,000 requests a day)."
+      : tool === "claude"
+      ? "a browser window opens: sign in with your Claude account. Claude Code needs a <b>Pro, Max, Team or Enterprise</b> plan (or an Anthropic Console account). The free plan doesn't include it."
       : "choose <b>Sign in with ChatGPT</b> and finish in the browser. It works with ChatGPT <b>Plus, Pro, Business, Edu or Enterprise</b> plans (an API key also works, with extra setup).",
   );
 
@@ -67,7 +77,7 @@
 {#snippet commandBox(command: string)}
   <div class="cmd">
     <code>{command}</code>
-    <button class="mini primary" onclick={() => type(command)} title="Types it into the terminal — you press Enter">
+    <button class="mini primary" onclick={() => type(command)} title="Types it into the terminal, then you press Enter">
       Type in terminal
     </button>
     <button class="mini" onclick={() => copy(command)}>{copied === command ? "Copied" : "Copy"}</button>
@@ -78,7 +88,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={(e) => e.target === e.currentTarget && onclose()}>
-  <div class="sheet" role="dialog" aria-label="Set up Claude Code or Codex">
+  <div class="sheet" role="dialog" aria-label="Set up an AI agent">
     <header>
       <span class="badge"><Icon name="terminal" size={18} /></span>
       <div>
@@ -95,7 +105,7 @@
         {/each}
       </div>
       <div class="seg" role="tablist" aria-label="Which AI">
-        {#each ["claude", "codex"] as key}
+        {#each ["claude", "codex", "gemini"] as key}
           <button role="tab" aria-selected={tool === key} onclick={() => (tool = key as Tool)}>
             {NAME[key as Tool]}
             {#if installed[key as Tool]}<span class="ok" title="Installed on this computer">✓</span>{/if}
@@ -108,11 +118,15 @@
       <h3>What is this terminal?</h3>
       <p>
         It is your computer's own command line ({os === "windows" ? "PowerShell" : "the shell"}), opened in the folder
-        of the PDF you're reading. Whatever you type runs on <b>your</b> computer. PhDF itself sends nothing anywhere —
+        of the PDF you're reading. Whatever you type runs on <b>your</b> computer. PhDF itself sends nothing anywhere:
         {NAME[tool]} is a separate program by {MAKER[tool]} that you install once and then talk to here.
       </p>
+      <p>
+        Claude Code, Codex and Gemini CLI are examples: <b>any AI that runs in a terminal</b> works the same way. Install it
+        with its own instructions, then pick it as your agent (its command) in the terminal's agent button or Settings.
+      </p>
       {#if installed[tool]}
-        <p class="good">✓ {NAME[tool]} is already installed on this computer — skip to step 4.</p>
+        <p class="good">✓ {NAME[tool]} is already installed on this computer. Skip to step 4.</p>
       {/if}
     </section>
 
@@ -151,6 +165,12 @@
       </li>
     </ol>
 
+    {#if tool === "gemini"}
+      <p class="foot">
+        Needs <button class="link" onclick={async () => (await api()).open_external("https://nodejs.org/en/download")}>Node.js 20 or newer</button>
+        (the LTS version). {#if os === "macos"}On a Mac, <code>brew install gemini-cli</code> also works.{/if}
+      </p>
+    {/if}
     {#if os === "windows" && tool === "claude"}
       <p class="foot">
         Optional: <button class="link" onclick={async () => (await api()).open_external("https://git-scm.com/downloads/win")}>Git for Windows</button>

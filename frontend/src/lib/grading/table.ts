@@ -61,7 +61,7 @@ function write(text: string, t: Table): string {
 export function newTableText(title: string, count: number): string {
   const rows = Array.from({ length: count }, (_, i) => [String(i + 1), "", "", ""]);
   const t: Table = { header: [...COLUMNS], rows, start: 0, end: 0 };
-  return `# Grades — ${title}\n\n${render(t).join("\n")}\n`;
+  return `# Grades: ${title}\n\n${render(t).join("\n")}\n`;
 }
 
 /** Make sure there is a row for exams 1..count. Names start empty: PDF names are not copied

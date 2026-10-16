@@ -2,8 +2,11 @@
   // One page inside the link preview: zoomable (buttons / Ctrl+wheel), dragged to pan, or — in
   // select mode — with selectable text (Ctrl+C to copy).
   import { onMount } from "svelte";
+  import type { Rect } from "./api";
   import type { Tab } from "./tab.svelte";
   import PageView from "./viewer/PageView.svelte";
+  import { mergeLines } from "./viewer/rects";
+  import type { ContextTarget, TextSelection } from "./viewer/Viewer.svelte";
 
   interface Props {
     tab: Tab;
@@ -12,9 +15,33 @@
     invert: boolean;
     selectMode: boolean;
     zoom?: number; // 1 = page fits the width
+    /** Right-click: on selected text (`sel`) or on a spot of the page. */
+    oncontext?: (target: { sel: TextSelection } | ContextTarget, event: MouseEvent) => void;
   }
 
-  let { tab, page, startY, invert, selectMode, zoom = $bindable(1) }: Props = $props();
+  let { tab, page, startY, invert, selectMode, zoom = $bindable(1), oncontext }: Props = $props();
+
+  function onContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    const el = box.querySelector<HTMLElement>(".page");
+    if (!el || !oncontext) return;
+    const r = el.getBoundingClientRect();
+    const sel = getSelection();
+    const range = sel && !sel.isCollapsed && sel.rangeCount && box.contains(sel.anchorNode) ? sel.getRangeAt(0) : null;
+    if (range) {
+      const rects: Rect[] = [];
+      for (const c of range.getClientRects()) {
+        if (c.width < 1 || c.height < 1) continue;
+        rects.push([(c.left - r.left) / cssScale, (c.top - r.top) / cssScale, (c.right - r.left) / cssScale, (c.bottom - r.top) / cssScale]);
+      }
+      if (rects.length) {
+        const box = new DOMRect(e.clientX - 1, e.clientY - 1, 2, 2);
+        return oncontext({ sel: { text: sel!.toString(), byPage: new Map([[page, mergeLines(rects)]]), box } }, e);
+      }
+    }
+    oncontext({ kind: "page", page, x: (e.clientX - r.left) / cssScale, y: (e.clientY - r.top) / cssScale }, e);
+  }
+
 
   const MIN = 0.5;
   const MAX = 5;
@@ -73,7 +100,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="peek-page" class:pan={!selectMode} bind:this={box} onpointerdown={onPointerDown}>
+<div class="peek-page" class:pan={!selectMode} bind:this={box} onpointerdown={onPointerDown} oncontextmenu={onContextMenu}>
   <div class="canvas" style="width:{size[0] * cssScale}px;height:{size[1] * cssScale}px">
     <PageView
       {tab}

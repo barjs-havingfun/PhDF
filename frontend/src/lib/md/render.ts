@@ -24,14 +24,39 @@ function withMath(text: string, slots: string[]): string {
     .map((part, i) => {
       if (i % 2) return part; // code: leave alone
       return part
+        .replace(/%%[\s\S]*?%%/g, "") // Obsidian comments: not shown
+        .replace(/==(?=\S)([^=\n]+?)(?<=\S)==/g, (_, s) => slot(`<mark>${escape(s)}</mark>`, false))
         .replace(/\$\$([\s\S]+?)\$\$/g, (_, src) => slot(tex(src.trim(), true), true))
         .replace(/(^|[^\\$\w])\$(?=\S)([^$\n]+?)(?<=\S)\$(?!\d)/g, (_, pre, src) => pre + slot(tex(src, false), false));
     })
     .join("");
 }
 
+const CALLOUT_ICONS: Record<string, string> = {
+  note: "📝", info: "ℹ️", tip: "💡", success: "✅", question: "❓", warning: "⚠️",
+  danger: "⛔", error: "⛔", example: "📋", quote: "❝", abstract: "📄", todo: "☑️",
+}; // prettier-ignore
+
+/** Footnotes: `[^1]` marks become superscripts, `[^1]: text` lines a list at the end. */
+function withFootnotes(text: string, slots: string[], blocks: string[]): string {
+  const notes: { id: string; body: string }[] = [];
+  text = text.replace(/^\[\^([^\]\s]+)\]:[ \t]?(.*)$/gm, (_, id, body) => (notes.push({ id, body }), ""));
+  if (!notes.length) return text;
+  text = text.replace(/\[\^([^\]\s]+)\]/g, (m, id) => {
+    const n = notes.findIndex((x) => x.id === id) + 1;
+    if (!n) return m;
+    slots.push(`<sup class="fn"><a href="#fn-${n}" id="fnref-${n}">${n}</a></sup>`);
+    return `PHDFMATH${slots.length - 1}`;
+  });
+  const items = notes.map((x, i) => `<li id="fn-${i + 1}">${md.renderInline(x.body)} <a href="#fnref-${i + 1}">↩</a></li>`);
+  blocks.push(`<section class="footnotes"><ol>${items.join("")}</ol></section>`);
+  return `${text}\n\nPHDFHTML${blocks.length - 1}\n`;
+}
+
 export function renderMarkdown(text: string): string {
   const math: string[] = [];
+  const blocks: string[] = [];
+  text = withFootnotes(text, math, blocks);
   text = withMath(text, math);
   const cards: string[] = [];
   // Replace pin lines by placeholders that survive Markdown rendering, then swap the cards in.
@@ -53,5 +78,14 @@ export function renderMarkdown(text: string): string {
     .render(source)
     .replace(/<p>PHDFPIN(\d+)<\/p>/g, (_, i) => cards[Number(i)])
     .replace(/<p>PHDFMATH(\d+)<\/p>/g, (_, i) => `<div class="math-block">${math[Number(i)]}</div>`)
-    .replace(/PHDFMATH(\d+)/g, (_, i) => math[Number(i)]);
+    .replace(/<p>PHDFHTML(\d+)<\/p>/g, (_, i) => blocks[Number(i)])
+    .replace(/PHDFMATH(\d+)/g, (_, i) => math[Number(i)])
+    // Task lists: - [ ] / - [x]
+    .replace(/<li>(<p>)?\[( |x|X)\] /g, (_, p, c) => `<li class="task">${p ?? ""}<input type="checkbox" disabled${c === " " ? "" : " checked"}> `)
+    // Callouts: > [!type] Title
+    .replace(/<blockquote>\n<p>\[!(\w+)\][+-]?[ \t]?([^\n<]*)\n?/g, (_, type: string, title: string) => {
+      const kind = type.toLowerCase();
+      const label = title.trim() || kind[0].toUpperCase() + kind.slice(1);
+      return `<blockquote class="callout callout-${escape(kind)}"><p class="callout-title">${CALLOUT_ICONS[kind] ?? "📌"} ${label}</p>\n<p>`;
+    });
 }

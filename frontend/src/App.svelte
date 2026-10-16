@@ -17,18 +17,24 @@
   import { ocrLanguages } from "./lib/ocr";
   import Settings from "./lib/Settings.svelte";
   import Help from "./lib/Help.svelte";
+  import PdfTools from "./lib/PdfTools.svelte";
   import AiPanel from "./lib/ai/AiPanel.svelte";
-  import DocAiMenu from "./lib/ai/DocAiMenu.svelte";
   import CommandPalette, { type Command } from "./lib/CommandPalette.svelte";
   import { citation } from "./lib/cite";
   import { loadInk, loadTextStyle } from "./lib/tab.svelte";
+  import { loadAppFont } from "./lib/md/typography.svelte";
   import TerminalGuide from "./lib/ai/TerminalGuide.svelte";
-  import { HEADER_HEIGHT, closeTerminal, loadLayout, openTerminal, saveLayout, term } from "./lib/ai/terminal.svelte";
-  import FocusMenu from "./lib/focus/FocusMenu.svelte";
-  import ParkingLot from "./lib/focus/ParkingLot.svelte";
-  import ReadMenu from "./lib/focus/ReadMenu.svelte";
   import {
-    clock,
+    HEADER_HEIGHT,
+    closeTerminal,
+    loadLayout,
+    newTab as newTerminalTab,
+    openTerminal,
+    saveLayout,
+    term,
+  } from "./lib/ai/terminal.svelte";
+  import ParkingLot from "./lib/focus/ParkingLot.svelte";
+  import {
     loadPace,
     loadPomodoroSettings,
     flushReading,
@@ -47,6 +53,7 @@
   import LinkPeek, { type Peek } from "./lib/LinkPeek.svelte";
   import PaneView from "./lib/PaneView.svelte";
   import Sidebar, { type SidebarMode } from "./lib/Sidebar.svelte";
+  import Toolbar from "./lib/Toolbar.svelte";
   import { GradingSession, grading, loadGradingSettings, type Host } from "./lib/grading/grading.svelte";
   import { MdDoc } from "./lib/md.svelte";
   import type { Pin } from "./lib/pin";
@@ -83,17 +90,8 @@
   const viewers = new Map<number, Viewer>();
   let peek = $state<Peek | null>(null);
 
-  let searchInput = $state<HTMLInputElement>();
-  let searchText = $state("");
-  let gotoInput = $state<HTMLInputElement>();
-  let editingPage = $state(false);
-  let zoomMenu = $state(false);
-  let moreMenu = $state(false);
-  let readMenu = $state(false);
-  let focusMenu = $state(false);
+  let toolbar = $state<Toolbar>();
   let parking = $state(false);
-  let aiMenu = $state(false);
-  let aiTools = $state(false);
 
   /** Focused tab of any kind; `active` is the same tab when it is a PDF. */
   const current = $derived(ws.activeTab);
@@ -196,7 +194,6 @@
   }
 
   async function exportMarkdown(target: "file" | "vault") {
-    moreMenu = false;
     const tab = active;
     if (!tab) return;
     notify.show({ text: "Converting to Markdown…" }, 60000);
@@ -215,7 +212,6 @@
   }
 
   async function copyNoteToVault() {
-    moreMenu = false;
     if (note) return toVault(note.title, note.md.text);
     if (active) {
       const md = await active.ensureMd();
@@ -225,7 +221,6 @@
   }
 
   async function recognizeAll() {
-    moreMenu = false;
     const tab = active;
     if (!tab) return;
     await tab.loadNoTextPages();
@@ -243,13 +238,11 @@
 
   function toggleZen() {
     read.zen = !read.zen;
-    readMenu = false;
-    if (read.zen) notify.show({ text: kbd("Zen mode — press Esc or Ctrl+. to exit.") }, 3000);
+    if (read.zen) notify.show({ text: kbd("Zen mode: press Esc or Ctrl+. to exit.") }, 3000);
   }
 
   async function toggleFullscreen() {
     read.fullscreen = !read.fullscreen;
-    readMenu = false;
     (await api()).toggle_fullscreen();
   }
 
@@ -264,6 +257,7 @@
   const docFolder = $derived((current?.path ?? "").replace(/[\\/][^\\/]*$/, "") || null);
 
   /** The pane whose side column shows the terminal (falls back to the first pane). */
+  $effect(() => void (term.docFolder = docFolder)); // for the terminal's "PDF folder" button
   const termPaneId = $derived(ws.pane(term.paneId ?? -1) ? term.paneId : ws.panes[0]?.id);
 
   function toggleTerminal() {
@@ -332,7 +326,6 @@
   }
 
   async function exportHighlights() {
-    moreMenu = false;
     if (!active) return;
     const n = await active.exportHighlightsToNote();
     notify.show({ text: `${n} highlight${n === 1 ? "" : "s"} written under the line in ${active.md?.name}.` });
@@ -340,7 +333,6 @@
 
   /** Equation → LaTeX: draw a rectangle on the page (see EquationSnip). */
   function startSnip() {
-    aiTools = false;
     if (!active) return;
     active.tool = "select";
     active.snipping = true;
@@ -430,7 +422,7 @@
     add("View", "Toggle sidebar", toggleSidebar, "Ctrl+\\");
     const g = grading.session;
     if (g) {
-      add("Grading", "Done — next exam", () => g.next());
+      add("Grading", "Done, next exam", () => g.next());
       add("Grading", "Previous exam", () => g.prev());
       add("Grading", "Export grades as CSV", () => g.exportCsv());
       add("Grading", "Stop grading", stopGrading);
@@ -442,11 +434,17 @@
     add("Read & Focus", pomodoro.running ? "Pause pomodoro" : "Start pomodoro", () => (pomodoro.running ? pausePomodoro() : startPomodoro()));
     add("Read & Focus", "Park a thought", () => (parking = true), "Ctrl+Shift+Space");
     add("AI", term.open ? "Hide terminal" : "Open terminal", toggleTerminal, "Ctrl+`");
-    add("AI", "How to set up Claude Code / Codex", () => (term.guideOpen = true));
-    if (pdf) add("AI", "Ask the AI about this document…", () => (aiMenu = true));
+    add("AI", "New terminal tab", async () => {
+      if (!term.tabs.length) return openTerminal(docFolder, ws.focused.id);
+      await newTerminalTab(docFolder);
+      await openTerminal(docFolder, ws.focused.id);
+    });
+    add("AI", "How to set up an AI agent (Claude Code, Codex, Gemini…)", () => (term.guideOpen = true));
+    if (pdf) add("AI", "Ask the AI about this document…", () => toolbar?.openAiMenu());
     if (pdf) add("AI", "Equation → LaTeX (AI)", () => startSnip());
     add("App", "Open…", () => pickAndOpen(), "Ctrl+O");
     add("App", "New note…", () => newNote());
+    add("App", "PhDF Tools: rotate, reorder, merge, split, extract pages…", () => (ui.tools = { path: active?.path ?? null }));
     add("App", "New tab", () => newTab(), "Ctrl+T");
     add("App", "Settings", () => (ui.settingsOpen = true));
     add("App", "How to use PhDF", () => (ui.helpOpen = true));
@@ -467,7 +465,6 @@
         group: "Search",
         title: `Search “${q}” in this document`,
         run: () => {
-          searchText = q;
           pdf.search(q);
         },
       });
@@ -602,55 +599,9 @@
     peek = { tab: active, link, x: event.clientX, y: event.clientY };
   }
 
-  // --- search & go to page --------------------------------------------------------------------
-
-  let searchTimer: ReturnType<typeof setTimeout> | undefined;
-  function onSearchInput() {
-    clearTimeout(searchTimer);
-    const q = searchText;
-    const tab = active;
-    searchTimer = setTimeout(() => tab?.search(q), 250);
-  }
-
-  function onSearchKey(e: KeyboardEvent) {
-    if (!active) return;
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (active.searchQuery !== searchText) {
-        clearTimeout(searchTimer);
-        active.search(searchText);
-      } else active.stepSearch(e.shiftKey ? -1 : 1);
-    } else if (e.key === "Escape") {
-      searchText = "";
-      active.clearSearch();
-      searchInput?.blur();
-    }
-  }
-
-  // Each tab keeps its own query; show it when the focused tab changes.
-  $effect(() => {
-    searchText = active?.searchQuery ?? "";
-  });
-
-  async function startGoto() {
-    if (!active) return;
-    editingPage = true;
-    await Promise.resolve();
-    gotoInput?.select();
-  }
-
-  function onGotoKey(e: KeyboardEvent) {
-    if (e.key === "Enter" && active) {
-      const n = parseInt(gotoInput?.value ?? "", 10);
-      if (!Number.isNaN(n)) active.navigate({ page: n - 1 });
-      editingPage = false;
-    } else if (e.key === "Escape") editingPage = false;
-  }
-
   // --- zoom & view ----------------------------------------------------------------------------
 
   function setFit(mode: FitMode) {
-    zoomMenu = false;
     if (mode === "none") viewer()?.setZoom(1);
     else viewer()?.setFit(mode);
   }
@@ -686,6 +637,7 @@
       return toggleTerminal();
     }
     if ((e.target as HTMLElement).closest?.(".xterm")) return;
+    if (e.defaultPrevented) return; // handled by the note editor (Ctrl+= zoom, Ctrl+E code…)
 
     if (mod && e.shiftKey && (key === " " || e.code === "Space")) parking = !parking;
     else if (mod && key === ".") toggleZen();
@@ -702,8 +654,8 @@
     else if (mod && key === "w") current && closeTab(current);
     else if (key === "escape" && active && active.tool !== "select") active.tool = "select";
     else if (mod && key === "tab") cycleTab(e.shiftKey ? -1 : 1);
-    else if (mod && key === "f" && active) searchInput?.focus();
-    else if (mod && key === "g" && active) startGoto();
+    else if (mod && key === "f" && active) toolbar?.focusSearch();
+    else if (mod && key === "g" && active) toolbar?.startGoto();
     else if (mod && (key === "=" || key === "+") && active) viewer()?.zoomBy(1.2);
     else if (mod && key === "-" && active) viewer()?.zoomBy(1 / 1.2);
     else if (mod && key === "0" && active) viewer()?.setZoom(1);
@@ -784,7 +736,12 @@
     const appInfo = await py.app_info();
     setRenderBaseUrl(appInfo.renderBaseUrl);
     invert = await py.get_setting("invertPages", false);
-    await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace(), loadLayout(), loadInk(), loadTextStyle(), loadGradingSettings()]);
+    await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace(), loadLayout(), loadInk(), loadTextStyle(), loadGradingSettings(), loadAppFont()]);
+    // First start: show the tour once.
+    if (!(await (await api()).get_setting("help.seen", false))) {
+      ui.helpOpen = true;
+      (await api()).set_setting("help.seen", true);
+    }
     const sidebar = await py.get_setting("sidebar", { open: false, mode: "pages" as const });
     sidebarOpen = sidebar.open;
     sidebarMode = sidebar.mode;
@@ -831,272 +788,31 @@
 
   <div class="main" style="left:{active && sidebarOpen && !read.zen ? SIDEBAR_WIDTH : 0}px">
     <header bind:clientHeight={toolbarHeight} class:hidden={read.zen}>
-      <div class="toolbar">
-        <div class="group">
-          <button class="tool" title={kbd("Sidebar (Ctrl+\\)")} onclick={toggleSidebar} disabled={!active}>
-            <Icon name="sidebar" />
-          </button>
-          <button class="tool nav" title={kbd("Back (Alt+←)")} onclick={() => active?.goBack()} disabled={!active?.back.length}>
-            <Icon name="left" />
-          </button>
-          <button
-            class="tool nav"
-            title={kbd("Forward (Alt+→)")}
-            onclick={() => active?.goForward()}
-            disabled={!active?.forward.length}
-          >
-            <Icon name="right" />
-          </button>
-          <div class="drop">
-            <button class="pill" class:on={readMenu || read.ruler || read.tint !== "none"} onclick={() => (readMenu = !readMenu)}>
-              <Icon name="book" size={15} /> <span class="pill-label">Read</span> <Icon name="chevron" size={12} />
-            </button>
-            {#if readMenu}
-              <ReadMenu onclose={() => (readMenu = false)} onzen={toggleZen} onfullscreen={toggleFullscreen} />
-            {/if}
-          </div>
-          <div class="drop">
-            <button class="pill" class:on={focusMenu || pomodoro.phase !== "idle"} onclick={() => (focusMenu = !focusMenu)}>
-              <Icon name="timer" size={15} />
-              {#if pomodoro.phase !== "idle"}
-                <span class="mini-clock" class:break={pomodoro.phase === "break"} class:paused={!pomodoro.running}>
-                  {clock(pomodoro.remaining)}
-                </span>
-              {:else}
-                <span class="pill-label">Focus</span>
-              {/if}
-              <Icon name="chevron" size={12} />
-            </button>
-            {#if focusMenu}
-              <FocusMenu tab={active} onclose={() => (focusMenu = false)} />
-            {/if}
-          </div>
-          <button
-            class="pill park"
-            class:on={parking}
-            title={kbd("Parking lot — park a stray thought (Ctrl+Shift+Space)")}
-            onclick={() => (parking = !parking)}
-          >
-            <Icon name="park" size={15} /> <span class="pill-label">Park</span>
-          </button>
-        </div>
-
-        <div class="title">
-          {#if active}
-            <span class="name">
-              {active.title}{#if active.dirty}<span class="edited">— Edited</span>{/if}
-            </span>
-            {#if editingPage}
-              <span class="subtitle">
-                Page <input
-                  class="goto"
-                  bind:this={gotoInput}
-                  value={active.page + 1}
-                  onkeydown={onGotoKey}
-                  onblur={() => (editingPage = false)}
-                  aria-label="Go to page"
-                /> of {active.pageCount}
-              </span>
-            {:else}
-              <button class="subtitle" onclick={startGoto} title={kbd("Go to page (Ctrl+G)")}>
-                Page {active.page + 1} of {active.pageCount}
-              </button>
-            {/if}
-          {:else if note}
-            <span class="name">{note.title}</span>
-            <span class="subtitle static">Markdown note</span>
-          {:else}
-            <span class="name">PhDF</span>
-          {/if}
-        </div>
-
-        <div class="group end">
-          {#if active}
-            {@const pdf = active}
-            <div class="tools">
-              <button
-                class="tool"
-                class:on={pdf.tool === "note"}
-                title="Add note: click on the page (Esc to stop)"
-                onclick={() => (pdf.tool = pdf.tool === "note" ? "select" : "note")}
-              >
-                <Icon name="note" />
-              </button>
-              <button
-                class="tool"
-                class:on={pdf.tool === "text"}
-                title="Add text: click on the page (Esc to stop)"
-                onclick={() => (pdf.tool = pdf.tool === "text" ? "select" : "text")}
-              >
-                <Icon name="text" />
-              </button>
-              <button
-                class="tool"
-                class:on={pdf.tool === "draw"}
-                title="Draw (Esc to stop)"
-                onclick={() => (pdf.tool = pdf.tool === "draw" ? "select" : "draw")}
-              >
-                <Icon name="pen" />
-              </button>
-              <button
-                class="tool"
-                class:on={pdf.panelOpen}
-                title="Annotations"
-                onclick={() => (pdf.panelOpen = !pdf.panelOpen)}
-              >
-                <Icon name="list" />
-              </button>
-              <button
-                class="tool"
-                class:on={pdf.mdOpen}
-                title="Integrated .md note"
-                onclick={() => pdf.toggleMd()}
-              >
-                <Icon name="mdnote" />
-              </button>
-            </div>
-
-            <div class="segmented zoom">
-              <button title={kbd("Zoom out (Ctrl+-)")} onclick={() => viewer()?.zoomBy(1 / 1.2)}>
-                <Icon name="minus" size={14} />
-              </button>
-              <button class="zoom-label" onclick={() => (zoomMenu = !zoomMenu)} title="Zoom options">
-                {Math.round(active.zoom * 100)}%
-              </button>
-              <button title={kbd("Zoom in (Ctrl++)")} onclick={() => viewer()?.zoomBy(1.2)}>
-                <Icon name="plus" size={14} />
-              </button>
-              {#if zoomMenu}
-                <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-                <div class="menu-backdrop" onclick={() => (zoomMenu = false)}></div>
-                <div class="menu" role="menu">
-                  <button role="menuitemradio" aria-checked={active.fit === "width"} onclick={() => setFit("width")}>
-                    Fit Width
-                  </button>
-                  <button role="menuitemradio" aria-checked={active.fit === "page"} onclick={() => setFit("page")}>
-                    Fit Page
-                  </button>
-                  <button role="menuitemradio" aria-checked={false} onclick={() => setFit("none")}>
-                    Actual Size <span class="shortcut">{kbd("Ctrl+0")}</span>
-                  </button>
-                </div>
-              {/if}
-            </div>
-
-            <button class="tool dark" class:on={invert} title="Dark pages" onclick={toggleInvert}>
-              <Icon name="moon" />
-            </button>
-
-            <label class="search">
-              <Icon name="search" size={14} />
-              <input
-                bind:this={searchInput}
-                bind:value={searchText}
-                oninput={onSearchInput}
-                onkeydown={onSearchKey}
-                placeholder="Search"
-                spellcheck="false"
-              />
-              {#if active.searchQuery}
-                <span class="count">
-                  {#if active.searching}…{:else if active.searchHits.length}
-                    {active.searchIndex + 1}/{active.searchHits.length}
-                  {:else}0{/if}
-                </span>
-              {/if}
-            </label>
-          {/if}
-          {#if active}
-            <div class="drop ai-drop">
-              <button class="tool" class:on={aiMenu} title="Ask the AI about this document, chapter or page" onclick={() => (aiMenu = !aiMenu)}>
-                <Icon name="sparkle" />
-              </button>
-              <button class="tool caret" class:on={aiTools} title="More AI tools" onclick={() => (aiTools = !aiTools)}>
-                <Icon name="chevron" size={12} />
-              </button>
-              {#if aiMenu}
-                <DocAiMenu tab={active} paneId={ws.focused.id} onclose={() => (aiMenu = false)} />
-              {/if}
-              {#if aiTools}
-                <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-                <div class="menu-backdrop" onclick={() => (aiTools = false)}></div>
-                <div class="menu right ai-tools" role="menu">
-                  <button role="menuitem" onclick={startSnip}>
-                    Equation → LaTeX (AI)
-                    <span class="sub">Draw a rectangle around an equation; the AI writes its LaTeX into your note.</span>
-                  </button>
-                </div>
-              {/if}
-            </div>
-          {/if}
-          <button class="tool" class:on={term.open} title={kbd("AI terminal (Ctrl+`)")} onclick={toggleTerminal} disabled={!info}>
-            <Icon name="terminal" />
-          </button>
-
-          <button
-            class="tool grade"
-            class:on={!!grading.session}
-            title={grading.session ? `Grading “${grading.session.title}” — click to stop` : "Grade a folder of exam PDFs"}
-            onclick={toggleGrading}
-            disabled={!info}
-          >
-            <Icon name="grade" />
-          </button>
-          <button class="tool help" title="How to use PhDF" onclick={() => (ui.helpOpen = true)}>
-            <Icon name="help" />
-          </button>
-          <div class="more">
-            <button class="tool" class:on={moreMenu} title="More" onclick={() => (moreMenu = !moreMenu)} disabled={!info}>
-              <Icon name="more" />
-            </button>
-            {#if moreMenu}
-              <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-              <div class="menu-backdrop" onclick={() => (moreMenu = false)}></div>
-              <div class="menu right" role="menu">
-                {#if active}
-                  {@const pdf = active}
-                  <div class="narrow-tools">
-                    <button role="menuitemcheckbox" aria-checked={pdf.tool === "note"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "note" ? "select" : "note"))}>Add Note</button>
-                    <button role="menuitemcheckbox" aria-checked={pdf.tool === "text"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "text" ? "select" : "text"))}>Add Text</button>
-                    <button role="menuitemcheckbox" aria-checked={pdf.tool === "draw"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "draw" ? "select" : "draw"))}>Draw</button>
-                    <button role="menuitemcheckbox" aria-checked={pdf.panelOpen} onclick={() => ((moreMenu = false), (pdf.panelOpen = !pdf.panelOpen))}>Annotations</button>
-                    <button role="menuitemcheckbox" aria-checked={pdf.mdOpen} onclick={() => ((moreMenu = false), pdf.toggleMd())}>Integrated .md Note</button>
-                    <div class="menu-sep"></div>
-                  </div>
-                  <div class="narrow-zoom">
-                    <button role="menuitem" onclick={() => viewer()?.zoomBy(1.2)}>Zoom In <span class="shortcut">{kbd("Ctrl++")}</span></button>
-                    <button role="menuitem" onclick={() => viewer()?.zoomBy(1 / 1.2)}>Zoom Out <span class="shortcut">{kbd("Ctrl+-")}</span></button>
-                    <button role="menuitemradio" aria-checked={pdf.fit === "width"} onclick={() => ((moreMenu = false), setFit("width"))}>Fit Width</button>
-                    <button role="menuitemradio" aria-checked={pdf.fit === "page"} onclick={() => ((moreMenu = false), setFit("page"))}>Fit Page</button>
-                    <button role="menuitemcheckbox" aria-checked={invert} onclick={() => ((moreMenu = false), toggleInvert())}>Dark Pages</button>
-                    <div class="menu-sep"></div>
-                  </div>
-                  {#if grading.session}
-                    {@const g = grading.session}
-                    <button role="menuitem" onclick={() => ((moreMenu = false), g.exportCsv())}>Export Grades as CSV…</button>
-                    <button role="menuitem" onclick={() => ((moreMenu = false), stopGrading())}>Stop Grading</button>
-                    <div class="menu-sep"></div>
-                  {/if}
-                  <button role="menuitem" onclick={exportHighlights}>Export Highlights to Note</button>
-                  <button role="menuitem" onclick={() => exportMarkdown("file")}>Export as Markdown…</button>
-                  <button role="menuitem" onclick={() => exportMarkdown("vault")}>Export to Obsidian Vault</button>
-                  <button role="menuitem" onclick={copyNoteToVault}>Copy Note to Obsidian</button>
-                  <div class="menu-sep"></div>
-                  <button role="menuitem" onclick={recognizeAll} disabled={!!active.ocrProgress}>Recognize Text (OCR)</button>
-                  <div class="menu-sep"></div>
-                {:else if note}
-                  <button role="menuitem" onclick={copyNoteToVault}>Copy Note to Obsidian</button>
-                  <div class="menu-sep"></div>
-                {/if}
-                <button role="menuitem" onclick={() => ((moreMenu = false), (ui.settingsOpen = true))}>Settings…</button>
-              </div>
-            {/if}
-          </div>
-          <button class="tool" title={kbd("Open PDF or Markdown (Ctrl+O)")} onclick={() => pickAndOpen()} disabled={!info}>
-            <Icon name="open" />
-          </button>
-        </div>
-      </div>
+      <Toolbar
+        bind:this={toolbar}
+        {active}
+        {note}
+        ready={!!info}
+        {invert}
+        {parking}
+        paneId={ws.focused.id}
+        {viewer}
+        ontogglesidebar={toggleSidebar}
+        onzen={toggleZen}
+        onfullscreen={toggleFullscreen}
+        onpark={() => (parking = !parking)}
+        onsetfit={setFit}
+        oninvert={toggleInvert}
+        onsnip={startSnip}
+        onterminal={toggleTerminal}
+        ongrading={toggleGrading}
+        onstopgrading={stopGrading}
+        onexporthighlights={exportHighlights}
+        onexportmarkdown={exportMarkdown}
+        oncopynote={copyNoteToVault}
+        onrecognize={recognizeAll}
+        onopen={() => pickAndOpen()}
+      />
     </header>
 
     <div class="panes" bind:this={panesEl} style="bottom:{bottomDock}px">
@@ -1127,6 +843,7 @@
             ondragstart={onTabDragStart}
             onlink={onLink}
             onviewer={(v) => (v ? viewers.set(pane.id, v) : viewers.delete(pane.id))}
+            onpark={() => (parking = true)}
           />
         {/each}
       {:else}
@@ -1197,6 +914,9 @@
     <TerminalGuide onclose={() => (term.guideOpen = false)} />
   {/if}
 
+  {#if ui.tools}
+    <PdfTools path={ui.tools.path} onopenpath={(p) => openPath(p)} onclose={() => (ui.tools = null)} />
+  {/if}
   {#if ui.helpOpen}
     <Help onclose={() => (ui.helpOpen = false)} />
   {/if}
@@ -1359,104 +1079,6 @@
     height: 200px;
   }
 
-  .drop {
-    position: relative;
-    margin-left: 4px;
-  }
-
-  .pill {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    height: 26px;
-    padding: 0 8px;
-    border-radius: 7px;
-    color: var(--secondary);
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  .pill:hover,
-  .pill.on {
-    background: var(--hover);
-    color: var(--text);
-  }
-
-  /* Park stands out: a purple button (text like the other buttons); on hover a light streak
-     sweeps across it from left to right. */
-  .pill.park {
-    position: relative;
-    overflow: hidden;
-    margin-left: 4px;
-    /* Same purple as the outline, dark on the left to light on the right. */
-    background: linear-gradient(90deg, rgb(120 50 190 / 0.45), rgb(200 130 250 / 0.45));
-    box-shadow:
-      inset 0 0 0 1px rgb(175 82 222 / 0.45),
-      0 0 6px rgb(175 82 222 / 0.18);
-    transition: box-shadow 0.2s, filter 0.2s;
-  }
-
-  .pill.park:hover,
-  .pill.park.on {
-    filter: brightness(1.15);
-    box-shadow:
-      inset 0 0 0 1px rgb(175 82 222 / 0.6),
-      0 0 8px rgb(175 82 222 / 0.28);
-  }
-
-  .pill.park::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.4) 50%, transparent 65%);
-    transform: translateX(-110%);
-    pointer-events: none;
-  }
-
-  .pill.park:hover::after {
-    transform: translateX(110%);
-    transition: transform 0.6s ease-out;
-  }
-
-  .ai-drop {
-    display: flex;
-    margin-left: 0;
-  }
-
-  .tool.caret {
-    width: 16px;
-    margin-left: -3px;
-  }
-
-  .menu.ai-tools {
-    width: 270px;
-  }
-
-  .menu.ai-tools button {
-    flex-direction: column;
-    padding: 5px 10px;
-  }
-
-  .menu.ai-tools .sub {
-    font-size: 11px;
-    opacity: 0.75;
-    white-space: normal;
-  }
-
-  .mini-clock {
-    font-variant-numeric: tabular-nums;
-    color: var(--accent);
-    font-weight: 600;
-  }
-
-  .mini-clock.break {
-    color: #34c759;
-  }
-
-  .mini-clock.paused {
-    opacity: 0.6;
-  }
-
   .zen-exit {
     position: fixed;
     top: 8px;
@@ -1477,24 +1099,6 @@
   .zen-exit:hover,
   .zen-exit:focus-visible {
     opacity: 1;
-  }
-
-  .tools {
-    display: flex;
-    gap: 2px;
-    padding-right: 4px;
-    margin-right: 2px;
-    border-right: 0.5px solid var(--separator);
-  }
-
-  .edited {
-    margin-left: 0.35em;
-    font-weight: 400;
-    color: var(--secondary);
-  }
-
-  .subtitle.static {
-    cursor: default;
   }
 
   .sheet-backdrop {
@@ -1575,308 +1179,12 @@
     color: var(--accent-text);
   }
 
-  /* Side groups take what they need; the title gets the rest and truncates — nothing overlaps.
-     As the window narrows, groups collapse into the ⋯ menu (container queries below). */
-  .toolbar {
-    height: var(--toolbar-height);
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 12px;
-    padding: 0 10px;
-    container: toolbar / inline-size;
-  }
-
-  .narrow-tools,
-  .narrow-zoom {
-    display: none;
-  }
-
-  .menu .narrow-tools button[aria-checked="true"]::before,
-  .menu .narrow-zoom button[aria-checked="true"]::before {
-    content: "✓";
-    position: absolute;
-    left: 7px;
-  }
-
-  @container toolbar (max-width: 1280px) {
-    .pill-label {
-      display: none;
-    }
-  }
-
-  @container toolbar (max-width: 1120px) {
-    .search {
-      flex-basis: 130px;
-    }
-  }
-
-  @container toolbar (max-width: 1020px) {
-    .tools {
-      display: none;
-    }
-    .narrow-tools {
-      display: block;
-    }
-  }
-
-  @container toolbar (max-width: 860px) {
-    .zoom,
-    .dark {
-      display: none !important;
-    }
-    .narrow-zoom {
-      display: block;
-    }
-  }
-
-  @container toolbar (max-width: 720px) {
-    .search {
-      flex: 0 0 30px;
-      min-width: 30px;
-      padding: 0 8px;
-      cursor: pointer;
-    }
-    .search input,
-    .search .count {
-      display: none;
-    }
-    .search:focus-within {
-      position: absolute;
-      right: 10px;
-      z-index: 22;
-      width: 220px;
-      background: var(--popover-solid);
-      box-shadow:
-        0 0 0 0.5px var(--separator),
-        0 0 0 3px var(--focus-ring);
-    }
-    .search:focus-within input,
-    .search:focus-within .count {
-      display: block;
-    }
-  }
-
-  @container toolbar (max-width: 600px) {
-    .nav {
-      display: none;
-    }
-  }
-
-  .group {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  .group.end {
-    justify-content: flex-end;
-    gap: 6px;
-  }
-
-  .tool {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 32px;
-    height: 28px;
-    border-radius: var(--radius-s);
-    color: var(--secondary);
-  }
-
-  .tool:hover:not(:disabled) {
-    background: var(--hover);
-    color: var(--text);
-  }
-
-  .tool:active:not(:disabled),
-  .tool.on {
-    background: var(--pressed);
-    color: var(--text);
-  }
-
-  .tool:disabled {
-    opacity: 0.35;
-  }
-
-  .title {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-width: 0;
-    text-align: center;
-  }
-
-  .name {
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
-  }
-
-  .subtitle {
-    font-size: 11px;
-    color: var(--secondary);
-    border-radius: 4px;
-    padding: 0 4px;
-  }
-
-  button.subtitle:hover {
-    background: var(--hover);
-  }
-
-  .goto {
-    width: 4em;
-    font: inherit;
-    text-align: center;
-    color: var(--text);
-    background: var(--surface);
-    border: none;
-    border-radius: 4px;
-    outline: 2px solid var(--focus-ring);
-  }
-
-  .segmented {
-    position: relative;
-    flex: none;
-    display: flex;
-    align-items: center;
-    height: 26px;
-    border-radius: var(--radius-s);
-    background: var(--hover);
-  }
-
-  .segmented > button {
-    display: grid;
-    place-items: center;
-    min-width: 28px;
-    height: 100%;
-    border-radius: var(--radius-s);
-  }
-
-  .segmented > button:hover {
-    background: var(--hover);
-  }
-
-  .zoom-label {
-    min-width: 48px !important;
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .menu-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 20;
-  }
-
-  .menu {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 21;
-    min-width: 170px;
-    padding: 5px;
-    border-radius: 9px;
-    background: var(--popover-solid);
-    backdrop-filter: saturate(180%) blur(24px);
-    box-shadow:
-      0 0 0 0.5px var(--separator),
-      0 8px 28px rgb(0 0 0 / 0.22);
-  }
-
-  .menu button {
-    display: flex;
-    justify-content: space-between;
-    width: 100%;
-    padding: 3px 10px 3px 22px;
-    border-radius: 5px;
-    text-align: left;
-    position: relative;
-  }
-
-  .menu button[aria-checked="true"]::before {
-    content: "✓";
-    position: absolute;
-    left: 7px;
-  }
-
-  .menu button:hover:not(:disabled) {
-    background: var(--accent);
-    color: var(--accent-text);
-  }
-
-  .menu button:disabled {
-    opacity: 0.4;
-  }
-
-  .more {
-    position: relative;
-  }
-
-  .menu.right {
-    left: auto;
-    right: 0;
-    transform: none;
-    min-width: 220px;
-  }
-
-  .menu-sep {
-    height: 0.5px;
-    margin: 4px 6px;
-    background: var(--separator);
-  }
-
   .toast button.action {
     padding: 2px 10px;
     border-radius: 6px;
     background: var(--accent);
     color: var(--accent-text);
     font-weight: 500;
-  }
-
-  .shortcut {
-    color: var(--tertiary);
-  }
-
-  .menu button:hover .shortcut {
-    color: inherit;
-  }
-
-  .search {
-    flex: 0 1 190px;
-    min-width: 90px;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    height: 26px;
-    padding: 0 8px;
-    border-radius: 7px;
-    background: var(--hover);
-    color: var(--secondary);
-  }
-
-  .search:focus-within {
-    box-shadow: 0 0 0 3px var(--focus-ring);
-  }
-
-  .search input {
-    flex: 1;
-    min-width: 0;
-    border: none;
-    outline: none;
-    background: none;
-    font: inherit;
-    color: var(--text);
-  }
-
-  .count {
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
   }
 
   .hint {

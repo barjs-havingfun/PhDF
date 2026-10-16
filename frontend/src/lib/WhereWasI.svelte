@@ -27,7 +27,7 @@
       // PDF dates sort as strings ("D:YYYYMMDDHHmmSS…"); fall back to the last one in the list.
       lastMark = [...marks].sort((a, b) => (a.modified ?? "").localeCompare(b.modified ?? "")).at(-1) ?? null;
       const list = await (await api()).parking_list(tab.path);
-      parked = list.items.filter((i) => !i.done).at(-1)?.text.split(" — ")[0] ?? null;
+      parked = list.items.filter((i) => !i.done).at(-1)?.thought ?? null;
     })();
     const timer = setTimeout(() => (tab.welcomeBack = false), 25000);
     return () => clearTimeout(timer);

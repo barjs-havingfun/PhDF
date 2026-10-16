@@ -17,6 +17,7 @@ from phdf.db import Store
 from phdf.engine import default_engine
 from phdf.env import load_dotenv
 from phdf.paths import data_dir, frontend_dist
+from phdf.services import ai_cache
 from phdf.services.render_server import RenderServer
 
 MAIN_WINDOW = "main"
@@ -100,6 +101,9 @@ def main() -> None:
         url = str(index)
 
     store = Store(data_dir() / "phdf.db")
+    threading.Thread(
+        target=ai_cache.cleanup, args=(ai_cache.folder(data_dir()),), daemon=True
+    ).start()
     core = Core(default_engine(), store)
     render_server = RenderServer(core.render).start()
     core.render_base_url = render_server.base_url

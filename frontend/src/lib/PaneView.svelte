@@ -6,6 +6,7 @@
   import type { Annotation, PdfLink, RecentDocument } from "./api";
   import AnnotationsPanel from "./annot/AnnotationsPanel.svelte";
   import AnnotEditor from "./annot/AnnotEditor.svelte";
+  import ContextMenu from "./annot/ContextMenu.svelte";
   import SelectionMenu from "./annot/SelectionMenu.svelte";
   import { capture, drag } from "./dnd.svelte";
   import Icon from "./Icon.svelte";
@@ -24,7 +25,7 @@
   import type { Pin } from "./pin";
   import type { AnyTab, MdTab, Tab } from "./tab.svelte";
   import TabBar from "./TabBar.svelte";
-  import Viewer, { type TextSelection } from "./viewer/Viewer.svelte";
+  import Viewer, { type ContextTarget, type TextSelection } from "./viewer/Viewer.svelte";
   import Welcome from "./Welcome.svelte";
   import type { Pane } from "./workspace.svelte";
 
@@ -51,12 +52,13 @@
     /** A pin was clicked in a standalone note: open its PDF there. */
     onmdpin: (tab: MdTab, pin: Pin) => void;
     onpickmd: () => Promise<string | null>;
+    onpark: () => void; // open the parking lot (right-click menu)
   }
 
   let {
     pane, focused, multi, zen, termHere, toolbarHeight, invert, version, recents,
     onfocus, onopen, onnewnote, onopenpath, onselect, onclose, onnew, ondragstart, onlink, onviewer,
-    onmdpin, onpickmd,
+    onmdpin, onpickmd, onpark,
   }: Props = $props(); // prettier-ignore
 
   let barHeight = $state(34);
@@ -108,6 +110,7 @@
   let selection = $state<TextSelection | null>(null);
   let editing = $state<{ annot: Annotation; anchor: DOMRect } | null>(null);
   let placing = $state<{ kind: "note" | "freetext"; page: number; x: number; y: number; anchor: DOMRect } | null>(null);
+  let context = $state<{ target: ContextTarget; x: number; y: number } | null>(null);
 
   // Close floating UI when the tab changes.
   $effect(() => {
@@ -115,7 +118,20 @@
     selection = null;
     editing = null;
     placing = null;
+    context = null;
   });
+
+  function onContext(target: ContextTarget, e: MouseEvent) {
+    selection = editing = placing = null;
+    context = { target, x: e.clientX, y: e.clientY };
+  }
+
+  /** "Add note / text here" from the right-click menu: at the clicked spot, any tool. */
+  function placeFromContext(kind: "note" | "freetext") {
+    if (!context || context.target.kind !== "page") return;
+    const { page, x, y } = context.target;
+    placing = { kind, page, x, y, anchor: new DOMRect(context.x - 1, context.y - 1, 2, 2) };
+  }
 
   function onAnnot(annot: Annotation, e: MouseEvent) {
     if (!pdf) return;
@@ -139,9 +155,26 @@
     return tab.parking ? (tab.parking.text.match(/^- \[ \] /gm)?.length ?? 0) : 0;
   }
 
-  async function linkExisting() {
-    const path = await onpickmd();
-    if (path && pdf) await pdf.linkExistingMd(path);
+  /** Show another .md with this PDF, after saying what happens to the current one. */
+  function linkExisting() {
+    if (!pdf) return;
+    const tab = pdf;
+    const current = tab.md?.exists ? tab.md.name : null;
+    notify.show(
+      {
+        text: current
+          ? `Show another .md note with this PDF? “${current}” stays on your disk, but it will no longer open with this PDF.`
+          : "Show an existing .md note with this PDF instead of a new one?",
+        action: {
+          label: "Choose File…",
+          run: async () => {
+            const path = await onpickmd();
+            if (path) await tab.linkExistingMd(path);
+          },
+        },
+      },
+      15000,
+    );
   }
 
   const mdShown = $derived(!!(pdf?.mdOpen && pdf.md));
@@ -169,7 +202,8 @@
     el.addEventListener("pointerup", up);
   }
 
-  // Divider between the terminal (top) and the note (bottom): a drawer you can pull shut.
+  // Divider between the terminal and the note (either above the other): a drawer you can pull shut.
+  const termBelow = $derived(term.below && mdShown);
   let side = $state<HTMLElement>();
   function startTermResize(e: PointerEvent) {
     if (!side) return;
@@ -178,7 +212,7 @@
     const top = box.top + topInset;
     capture(el, e.pointerId);
     const move = (ev: PointerEvent) => {
-      const f = (ev.clientY - top) / (box.bottom - top);
+      const f = termBelow ? (box.bottom - ev.clientY) / (box.bottom - top) : (ev.clientY - top) / (box.bottom - top);
       if (f < 0.06) term.collapsed = true;
       else {
         term.collapsed = false;
@@ -196,10 +230,12 @@
 
   const termSlotStyle = $derived(
     term.collapsed
-      ? `height:${topInset + HEADER_HEIGHT}px;flex:none`
-      : mdShown
-        ? `height:calc(${topInset}px + (100% - ${topInset}px) * ${term.sideFraction});flex:none`
-        : "flex:1",
+      ? `height:${(termBelow ? 0 : topInset) + HEADER_HEIGHT}px;flex:none`
+      : termBelow
+        ? `height:calc((100% - ${topInset}px) * ${term.sideFraction});flex:none`
+        : mdShown
+          ? `height:calc(${topInset}px + (100% - ${topInset}px) * ${term.sideFraction});flex:none`
+          : "flex:1",
   );
 
   const zone = $derived.by(() => {
@@ -236,6 +272,7 @@
             onselection={(s) => (selection = s)}
             onannot={onAnnot}
             onplace={onPlace}
+            oncontext={onContext}
           />
           <AnnotationsPanel tab={pdf} {topInset} />
           {#if pdf.tool === "draw"}<InkBar {topInset} />{/if}
@@ -259,9 +296,9 @@
         </div>
         {#if sideShown}
           <div class="md-divider" role="separator" aria-orientation="vertical" onpointerdown={startMdResize}></div>
-          <div class="side" style="flex-basis:{sideWidth * 100}%" bind:this={side}>
+          <div class="side" class:swap={termBelow} style="flex-basis:{sideWidth * 100}%" bind:this={side}>
           {#if termHere}
-            <div class="term-slot" style={termSlotStyle}><AiPanel {topInset} /></div>
+            <div class="term-slot" style={termSlotStyle}><AiPanel topInset={termBelow ? 0 : topInset} /></div>
             {#if mdShown && !term.collapsed}
               <div class="h-divider" role="separator" aria-orientation="horizontal" onpointerdown={startTermResize}></div>
             {/if}
@@ -272,7 +309,7 @@
             {#key pdf.mdView}
             <MdEditor
               md={pdf.mdView === "parking" && pdf.parking ? pdf.parking : pdf.md}
-              topInset={termHere ? 0 : topInset}
+              topInset={termHere && !termBelow ? 0 : topInset}
               onpin={onPin}
               reveal={pdf.mdView === "note" ? pdf.mdReveal : null}
             >
@@ -367,6 +404,20 @@
   {#if pdf && placing}
     <AnnotEditor tab={pdf} anchor={placing.anchor} {placing} onclose={() => (placing = null)} />
   {/if}
+  {#if pdf && context}
+    {@const c = context}
+    <ContextMenu
+      tab={pdf}
+      target={c.target}
+      x={c.x}
+      y={c.y}
+      paneId={pane.id}
+      onedit={() => c.target.kind === "annot" && onAnnot(c.target.annot, new MouseEvent("click", { clientX: c.x, clientY: c.y }))}
+      onplace={placeFromContext}
+      {onpark}
+      onclose={() => (context = null)}
+    />
+  {/if}
 </section>
 
 <style>
@@ -405,6 +456,11 @@
     min-width: 240px;
     display: flex;
     flex-direction: column;
+  }
+
+  /* Terminal below the note (term.below). */
+  .side.swap {
+    flex-direction: column-reverse;
   }
 
   .md {

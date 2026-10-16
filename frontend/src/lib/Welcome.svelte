@@ -33,6 +33,11 @@
     <button class="primary" onclick={onopen}>Open…</button>
     <button class="secondary" onclick={onnewnote}>New Note…</button>
   </div>
+  <button class="phdf-tools" onclick={() => (ui.tools = { path: null })} title="Rotate, delete, reorder, merge, extract and split pages">
+    <span class="shine"></span>
+    PhDF TOOLS
+    <small>rotate · reorder · merge · split · extract</small>
+  </button>
   <button class="tour" onclick={() => (ui.helpOpen = true)}>How to use PhDF →</button>
 
   {#if recents.length}
@@ -58,6 +63,56 @@
 </section>
 
 <style>
+  /* The big, shiny entry to PhDF Tools. */
+  .phdf-tools {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    margin-top: 14px;
+    padding: 12px 34px;
+    border-radius: 14px;
+    color: white;
+    font: 650 17px/1.2 var(--font);
+    letter-spacing: 0.03em;
+    background: linear-gradient(135deg, #5e9bff, #7a4dff 55%, #ff5fa2);
+    box-shadow: 0 10px 28px rgb(122 77 255 / 0.35);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+
+  .phdf-tools:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 34px rgb(122 77 255 / 0.45);
+  }
+
+  .phdf-tools small {
+    font: 500 11.5px var(--font);
+    letter-spacing: 0;
+    opacity: 0.9;
+  }
+
+  .shine {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.45) 50%, transparent 65%);
+    transform: translateX(-110%);
+    animation: tools-shine 3.2s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes tools-shine {
+    0%,
+    55% {
+      transform: translateX(-110%);
+    }
+    80%,
+    100% {
+      transform: translateX(110%);
+    }
+  }
+
   .welcome {
     width: min(720px, 100%);
     margin: 0 auto;

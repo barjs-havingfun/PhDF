@@ -84,7 +84,7 @@ function tick() {
     pomodoro.rounds += 1;
     pomodoro.phase = "break";
     pomodoro.remaining = pomodoro.breakMin * 60;
-    notify.show({ text: `Focus round done — take a ${pomodoro.breakMin}-minute break.` }, 10000);
+    notify.show({ text: `Focus round done: take a ${pomodoro.breakMin}-minute break.` }, 10000);
   } else {
     stopPomodoro();
     notify.show({ text: "Break's over.", action: { label: "Start Focus", run: startPomodoro } }, 15000);

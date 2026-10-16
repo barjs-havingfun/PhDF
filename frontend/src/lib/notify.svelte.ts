@@ -30,4 +30,9 @@ class Notifier {
 export const notify = new Notifier();
 
 /** Settings dialog visibility, shared so any component can open it. */
-export const ui = $state({ settingsOpen: false, helpOpen: false });
+export const ui = $state({
+  settingsOpen: false,
+  helpOpen: false,
+  /** PhDF Tools: open (with a PDF to start on, or null to choose one). */
+  tools: null as { path: string | null } | null,
+});

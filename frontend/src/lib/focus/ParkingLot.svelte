@@ -1,7 +1,7 @@
 <script lang="ts">
   // Parking lot: jot down a stray thought (Enter) and get straight back to reading.
   import { onMount } from "svelte";
-  import { api } from "../api";
+  import { api, type ParkedItem as Item } from "../api";
   import Icon from "../Icon.svelte";
   import { notify } from "../notify.svelte";
 
@@ -14,12 +14,6 @@
   }
 
   let { source, document, onclose, onparked, onopen }: Props = $props();
-
-  interface Item {
-    line: number;
-    text: string;
-    done: boolean;
-  }
 
   let input = $state<HTMLInputElement>();
   let text = $state("");
@@ -55,9 +49,6 @@
     }
   }
 
-  const label = (t: string) => t.split(" — ")[0];
-  const meta = (t: string) => t.split(" — ").slice(1).join(" — ");
-
   onMount(() => {
     input?.focus();
     refresh();
@@ -87,8 +78,8 @@
         <li>
           <button class="tick" title="Done" onclick={() => done(item)} aria-label="Mark done"></button>
           <span class="text">
-            {label(item.text)}
-            {#if meta(item.text)}<small>{meta(item.text)}</small>{/if}
+            {item.thought}
+            {#if item.meta}<small>{item.meta}</small>{/if}
           </span>
         </li>
       {/each}

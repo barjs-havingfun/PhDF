@@ -18,6 +18,9 @@
   import { api } from "./api";
   import Icon from "./Icon.svelte";
   import PeekPage from "./PeekPage.svelte";
+  import ContextMenu from "./annot/ContextMenu.svelte";
+  import SelectionMenu from "./annot/SelectionMenu.svelte";
+  import type { ContextTarget, TextSelection } from "./viewer/Viewer.svelte";
 
   interface Props {
     peek: Peek;
@@ -63,6 +66,38 @@
     const top = below + h < innerHeight - 12 ? below : peek.y - h - 14;
     return `left:${left}px;top:${Math.min(Math.max(top, 12), innerHeight - h - 12)}px`;
   });
+
+  // Drag the card by its header (not its buttons); it stays where it was dropped.
+  let moved = $state<{ left: number; top: number } | null>(null);
+
+  function onCardDown(e: PointerEvent) {
+    const el = e.target as HTMLElement;
+    if (e.button !== 0 || !card || !el.closest("header") || el.closest("button, input")) return;
+    e.preventDefault();
+    const box = card.getBoundingClientRect();
+    const dx = e.clientX - box.left;
+    const dy = e.clientY - box.top;
+    const bar = e.currentTarget as HTMLElement;
+    bar.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      moved = {
+        left: Math.min(Math.max(ev.clientX - dx, 0), innerWidth - box.width),
+        top: Math.min(Math.max(ev.clientY - dy, 0), innerHeight - 40),
+      };
+    };
+    const up = () => {
+      bar.removeEventListener("pointermove", move);
+      bar.removeEventListener("pointerup", up);
+    };
+    bar.addEventListener("pointermove", move);
+    bar.addEventListener("pointerup", up);
+  }
+
+  // Right-click inside the preview: the selection menu (copy, note, highlight…) or the page menu.
+  let ctx = $state<{ target: { sel: TextSelection } | ContextTarget; x: number; y: number } | null>(null);
+  function onPeekContext(target: { sel: TextSelection } | ContextTarget, e: MouseEvent) {
+    ctx = { target, x: e.clientX, y: e.clientY };
+  }
 
   function goThere() {
     peek.tab.navigate({ page: target, y: link.y });
@@ -121,7 +156,7 @@
   <button
     class="icon-btn"
     class:on={selectMode}
-    title={selectMode ? kbd("Select text (Ctrl+C to copy) — click for pan mode") : "Pan — click to select text"}
+    title={selectMode ? kbd("Select text (Ctrl+C to copy), click for pan mode") : "Pan: click to select text"}
     onclick={() => (selectMode = !selectMode)}
   >
     <Icon name="text" size={14} />
@@ -141,10 +176,18 @@
       <button class="primary" onclick={goThere}>Go to Page</button>
       <button class="icon-btn" onclick={close} aria-label="Close"><Icon name="close" size={14} /></button>
     </header>
-    <PeekPage bind:this={pageView} bind:zoom tab={peek.tab} page={target} {startY} {invert} {selectMode} />
+    <PeekPage bind:this={pageView} bind:zoom oncontext={onPeekContext} tab={peek.tab} page={target} {startY} {invert} {selectMode} />
   </div>
 {:else}
-  <div class="card" bind:this={card} style={position} role="dialog" aria-label="Link preview">
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_interactive_supports_focus -->
+  <div
+    class="card"
+    bind:this={card}
+    style={moved ? `left:${moved.left}px;top:${moved.top}px` : position}
+    role="dialog"
+    aria-label="Link preview"
+    onpointerdown={onCardDown}
+  >
     {#if target >= 0}
       <header>
         <span class="title">Page {target + 1}</span>
@@ -155,7 +198,7 @@
         <button class="icon-btn" onclick={close} aria-label="Close"><Icon name="close" size={14} /></button>
       </header>
       <div class="clip">
-        <PeekPage bind:this={pageView} bind:zoom tab={peek.tab} page={target} {startY} {invert} {selectMode} />
+        <PeekPage bind:this={pageView} bind:zoom oncontext={onPeekContext} tab={peek.tab} page={target} {startY} {invert} {selectMode} />
       </div>
       <footer>
         <button class="text-btn" onclick={() => (expanded = true)}>Enlarge</button>
@@ -180,7 +223,25 @@
   </div>
 {/if}
 
+{#if ctx}
+  {@const c = ctx}
+  {#if "sel" in c.target}
+    <SelectionMenu tab={peek.tab} sel={c.target.sel} onclose={() => (ctx = null)} />
+  {:else}
+    <ContextMenu tab={peek.tab} target={c.target} x={c.x} y={c.y} paneId={null} onedit={() => {}} onclose={() => (ctx = null)} />
+  {/if}
+{/if}
+
 <style>
+  .card header {
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .card header:active {
+    cursor: grabbing;
+  }
+
   .backdrop {
     position: fixed;
     inset: 0;

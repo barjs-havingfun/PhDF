@@ -1,9 +1,12 @@
 <script lang="ts">
-  // Settings sheet: Obsidian vault and OCR languages.
+  // Settings sheet: Obsidian vault, OCR languages and the AI (cache).
   import { onMount } from "svelte";
   import { api } from "./api";
   import Icon from "./Icon.svelte";
   import { notify } from "./notify.svelte";
+  import AgentPicker from "./ai/AgentPicker.svelte";
+  import { APP_FONTS, FONTS, setAppFont, ui } from "./md/typography.svelte";
+  import { loadAgent, setAgent, setFont, term, TERM_FONTS, TERM_SIZES } from "./ai/terminal.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -22,7 +25,26 @@
     installed = info.installed;
     common = info.common;
     chosen = (await py.get_setting<string[]>("ocr.languages", [])) ?? [];
+    cache = await py.ai_cache_info();
+    await loadAgent();
+    agentReady = true;
   });
+
+  let agentReady = $state(false);
+
+  async function pickAgent(command: string) {
+    await setAgent(command);
+    notify.show({ text: command ? "Default AI agent saved. New terminals start it." : "New terminals start a plain shell." }, 2200);
+  }
+
+  let cache = $state<{ files: number; bytes: number } | null>(null);
+
+  async function clearCache() {
+    cache = await (await api()).ai_cache_clear();
+    notify.show({ text: "AI cache cleared." }, 1800);
+  }
+
+  const mb = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
 
   async function chooseVault() {
     const py = await api();
@@ -73,6 +95,21 @@
     </header>
 
     <section>
+      <h3>Appearance</h3>
+      <div class="row">
+        <span class="label">App font</span>
+        <div class="fonts">
+          {#each APP_FONTS as key}
+            <button class="font" class:on={ui.font === key} style="font-family:{FONTS[key].stack}" onclick={() => setAppFont(key)}>
+              {FONTS[key].label}
+            </button>
+          {/each}
+        </div>
+      </div>
+      <p class="hint">The font of PhDF's buttons, menus and notes set to “System”. Notes have their own font under <b>Aa</b>.</p>
+    </section>
+
+    <section>
       <h3>Obsidian</h3>
       <div class="row">
         <span class="label">Vault</span>
@@ -102,7 +139,7 @@
           {/each}
         </div>
       {:else}
-        <p class="hint">No languages yet — English is downloaded the first time you use OCR.</p>
+        <p class="hint">No languages yet. English is downloaded the first time you use OCR.</p>
       {/if}
       {#if available.length}
         <div class="row wrap">
@@ -115,6 +152,39 @@
         </div>
       {/if}
       <p class="hint">Language files (~4 MB each) are stored in PhDF’s data folder.</p>
+    </section>
+
+    <section>
+      <h3>AI</h3>
+      <p class="hint top">Default agent: started in new terminals and when you <i>Ask AI</i> with none running.</p>
+      {#if agentReady}
+        <AgentPicker current={term.agent} onpick={pickAgent} />
+        <p class="hint">This choice applies the next time a terminal opens; an agent that is already running keeps running.</p>
+      {/if}
+      <div class="row term-font">
+        <span class="label">Terminal font</span>
+        <select value={term.font.name} onchange={(e) => setFont({ name: e.currentTarget.value })}>
+          {#each TERM_FONTS as f}<option value={f.name}>{f.name}</option>{/each}
+        </select>
+        <input
+          type="number"
+          min={TERM_SIZES.min}
+          max={TERM_SIZES.max}
+          value={term.font.size}
+          onchange={(e) => setFont({ size: Number(e.currentTarget.value) })}
+          aria-label="Terminal font size"
+        />
+        <span class="unit">px</span>
+      </div>
+      <div class="row cache">
+        <span class="label">Cache</span>
+        <span class="value">{cache ? `${cache.files} file${cache.files === 1 ? "" : "s"}, ${mb(cache.bytes)}` : "…"}</span>
+        <button class="btn" onclick={clearCache} disabled={!cache?.files}>Clear AI cache</button>
+      </div>
+      <p class="hint">
+        Markdown copies of documents the AI reads (✦ menu). PhDF keeps them small by itself: only the latest version
+        of each document, nothing unused for 30 days, at most 500 MB.
+      </p>
     </section>
   </div>
 </div>
@@ -132,6 +202,8 @@
 
   .sheet {
     width: min(520px, 92vw);
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
     padding: 14px 18px 18px;
     border-radius: 14px;
     background: var(--popover);
@@ -264,6 +336,52 @@
     margin: 4px 0 0;
     font-size: 11px;
     color: var(--secondary);
+  }
+
+  .fonts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .font {
+    padding: 4px 10px;
+    border-radius: 7px;
+    background: var(--surface);
+    box-shadow: var(--card-shadow);
+  }
+
+  .font.on {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+
+  .hint.top {
+    margin: 0 0 8px;
+  }
+
+  .row.cache,
+  .row.term-font {
+    margin-top: 12px;
+  }
+
+  select,
+  input[type="number"] {
+    height: 26px;
+    padding: 0 6px;
+    border: none;
+    border-radius: 6px;
+    background: var(--hover);
+    color: var(--text);
+    font: inherit;
+  }
+
+  input[type="number"] {
+    width: 60px;
+  }
+
+  .unit {
+    color: var(--secondary);
+    font-size: 12px;
   }
 
   code {

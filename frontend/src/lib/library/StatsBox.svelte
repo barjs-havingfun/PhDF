@@ -45,7 +45,7 @@
     </div>
 
     <figure>
-      <figcaption>Minutes read per day — last 14 days</figcaption>
+      <figcaption>Minutes read per day, last 14 days</figcaption>
       <div class="chart">
         <svg viewBox="0 0 {W} {H}" role="img" aria-label="Minutes read per day over the last 14 days">
           <line class="base" x1="0" x2={W} y1={H - PAD.bottom} y2={H - PAD.bottom} />
@@ -84,7 +84,7 @@
         </table>
       {/if}
     </figure>
-    <p class="hint">Only time actually spent reading counts — not skimming, idle time or breaks.</p>
+    <p class="hint">Only time actually spent reading counts, not skimming, idle time or breaks.</p>
   </section>
 {/if}
 

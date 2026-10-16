@@ -1,13 +1,14 @@
 <script lang="ts">
-  // Equation → LaTeX, step 2: waits for the AI, then shows the typeset equation and its
+  // Equation → LaTeX, step 2: shows the drawn area with OK, waits for the AI, then shows the typeset equation and its
   // editable LaTeX with Insert (at the cursor in the side note) and Copy.
   import "katex/dist/katex.min.css";
   import Icon from "../Icon.svelte";
   import { notify } from "../notify.svelte";
   import { copyText } from "../platform";
   import type { Tab } from "../tab.svelte";
-  import { cancelEquation, insertEquation } from "./equation.svelte";
-  import { term } from "./terminal.svelte";
+  import { pageImageUrl } from "../api";
+  import { cancelEquation, confirmEquation, insertEquation } from "./equation.svelte";
+  import { agentLabel, term } from "./terminal.svelte";
 
   let { tab }: { tab: Tab } = $props();
 
@@ -46,10 +47,18 @@
     <button class="x" onclick={() => cancelEquation(tab)} aria-label="Close"><Icon name="close" size={12} /></button>
   </div>
 
-  {#if job.status === "preparing" || job.status === "waiting"}
+  {#if job.status === "confirm"}
+    <img class="clip" src={pageImageUrl(tab.doc.docId, job.page, 3, job.rect, tab.revs[job.page] ?? 0)} alt="The selected area" />
+    <p class="ask">Send this area to the AI in the terminal?</p>
+    <div class="actions">
+      <span class="grow"></span>
+      <button onclick={() => cancelEquation(tab)}>Cancel</button>
+      <button class="primary" onclick={() => confirmEquation(tab)}>OK</button>
+    </div>
+  {:else if job.status === "preparing" || job.status === "waiting"}
     <div class="wait">
       <span class="spinner"></span>
-      {job.status === "preparing" ? "Preparing the image…" : `Waiting for ${term.ai === "codex" ? "Codex" : term.ai === "claude" ? "Claude" : "the AI"} in the terminal…`}
+      {job.status === "preparing" ? "Preparing the image…" : `Waiting for ${term.ai ? agentLabel(term.ai) : "the AI"} in the terminal…`}
     </div>
     <p class="hint">If it asks for permission to write the file, allow it in the terminal.</p>
     <div class="actions"><span class="grow"></span><button onclick={() => cancelEquation(tab)}>Cancel</button></div>
@@ -69,6 +78,22 @@
 </div>
 
 <style>
+  .clip {
+    display: block;
+    max-width: 100%;
+    max-height: 160px;
+    margin: 4px auto 6px;
+    border-radius: 4px;
+    background: white;
+    box-shadow: 0 0 0 0.5px var(--separator);
+  }
+
+  .ask {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: var(--secondary);
+  }
+
   .box {
     position: fixed;
     z-index: 30;

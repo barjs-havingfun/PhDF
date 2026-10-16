@@ -49,7 +49,7 @@ export const FONTS = {
 export type FontKey = keyof typeof FONTS;
 
 export const RANGES = {
-  size: { min: 12, max: 22, step: 1, unit: "px" },
+  size: { min: 10, max: 32, step: 1, unit: "px" }, // Ctrl+wheel in a note zooms this
   lineHeight: { min: 1.2, max: 2.2, step: 0.05, unit: "" },
   letterSpacing: { min: -0.02, max: 0.12, step: 0.01, unit: "em" },
   width: { min: 520, max: 1000, step: 20, unit: "px" },
@@ -81,9 +81,46 @@ export function save() {
   saveTimer = setTimeout(() => api().then((py) => py.set_setting("md.typography", { ...typo })), 400);
 }
 
+/** Zoom the note text (Ctrl+wheel, Ctrl+= / Ctrl+-); `0` resets to the default size. */
+export function zoomText(delta: number) {
+  const { min, max } = RANGES.size;
+  typo.size = delta === 0 ? DEFAULTS.size : Math.min(max, Math.max(min, typo.size + delta));
+  save();
+}
+
+export const DEFAULT_SIZE = DEFAULTS.size;
+
 export function reset() {
   Object.assign(typo, DEFAULTS);
   save();
+}
+
+// --- the whole app's font (Settings → Appearance) -----------------------------------------------
+
+/** Fonts for the app's own text; "system" is the OS font. Notes on "System" follow this one. */
+export const APP_FONTS: FontKey[] = ["system", "inter", "atkinson", "literata"];
+export const ui = $state({ font: "system" as FontKey });
+
+function applyAppFont() {
+  const root = document.documentElement.style;
+  if (ui.font === "system") root.removeProperty("--font");
+  else root.setProperty("--font", FONTS[ui.font].stack);
+}
+
+export async function loadAppFont() {
+  const saved = await (await api()).get_setting<FontKey | null>("ui.font", null);
+  if (saved && saved in FONTS && saved !== "system") {
+    await FONTS[saved].load();
+    ui.font = saved;
+    applyAppFont();
+  }
+}
+
+export async function setAppFont(font: FontKey) {
+  await FONTS[font].load();
+  ui.font = font;
+  applyAppFont();
+  (await api()).set_setting("ui.font", font);
 }
 
 /** CSS custom properties for the editor and preview. */

@@ -49,5 +49,33 @@ def test_ai_context_writes_requested_pages(tmp_path, sample_pdf, monkeypatch):
     assert (ctx["first"], ctx["last"]) == (1, 2)
     assert "Page 2" in text and "Page 3" in text and "Page 1" not in text
     assert api.ai_context(doc_id, 1, 2)["path"] == ctx["path"]  # cached
-    assert set(api.ai_tools()) == {"claude", "codex"}
+    assert set(api.ai_tools()) == {"claude", "codex", "gemini"}
     assert api.app_info()["platform"] in {"windows", "macos", "linux"}
+
+
+def test_command_name_of_an_agent():
+    from phdf.services.terminal import command_name
+
+    assert command_name("claude") == "claude"
+    assert command_name("  aider --model sonnet ") == "aider"
+    assert command_name(r'"C:\Program Files\Gemini\gemini.exe" --yolo') == "gemini"
+    assert command_name("/usr/local/bin/Codex") == "codex"
+    assert command_name("") is None
+
+
+def test_term_ai_also_looks_for_the_default_agent(tmp_path, monkeypatch):
+    from phdf.api import Api, Core
+    from phdf.db import Store
+    from phdf.engine import default_engine
+    from phdf.services.terminal import Session
+
+    seen = []
+    monkeypatch.setattr(Session, "__init__", lambda self, *a: setattr(self, "id", "s1"))
+    monkeypatch.setattr(Session, "running_ai", lambda self, names: seen.append(names))
+    api = Api(Core(default_engine(), Store(tmp_path / "db.sqlite")), "main")
+    sid = api._terminals.start(None, 80, 24)
+    api.term_ai(sid)
+    api.set_setting("ai.agent", "aider --model x")
+    api.term_ai(sid)
+    known = {"claude", "codex", "gemini"}
+    assert seen == [known, known | {"aider"}]

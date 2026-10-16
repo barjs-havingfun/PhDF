@@ -39,7 +39,7 @@
         bind:this={gradeInput}
         bind:value={session.grade}
         onkeydown={onKey}
-        placeholder="—"
+        placeholder="-"
         spellcheck="false"
         aria-label="Grade"
       />

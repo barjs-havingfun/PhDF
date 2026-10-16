@@ -143,6 +143,33 @@ export interface GradingFolder {
   files: { rel: string; name: string }[];
 }
 
+/** The AI's whole-document Markdown copy (✦ menu, "Read as Markdown"). */
+export interface MarkdownStatus {
+  state: "none" | "working" | "ready" | "error";
+  done: number; // pages converted
+  total: number;
+  error?: string;
+}
+
+/** A PhDF Tools session: an edited copy of a PDF (pages served under `id`). */
+export interface ToolsState {
+  id: string;
+  path: string;
+  name: string;
+  pages: [number, number][]; // size of each page (rotation applied)
+  annotated: boolean[];
+  canUndo: boolean;
+  revs: Revs;
+}
+
+export interface ParkedItem {
+  line: number;
+  text: string; // the whole line after the checkbox
+  done: boolean;
+  thought: string;
+  meta: string; // "source · time", or only the time
+}
+
 export interface SearchHit {
   page: number;
   rects: Rect[];
@@ -163,7 +190,7 @@ interface PyApi {
   term_resize(id: string, cols: number, rows: number): Promise<void>;
   term_ai(id: string): Promise<string | null>;
   term_close(id: string): Promise<void>;
-  ai_tools(): Promise<{ claude: boolean; codex: boolean }>;
+  ai_tools(): Promise<{ claude: boolean; codex: boolean; gemini: boolean }>;
   bookmarks(docId: string): Promise<Bookmark[]>;
   set_bookmark(docId: string, page: number, label?: string): Promise<Bookmark[]>;
   delete_bookmark(docId: string, page: number): Promise<Bookmark[]>;
@@ -174,11 +201,15 @@ interface PyApi {
   window_at(x: number, y: number, scale?: number): Promise<string | null>;
   send_to_window(windowId: string, path: string): Promise<boolean>;
   ai_context(docId: string, firstPage: number, lastPage: number): Promise<{ path: string; first: number; last: number; chars: number }>;
+  ai_cache_info(): Promise<{ files: number; bytes: number }>;
+  ai_markdown_status(docId: string): Promise<MarkdownStatus>;
+  ai_markdown_prepare(docId: string): Promise<MarkdownStatus>;
+  ai_cache_clear(): Promise<{ files: number; bytes: number }>;
   parking_path(document?: string | null): Promise<string>;
   parking_add(thought: string, source?: string | null, document?: string | null): Promise<string>;
   parking_list(
     document?: string | null,
-  ): Promise<{ path: string; items: { line: number; text: string; done: boolean }[] }>;
+  ): Promise<{ path: string; items: ParkedItem[] }>;
   parking_done(line: number, text: string, done?: boolean, document?: string | null): Promise<boolean>;
   open_document(path: string): Promise<OpenedDocument>;
   close_document(docId: string): Promise<void>;
@@ -249,6 +280,16 @@ interface PyApi {
   read_text(path: string): Promise<TextFile>;
   write_text(path: string, text: string): Promise<number>;
   file_mtime(path: string): Promise<number | null>;
+  rename_file(path: string, name: string): Promise<string>;
+  tools_open(path: string): Promise<ToolsState>;
+  tools_apply(id: string, op: Record<string, unknown>): Promise<ToolsState>;
+  tools_undo(id: string): Promise<ToolsState>;
+  tools_has_annotations(id: string, pages?: number[] | null): Promise<boolean>;
+  tools_chapters(id: string): Promise<number[]>;
+  tools_save(id: string, keepAnnotations?: boolean): Promise<string>;
+  tools_extract(id: string, pages: number[], keepAnnotations?: boolean): Promise<string | null>;
+  tools_split(id: string, parts: number[][], keepAnnotations?: boolean): Promise<string[]>;
+  tools_close(id: string): Promise<void>;
   open_external(url: string): Promise<void>;
   peek_url(url: string): Promise<boolean>;
   peek_expand(): Promise<void>;

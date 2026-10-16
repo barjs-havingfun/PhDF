@@ -11,7 +11,7 @@ export interface EqJob {
   rect: Rect;
   /** Where the preview box appears (screen coordinates). */
   at: { x: number; y: number };
-  status: "preparing" | "waiting" | "done" | "error";
+  status: "confirm" | "preparing" | "waiting" | "done" | "error"; // confirm: shown, OK not pressed yet
   latex: string;
   error: string;
   png: string;
@@ -35,10 +35,23 @@ export function cleanLatex(raw: string): string {
   return s;
 }
 
-export async function startEquation(tab: Tab, page: number, rect: Rect, at: { x: number; y: number }, paneId: number) {
+/** A rectangle was drawn: show it in the box and wait for OK (`confirmEquation`). */
+export function startEquation(tab: Tab, page: number, rect: Rect, at: { x: number; y: number }, paneId: number) {
   cancelEquation(tab);
-  const job = $state<EqJob>({ page, rect, at, status: "preparing", latex: "", error: "", png: "", tex: "" });
+  const job = $state<EqJob>({ page, rect, at, status: "confirm", latex: "", error: "", png: "", tex: "" });
   tab.equation = job;
+  confirmPane = paneId;
+}
+
+let confirmPane = 0;
+
+/** OK pressed: render the region, ask the AI in the terminal and wait for its LaTeX. */
+export async function confirmEquation(tab: Tab) {
+  const job = tab.equation;
+  if (!job || job.status !== "confirm") return;
+  const { page, rect } = job;
+  const paneId = confirmPane;
+  job.status = "preparing";
   try {
     const py = await api();
     // The files go where the AI runs, so Claude Code / Codex may read and write them.
@@ -50,7 +63,7 @@ export async function startEquation(tab: Tab, page: number, rect: Rect, at: { x:
     job.status = "waiting";
     const prompt =
       `Look at the image file "${files.png}". It shows a mathematical formula cropped from page ${page + 1} of the PDF “${tab.title}”. ` +
-      `Convert it to LaTeX and write ONLY the LaTeX source into the file "${files.tex}" — no $ or \\[ \\] delimiters, no code fences, no explanation. Do nothing else.`;
+      `Convert it to LaTeX and write ONLY the LaTeX source into the file "${files.tex}": no $ or \\[ \\] delimiters, no code fences, no explanation. Do nothing else.`;
     await askAi(prompt, true, folderOf(tab.path), paneId);
     await poll(tab, job);
   } catch (e) {
@@ -77,7 +90,7 @@ async function poll(tab: Tab, job: EqJob) {
   }
   if (tab.equation === job) {
     job.status = "error";
-    job.error = term.ai ? "The AI did not answer in time." : "No AI answered — start Claude or Codex in the terminal and try again.";
+    job.error = term.ai ? "The AI did not answer in time." : "No AI answered. Start your AI agent in the terminal and try again.";
     py.equation_cleanup(job.png);
   }
 }

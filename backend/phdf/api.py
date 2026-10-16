@@ -35,8 +35,17 @@ from phdf.docid import document_id
 from phdf.engine import PdfDocument, PdfEngine, Rect
 from phdf.engine.base import EDITABLE_KINDS
 from phdf.paths import data_dir
-from phdf.services import equations, grading, ocr, parking, webview_memory
-from phdf.services.terminal import Terminals
+from phdf.services import (
+    ai_cache,
+    ai_markdown,
+    equations,
+    grading,
+    ocr,
+    parking,
+    pdftools,
+    webview_memory,
+)
+from phdf.services.terminal import AI_PROCESS_NAMES, Terminals, command_name
 
 FIT_MODES = ("width", "page", "none")
 PEEK_SIZE = (560, 460)
@@ -44,16 +53,6 @@ SESSION_PREFIX = "session."
 
 # (window_id, x, y) -> None; set by app.py so the API can open new windows.
 WindowFactory = Callable[[str, int | None, int | None], None]
-
-
-def _markdown_converter():
-    """pymupdf4llm, imported quietly (it prints an advert for its optional layout add-on)."""
-    import contextlib
-    import io
-
-    with contextlib.redirect_stdout(io.StringIO()):
-        import pymupdf4llm
-    return pymupdf4llm
 
 
 class Core:
@@ -71,6 +70,10 @@ class Core:
         self._refs: Counter[str] = Counter()
         self._aliases: dict[str, str] = {}  # old id -> current id, after saves
         self._revs: defaultdict[str, Counter[int]] = defaultdict(Counter)  # page render revisions
+        # Text revision per document: only OCR changes the text (annotations don't), so the AI's
+        # Markdown copies are keyed by this, not by the render revisions.
+        self.text_revs: Counter[str] = Counter()
+        self.md_jobs: dict[str, dict[str, Any]] = {}  # whole-document conversions, by cache file
 
     # All methods below expect the caller to hold `lock`, except `render` and `window_closed`.
 
@@ -143,6 +146,7 @@ class Core:
         current = self.resolve(doc_id)
         self._docs[current].close()
         self._docs[current] = self.engine.open(self._paths[current])
+        self.text_revs.pop(current, None)
         self.bump(current)
 
     def render(self, doc_id: str, page: int, scale: float, clip: Rect | None) -> bytes | None:
@@ -177,6 +181,7 @@ class Api:
         self._peek: webview.Window | None = None
         self._force_close = False
         self._terminals = Terminals()
+        self._tools: dict[str, pdftools.ToolsSession] = {}  # PDF tools sessions of this window
 
     # --- app / windows ----------------------------------------------------------------------
 
@@ -377,8 +382,19 @@ class Api:
 
     def save_document(self, doc_id: str) -> dict[str, Any]:
         with self._core.lock:
-            self._core.save(doc_id)
-            result = {"dirty": False, "revs": self._core.revs(doc_id)}
+            core = self._core
+            old = core.resolve(doc_id)
+            text_rev = core.text_revs.pop(old, 0)
+            new = core.save(doc_id)
+            result = {"dirty": False, "revs": core.revs(doc_id)}
+        # Same text under a new id: rename the AI's Markdown copies instead of converting again.
+        cache = ai_cache.folder(data_dir())
+        if new != old and cache.is_dir():
+            for f in cache.glob(f"{old[:12]}-*-r{text_rev}.md"):
+                rest = f.name[len(old[:12]) : -len(f"-r{text_rev}.md")]
+                target = cache / f"{new[:12]}{rest}-r0.md"
+                if not target.exists():
+                    f.replace(target)
         return result
 
     def revert_document(self, doc_id: str) -> dict[str, Any]:
@@ -571,6 +587,7 @@ class Api:
             doc = self._core.doc(doc_id)
             if words:
                 doc.add_invisible_text(page, [(w.text, w.bbox) for w in words], ocr.unicode_font())
+                self._core.text_revs[self._core.resolve(doc_id)] += 1
             return self._changed(doc_id, page, {"words": len(words)})
 
     # --- export -------------------------------------------------------------------------------
@@ -579,7 +596,7 @@ class Api:
         """The document's text as Markdown (headings, lists, tables), including unsaved OCR."""
         import pymupdf
 
-        pymupdf4llm = _markdown_converter()
+        pymupdf4llm = ai_markdown.converter()
 
         with self._core.lock:
             data = self._core.doc(doc_id).to_bytes()
@@ -696,9 +713,14 @@ class Api:
             session.resize(cols, rows)
 
     def term_ai(self, session_id: str) -> str | None:
-        """Which AI CLI runs in the terminal ('claude' / 'codex'), if any."""
+        """Which AI CLI runs in the terminal (claude, codex, gemini or the default agent)."""
         session = self._terminals.get(session_id)
-        return session.running_ai() if session else None
+        if session is None:
+            return None
+        names = set(AI_PROCESS_NAMES)
+        if own := command_name(self._core.store.get_setting("ai.agent") or ""):
+            names.add(own)
+        return session.running_ai(names)
 
     def term_close(self, session_id: str) -> None:
         self._terminals.close(session_id)
@@ -719,37 +741,199 @@ class Api:
         if appdata := os.environ.get("APPDATA"):
             extra.append(Path(appdata) / "npm")
         found = {}
-        for tool in ("claude", "codex"):
+        for tool in ("claude", "codex", "gemini"):
             found[tool] = bool(shutil.which(tool)) or any(
                 (d / name).exists() for d in extra for name in (tool, f"{tool}.exe")
             )
         return found
 
+    def _ai_file(self, doc_id: str, part: str) -> Path:
+        """Cache file of the AI's Markdown copy (`part`: "all" or "p<a>-<b>"). Caller holds lock."""
+        current = self._core.resolve(doc_id)
+        rev = self._core.text_revs[current]
+        return ai_cache.folder(data_dir()) / f"{current[:12]}-{part}-r{rev}.md"
+
     def ai_context(self, doc_id: str, first_page: int, last_page: int) -> dict[str, Any]:
-        """Write pages [first_page, last_page] as Markdown for the AI to read; returns the file.
-
-        Cached per document revision and page range in PhDF's data folder (not next to the
-        user's PDF), and includes unsaved OCR text."""
-        import pymupdf
-
-        pymupdf4llm = _markdown_converter()
-
+        """Write pages [first_page, last_page] as Markdown (with page markers) for the AI to read;
+        returns the file. Cut from the whole-document copy when it is ready, else converted now.
+        Cached in PhDF's data folder (not next to the user's PDF); includes unsaved OCR text."""
         with self._core.lock:
             doc = self._core.doc(doc_id)
             count = doc.info().page_count
             first, last = max(0, first_page), min(count - 1, last_page)
-            current = self._core.resolve(doc_id)
-            rev = sum(self._core.revs(doc_id).values())
-            path = data_dir() / "ai" / f"{current[:12]}-p{first + 1}-{last + 1}-r{rev}.md"
-            data = None if path.exists() else doc.to_bytes()
-        if data is not None:
-            with pymupdf.open("pdf", data) as copy:
-                text = pymupdf4llm.to_markdown(
-                    copy, pages=list(range(first, last + 1)), show_progress=False
-                )
+            path = self._ai_file(doc_id, f"p{first + 1}-{last + 1}")
+            whole = self._ai_file(doc_id, "all")
+            data = None if path.exists() or whole.exists() else doc.to_bytes()
+        if path.exists():
+            ai_cache.touch(path)  # used again: cleaning keeps it longer
+        else:
+            if data is None:
+                text = ai_markdown.cut(whole.read_text(encoding="utf-8"), first, last)
+                ai_cache.touch(whole)
+            else:
+                text = ai_markdown.convert(data, list(range(first, last + 1)))
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
+            ai_cache.cleanup(path.parent)
         return {"path": str(path), "first": first, "last": last, "chars": path.stat().st_size}
+
+    def ai_markdown_status(self, doc_id: str) -> dict[str, Any]:
+        """The whole-document Markdown copy: "ready", "working" (done / total pages) or "none"."""
+        with self._core.lock:
+            whole = self._ai_file(doc_id, "all")
+            total = self._core.doc(doc_id).info().page_count
+        if whole.exists():
+            return {"state": "ready", "done": total, "total": total}
+        job = self._core.md_jobs.get(str(whole))
+        if job and job["state"] == "working":
+            return dict(job)
+        if job and job["state"] == "error":
+            return dict(job)
+        return {"state": "none", "done": 0, "total": total}
+
+    def ai_markdown_prepare(self, doc_id: str) -> dict[str, Any]:
+        """Start converting the whole document in the background (once); returns the status."""
+        status = self.ai_markdown_status(doc_id)
+        if status["state"] in ("ready", "working"):
+            return status
+        with self._core.lock:
+            whole = self._ai_file(doc_id, "all")
+            data = self._core.doc(doc_id).to_bytes()
+            total = self._core.doc(doc_id).info().page_count
+        job = {"state": "working", "done": 0, "total": total}
+        self._core.md_jobs[str(whole)] = job
+
+        def work() -> None:
+            try:
+                text = ai_markdown.convert(
+                    data, list(range(total)), lambda done: job.update(done=done)
+                )
+                whole.parent.mkdir(parents=True, exist_ok=True)
+                tmp = whole.with_name(whole.name + ".part")
+                tmp.write_text(text, encoding="utf-8")
+                tmp.replace(whole)
+                job["state"] = "ready"
+                ai_cache.cleanup(whole.parent)
+            except Exception as e:  # noqa: BLE001 - shown in the menu
+                job.update(state="error", error=str(e))
+
+        threading.Thread(target=work, daemon=True).start()
+        return dict(job)
+
+    def ai_cache_info(self) -> dict[str, int]:
+        return ai_cache.info(ai_cache.folder(data_dir()))
+
+    def ai_cache_clear(self) -> dict[str, int]:
+        ai_cache.clear(ai_cache.folder(data_dir()))
+        return self.ai_cache_info()
+
+    # --- PDF tools (Phase 7) ------------------------------------------------------------------
+    # A session edits a copy in memory; its pages are served like a document's (`Core.render`)
+    # under the session id. Results are always new files; the original is never written.
+
+    def tools_open(self, path: str) -> dict[str, Any]:
+        from phdf.engine.mupdf import MuPdfDocument
+
+        session = pdftools.ToolsSession(path)
+        tid = uuid.uuid4().hex + uuid.uuid4().hex  # 64 hex, like a document id (render URLs)
+        with self._core.lock:
+            self._tools[tid] = session
+            self._core._docs[tid] = MuPdfDocument(session.doc)
+        return self._tools_state(tid)
+
+    def _tools_state(self, tid: str) -> dict[str, Any]:
+        session = self._tools[tid]
+        doc = session.doc
+        return {
+            "id": tid,
+            "path": str(session.path),
+            "name": session.path.name,
+            "pages": [[round(p.rect.width, 2), round(p.rect.height, 2)] for p in doc],
+            "annotated": [p.first_annot is not None for p in doc],
+            "canUndo": bool(session.ops),
+            "revs": self._core.revs(tid),
+        }
+
+    def _tools_changed(self, tid: str, pages: list[int] | None = None) -> dict[str, Any]:
+        """Caller holds the lock: the session's document may be a new object. Redraw `pages`
+        (default: all; pages change places after most operations)."""
+        from phdf.engine.mupdf import MuPdfDocument
+
+        self._core._docs[tid] = MuPdfDocument(self._tools[tid].doc)
+        for page in pages if pages is not None else [None]:
+            self._core.bump(tid, page)
+        return self._tools_state(tid)
+
+    def tools_apply(self, tid: str, op: dict[str, Any]) -> dict[str, Any]:
+        with self._core.lock:
+            self._tools[tid].apply(op)
+            rotated = [int(p) for p in op.get("pages", [])] if op.get("kind") == "rotate" else None
+            return self._tools_changed(tid, rotated)
+
+    def tools_undo(self, tid: str) -> dict[str, Any]:
+        with self._core.lock:
+            self._tools[tid].undo()
+            return self._tools_changed(tid)
+
+    def tools_chapters(self, tid: str) -> list[int]:
+        """First pages (0-based) of the top-level outline entries, for "split at chapters"."""
+        with self._core.lock:
+            toc = self._tools[tid].doc.get_toc()
+        return sorted({page - 1 for level, _, page in toc if level == 1 and page > 0})
+
+    def tools_has_annotations(self, tid: str, pages: list[int] | None = None) -> bool:
+        with self._core.lock:
+            return self._tools[tid].has_annotations(pages)
+
+    def tools_save(self, tid: str, keep_annotations: bool = True) -> str:
+        """The whole edited document as "<name>_phdfE.pdf" next to the original."""
+        with self._core.lock:
+            session = self._tools[tid]
+            return str(session.write(pdftools.copy_path(session.path), None, keep_annotations))
+
+    def tools_extract(
+        self, tid: str, pages: list[int], keep_annotations: bool = True
+    ) -> str | None:
+        """Selected pages as a new PDF; asks where ("<name>_p_3-7_phdf.pdf" suggested)."""
+        session = self._tools[tid]
+        suggested = pdftools.part_path(session.path, pages)
+        window = self._window or webview.active_window()
+        if window is None:
+            return None
+        result = window.create_file_dialog(
+            webview.FileDialog.SAVE,
+            directory=str(suggested.parent),
+            save_filename=suggested.name,
+            file_types=("PDF files (*.pdf)",),
+        )
+        if not result:
+            return None
+        dest = Path(result if isinstance(result, str) else result[0])
+        if dest.suffix.lower() != ".pdf":
+            dest = dest.with_name(dest.name + ".pdf")
+        with self._core.lock:
+            return str(session.write(dest, pages, keep_annotations))
+
+    def tools_split(
+        self, tid: str, parts: list[list[int]], keep_annotations: bool = True
+    ) -> list[str]:
+        """Each part as "<name>_p_<a>-<b>_phdf.pdf" next to the original."""
+        with self._core.lock:
+            session = self._tools[tid]
+            return [
+                str(session.write(pdftools.part_path(session.path, part), part, keep_annotations))
+                for part in parts
+                if part
+            ]
+
+    def tools_close(self, tid: str) -> None:
+        with self._core.lock:
+            if session := self._tools.pop(tid, None):
+                self._core._docs.pop(tid, None)
+                self._core._revs.pop(tid, None)
+                session.close()
+        if self._core.on_closed_document:
+            self._core.on_closed_document(tid)
 
     # --- parking lot ----------------------------------------------------------------------------
 
@@ -809,6 +993,32 @@ class Api:
         tmp.replace(p)  # atomic: a crash never leaves a half-written note
         return p.stat().st_mtime
 
+    def rename_file(self, path: str, name: str) -> str:
+        """Rename a note in its folder (".md" added if missing); returns the new path. A note
+        shown with a PDF stays linked to it."""
+        old = Path(path)
+        name = name.strip()
+        if not name or name in (".", "..") or re.search(r'[<>:"/\\|?*\x00-\x1f]', name):
+            raise ValueError("That name can't be used for a file.")
+        if not name.lower().endswith(".md"):
+            name += ".md"
+        new = old.with_name(name)
+        if new == old:
+            return str(old)
+        # A case-only change on Windows is the same file, not a clash.
+        same = new.exists() and old.exists() and os.path.samefile(old, new)
+        if new.exists() and not same:
+            raise ValueError(f"“{name}” already exists in this folder.")
+        store = self._core.store
+        pdf = store.pdf_for_md(str(old))
+        if pdf is None and old.with_suffix(".pdf").is_file():
+            pdf = str(old.with_suffix(".pdf"))  # the default "<pdf>.md" note
+        if old.exists():
+            old.rename(new)  # a note never written yet only changes its path
+        if pdf:
+            store.set_md_link(pdf, str(new))
+        return str(new)
+
     def file_mtime(self, path: str) -> float | None:
         p = Path(path)
         return p.stat().st_mtime if p.is_file() else None
@@ -866,6 +1076,8 @@ class Api:
 
     def _on_closed(self) -> None:
         self.peek_close()
+        for tid in list(self._tools):
+            self.tools_close(tid)
         self._terminals.close_all()
         with self._core.lock:
             for doc_id in self._open:

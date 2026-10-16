@@ -146,6 +146,10 @@ export class Tab {
   snipping = $state(false);
   equation = $state<EqJob | null>(null);
 
+  /** Finished pen strokes still drawn on top of their page until its new image (with the saved
+   *  drawing) has loaded; `rev` is that image's revision, null while saving. */
+  pendingInk = $state.raw<{ page: number; points: Point[]; color: string; width: number; rev: number | null }[]>([]);
+
   /** An annotation being dragged: drawn as an outline at its new place until released. */
   moving = $state<{ id: string; dx: number; dy: number } | null>(null);
 
@@ -531,7 +535,7 @@ export class Tab {
   async ensureParking(): Promise<MdDoc> {
     if (!this.parking) {
       const path = await (await api()).parking_path(this.doc.path);
-      const doc = new MdDoc(path, `# Parking Lot — ${this.title}\n\nThoughts parked while reading in PhDF.\n\n`);
+      const doc = new MdDoc(path, `# Parking Lot: ${this.title}\n\nThoughts parked while reading in PhDF.\n\n`);
       await doc.load();
       this.parking = doc;
     }
