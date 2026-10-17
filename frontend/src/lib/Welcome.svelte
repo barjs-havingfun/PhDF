@@ -1,4 +1,5 @@
 <script lang="ts">
+  import logo from "../assets/logo.png";
   import { kbd } from "./platform";
   import type { RecentDocument } from "./api";
   import Icon from "./Icon.svelte";
@@ -26,7 +27,7 @@
 </script>
 
 <section class="welcome">
-  <div class="app-icon">Ph</div>
+  <img class="app-icon" src={logo} alt="PhDF" draggable="false" />
   <h1>PhDF</h1>
   <p class="hint">Version {version}</p>
   <div class="buttons">
@@ -123,18 +124,10 @@
   }
 
   .app-icon {
+    display: block;
+    filter: drop-shadow(0 6px 16px rgb(122 77 255 / 0.35));
     width: 72px;
     height: 72px;
-    border-radius: 22px;
-    display: grid;
-    place-items: center;
-    font: 700 30px/1 var(--font);
-    letter-spacing: -1px;
-    color: white;
-    background: linear-gradient(160deg, #5e9bff, #3a55e8 55%, #6a3fd8);
-    box-shadow:
-      0 6px 16px rgb(58 85 232 / 0.35),
-      inset 0 1px 0 rgb(255 255 255 / 0.35);
   }
 
   h1 {

@@ -4,6 +4,7 @@ Name=PhDF
 Comment=Reader-first PDF app with Markdown notes
 Exec=phdf %F
 Terminal=false
+Icon=phdf
 MimeType=application/pdf;text/markdown;
 Categories=Office;Viewer;Education;
 StartupWMClass=PhDF

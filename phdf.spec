@@ -13,7 +13,7 @@ if not (frontend / "index.html").exists():
 a = Analysis(
     [str(root / "backend" / "phdf" / "__main__.py")],
     pathex=[str(root / "backend")],
-    datas=[(str(frontend), "frontend")],
+    datas=[(str(frontend), "frontend"), (str(root / "packaging" / "icons"), "icons")],
     hiddenimports=[],
     excludes=["tkinter"],
 )
@@ -26,6 +26,7 @@ exe = EXE(
     exclude_binaries=True,
     name="PhDF",
     console=False,
+    icon=str(root / "packaging" / "icons" / "phdf.ico"),
 )
 
 coll = COLLECT(exe, a.binaries, a.datas, name="PhDF")
@@ -34,6 +35,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="PhDF.app",
+        icon=str(root / "packaging" / "icons" / "phdf.icns"),
         bundle_identifier="io.github.phdf",
         version=version,
         info_plist={

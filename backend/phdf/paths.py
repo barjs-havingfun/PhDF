@@ -27,3 +27,10 @@ def frontend_dist() -> Path:
     if bundle := getattr(sys, "_MEIPASS", None):
         return Path(bundle) / "frontend"
     return Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+
+def icon_file(name: str) -> Path:
+    """An app icon (packaging/icons, made from logo.png by packaging/make_icons.py)."""
+    if bundle := getattr(sys, "_MEIPASS", None):
+        return Path(bundle) / "icons" / name
+    return Path(__file__).resolve().parents[2] / "packaging" / "icons" / name

@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.png" width="128" alt="PhDF logo"></p>
+
 # PhDF
 
 A lightweight, reader-first PDF app for heavy readers - with position memory, a built-in

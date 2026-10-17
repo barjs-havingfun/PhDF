@@ -59,3 +59,9 @@ def apply(window: Any, dark: bool, fullscreen: bool = False) -> None:
     set_attr(_CAPTION, _colorref(colors["caption"]))
     set_attr(_TEXT, _colorref(colors["text"]))
     set_attr(_BORDER, _NO_BORDER if fullscreen else _colorref(colors["caption"]))
+
+
+def app_id() -> None:
+    """Windows: PhDF's own taskbar identity, so the taskbar shows PhDF's icon, not Python's."""
+    if sys.platform == "win32":
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("io.github.phdf")

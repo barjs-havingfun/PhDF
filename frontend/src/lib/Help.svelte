@@ -1,4 +1,5 @@
 <script lang="ts">
+  import logo from "../assets/logo.png";
   // "How to use PhDF": a short tour of every feature, opened from the ? button.
   import { fly } from "svelte/transition";
   import Icon from "./Icon.svelte";
@@ -144,7 +145,7 @@
 <div class="backdrop" onclick={(e) => e.target === e.currentTarget && onclose()}>
   <div class="sheet" role="dialog" aria-label="How to use PhDF">
     <header>
-      <div class="app-icon">Ph</div>
+      <img class="app-icon" src={logo} alt="PhDF" draggable="false" />
       <div>
         <h2>How to use PhDF</h2>
         <p class="sub">A two-minute tour of PhDF.</p>
@@ -308,15 +309,11 @@
   }
 
   .app-icon {
+    display: block;
+    filter: drop-shadow(0 6px 16px rgb(122 77 255 / 0.35));
     flex: none;
     width: 44px;
     height: 44px;
-    border-radius: 14px;
-    display: grid;
-    place-items: center;
-    font: 700 19px/1 var(--font);
-    color: white;
-    background: linear-gradient(160deg, #5e9bff, #3a55e8 55%, #6a3fd8);
   }
 
   h2 {

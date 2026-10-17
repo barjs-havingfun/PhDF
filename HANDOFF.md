@@ -84,6 +84,10 @@ Done in v0.6.0 (2026-10-16, not yet tested by the owner):
   pages filling the window (cover alone if Pages says so), bottom-corner turn buttons, ← / → /
   Space, a short slide; Esc returns to the normal view at the same page.
 - **Note zoom menu**: click the % in the note's status line: slider, presets, reset.
+- **App icon** from the owner's `logo.png`: `packaging/make_icons.py` makes `packaging/icons/`
+  (`phdf.ico` for the exe + window, `phdf.icns` for the Mac app, `phdf.png` for Linux) and
+  `frontend/src/assets/logo.png` (start screen, tutorial). Rerun it after changing the logo.
+  pywebview's `start(icon=…)` is used on Windows too and needs the `.ico` there.
 - **Menus close on any outside press** (`lib/outside.ts`, toolbar `data-menu` wrappers, note and
   terminal **Aa**). The terminal's **Aa** no longer folds the panel.
 - **#14 PDF right-click** (`annot/ContextMenu.svelte`, `Viewer` `oncontext`): on an annotation:
@@ -133,8 +137,7 @@ Also open:
 **v1.0** when Phases 0-5.5 and 7 are stable on all three OSes.
 
 **Upcoming (unscheduled):** `phdf://` deep links from Obsidian; send to the currently open
-Obsidian note (Local REST API plugin); double-click a word → AI explains it; Turkish UI; app icon
-(owner designs a 1024×1024 PNG → `.ico` / `.icns`, wire into `phdf.spec` and the window).
+Obsidian note (Local REST API plugin); double-click a word → AI explains it; Turkish UI.
 Smaller leftovers: two-way note ↔ vault sync, OCR of a selected area, password-protected PDFs,
 rotated text in the text layer. (Window frame: kept native, colored like the toolbar via DWM, `services/titlebar.py`; owner chose this over a frameless window.)
 

@@ -16,7 +16,7 @@ from phdf.api import SESSION_PREFIX, Api, Core
 from phdf.db import Store
 from phdf.engine import default_engine
 from phdf.env import load_dotenv
-from phdf.paths import data_dir, frontend_dist
+from phdf.paths import data_dir, frontend_dist, icon_file
 from phdf.services import ai_cache, titlebar
 from phdf.services.render_server import RenderServer
 
@@ -116,6 +116,7 @@ def main() -> None:
     store = Store(data_dir() / "phdf.db")
     if store.get_setting("window.perMonitorDpi", True):  # Settings → Appearance
         per_monitor_dpi()
+    titlebar.app_id()
     engine = default_engine()
     if size := store.get_setting("epub.fontsize"):  # e-book text size (Read menu)
         engine.reflow = {**engine.reflow, "fontsize": float(size)}
@@ -153,6 +154,8 @@ def main() -> None:
         create_window(window_id)
 
     webview.start(
+        # Window / taskbar icon: Windows (WinForms) needs the .ico, GTK takes a PNG.
+        icon=str(icon_file("phdf.ico" if sys.platform == "win32" else "phdf.png")),
         debug=dev,
         private_mode=False,
         storage_path=str(data_dir() / "webview"),
