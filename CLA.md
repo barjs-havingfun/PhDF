@@ -5,8 +5,8 @@ owner ("the Maintainer"). This agreement clarifies the rights granted for contri
 Project can stay open source today and keep the option to offer other licenses in the future
 (for example, a dual-licensed or commercial edition).
 
-By submitting a contribution (code, documentation, or other material) to the Project — for
-example by opening a pull request — you agree to the following terms.
+By submitting a contribution (code, documentation, or other material) to the Project (for
+example by opening a pull request), you agree to the following terms.
 
 ## 1. Definitions
 

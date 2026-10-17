@@ -52,6 +52,8 @@ from phdf.services.terminal import AI_PROCESS_NAMES, Terminals, command_name
 
 FIT_MODES = ("width", "page", "none")
 PEEK_SIZE = (560, 460)
+RELEASES_PAGE = "https://github.com/barjs-havingfun/PhDF/releases"
+RELEASES_API = "https://api.github.com/repos/barjs-havingfun/PhDF/releases/latest"
 SESSION_PREFIX = "session."
 
 # (window_id, x, y) -> None; set by app.py so the API can open new windows.
@@ -354,6 +356,69 @@ class Api:
             data = doc.page_image(page, scale, fmt)
         path.write_bytes(data)
         return str(path)
+
+    def check_update(self) -> dict[str, Any]:
+        """The latest published release on GitHub (Settings → General lets the user turn this
+        off). Sends nothing but the request itself; any failure is just "unknown"."""
+        import urllib.request
+
+        request = urllib.request.Request(  # noqa: S310 - fixed https URL
+            RELEASES_API,
+            headers={"Accept": "application/vnd.github+json", "User-Agent": f"PhDF/{__version__}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=6) as response:  # noqa: S310
+                data = json.load(response)
+        except Exception:  # noqa: BLE001 - offline, no release yet, rate limit…
+            return {"ok": False, "current": __version__}
+        latest = str(data.get("tag_name", "")).lstrip("v")
+
+        def parts(v: str) -> tuple[int, ...]:
+            return tuple(int(n) for n in re.findall(r"\d+", v)[:3])
+
+        return {
+            "ok": bool(latest),
+            "current": __version__,
+            "latest": latest,
+            "newer": bool(latest) and parts(latest) > parts(__version__),
+            "url": data.get("html_url") or RELEASES_PAGE,
+        }
+
+    def make_default_app(self) -> dict[str, str]:
+        """Help make PhDF the default PDF app. Windows doesn't let apps do it themselves: open
+        Settings → Default apps (on PhDF's page when the installer registered it). Linux:
+        xdg-mime when PhDF's .desktop file is installed. Otherwise: how to do it by hand."""
+        if sys.platform == "win32":
+            import winreg
+
+            registered = False
+            for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                try:
+                    with winreg.OpenKey(hive, r"Software\RegisteredApplications") as key:
+                        winreg.QueryValueEx(key, "PhDF")
+                        registered = True
+                except OSError:
+                    pass
+            os.startfile(  # noqa: S606
+                "ms-settings:defaultapps?registeredAppUser=PhDF"
+                if registered
+                else "ms-settings:defaultapps"
+            )
+            return {"result": "settings" if registered else "settings-unregistered"}
+        if sys.platform == "darwin":
+            return {"result": "howto"}
+        desktop = [
+            Path.home() / ".local/share/applications/phdf.desktop",
+            Path("/usr/share/applications/phdf.desktop"),
+        ]
+        if shutil.which("xdg-mime") and any(d.exists() for d in desktop):
+            import subprocess
+
+            subprocess.run(  # noqa: S603, S607
+                ["xdg-mime", "default", "phdf.desktop", "application/pdf"], check=False
+            )
+            return {"result": "done"}
+        return {"result": "howto"}
 
     def open_in_default_app(self, path: str) -> None:
         """Open a file with the system's default app (e.g. to print from Preview on a Mac)."""

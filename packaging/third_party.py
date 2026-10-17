@@ -1,0 +1,153 @@
+"""List the open-source software PhDF ships with, and their licenses. After changing
+dependencies, run:
+
+    uv run python packaging/third_party.py
+
+Writes THIRD_PARTY_NOTICES.md (shipped with the app) and frontend/src/assets/licenses.json
+(Settings → About → Open-source licenses). Python packages are the app's runtime dependencies
+on this computer's system; frontend packages are the ones bundled into the page.
+"""
+
+import json
+import platform
+import re
+from importlib.metadata import PackageNotFoundError, distribution
+from pathlib import Path
+
+from packaging.requirements import Requirement
+
+root = Path(__file__).resolve().parents[1]
+
+# Bundled or downloaded things that aren't Python / npm packages.
+EXTRA = [
+    {
+        "name": "Python",
+        "version": platform.python_version(),
+        "license": "PSF-2.0",
+        "url": "https://www.python.org",
+        "kind": "runtime",
+    },
+    {
+        "name": "MuPDF",
+        "version": "(in PyMuPDF)",
+        "license": "AGPL-3.0",
+        "url": "https://mupdf.com",
+        "kind": "engine",
+    },
+    {
+        "name": "Tesseract OCR language data",
+        "version": "tessdata_fast",
+        "license": "Apache-2.0",
+        "url": "https://github.com/tesseract-ocr/tessdata_fast",
+        "kind": "downloaded when chosen",
+    },
+]
+
+
+# Packages whose metadata has no usable license field.
+KNOWN = {"clr_loader": "MIT"}
+
+
+def short_license(meta) -> str:
+    if meta["Name"] in KNOWN:
+        return KNOWN[meta["Name"]]
+    if "AFFERO" in (meta.get("License") or "") + " ".join(meta.get_all("Classifier") or []):
+        return "AGPL-3.0 (or Artifex commercial)"
+    if expr := meta.get("License-Expression"):
+        return expr
+    found = meta.get_all("Classifier") or []
+    classifiers = [c.split(" :: ")[-1] for c in found if c.startswith("License ::")]
+    if classifiers:
+        return ", ".join(classifiers)
+    text = (meta.get("License") or "").strip()
+    return text.splitlines()[0][:60] if text else "see project"
+
+
+def home(meta) -> str:
+    for url in meta.get_all("Project-URL") or []:
+        label, _, link = url.partition(",")
+        if label.strip().lower() in ("homepage", "home", "source", "repository", "source code"):
+            return link.strip()
+    return meta.get("Home-page") or ""
+
+
+def python_packages() -> list[dict[str, str]]:
+    seen: dict[str, dict[str, str]] = {}
+    todo = ["phdf"]
+    while todo:
+        name = todo.pop()
+        try:
+            dist = distribution(name)
+        except PackageNotFoundError:
+            continue
+        key = re.sub(r"[-_.]+", "-", dist.metadata["Name"]).lower()
+        if key in seen:
+            continue
+        if key != "phdf":
+            seen[key] = {
+                "name": dist.metadata["Name"],
+                "version": dist.version,
+                "license": short_license(dist.metadata),
+                "url": home(dist.metadata),
+                "kind": "python",
+            }
+        for spec in dist.requires or []:
+            req = Requirement(spec)
+            if req.marker and not req.marker.evaluate({"extra": ""}):
+                continue  # other platforms and optional extras
+            todo.append(req.name)
+    return sorted(seen.values(), key=lambda p: p["name"].lower())
+
+
+def npm_packages() -> list[dict[str, str]]:
+    modules = root / "frontend" / "node_modules"
+    top = json.loads((root / "frontend" / "package.json").read_text(encoding="utf-8"))
+    seen: dict[str, dict[str, str]] = {}
+    todo = list(top.get("dependencies", {}))
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        manifest = modules / name / "package.json"
+        if not manifest.exists():
+            continue
+        pkg = json.loads(manifest.read_text(encoding="utf-8"))
+        repo = pkg.get("repository")
+        url = pkg.get("homepage") or (repo.get("url") if isinstance(repo, dict) else repo) or ""
+        url = re.sub(r"^git\+|\.git$", "", url)
+        if re.fullmatch(r"[\w.-]+/[\w.-]+", url):  # "owner/repo" means GitHub
+            url = f"https://github.com/{url}"
+        seen[name] = {
+            "name": name,
+            "version": pkg.get("version", ""),
+            "license": pkg.get("license") if isinstance(pkg.get("license"), str) else "see project",
+            "url": url,
+            "kind": "frontend",
+        }
+        todo.extend(pkg.get("dependencies", {}))
+    return sorted(seen.values(), key=lambda p: p["name"].lower())
+
+
+def main() -> None:
+    items = EXTRA + python_packages() + npm_packages()
+    (root / "frontend" / "src" / "assets" / "licenses.json").write_text(
+        json.dumps(items, indent=1, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    lines = [
+        "# Third-party notices",
+        "",
+        "PhDF is free software under the GNU Affero General Public License v3.0 or later",
+        "(see `LICENSE`). It is built on the open-source software below; each keeps its own",
+        "license. Generated by `packaging/third_party.py`.",
+        "",
+        "| Software | Version | License | Kind | Website |",
+        "|---|---|---|---|---|",
+    ]
+    cols = ("name", "version", "license", "kind", "url")
+    lines += ["| " + " | ".join(i[c] for c in cols) + " |" for i in items]
+    (root / "THIRD_PARTY_NOTICES.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"{len(items)} entries written")
+
+
+if __name__ == "__main__":
+    main()

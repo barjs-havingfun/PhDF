@@ -1,0 +1,387 @@
+[
+ {
+  "name": "Python",
+  "version": "3.12.15",
+  "license": "PSF-2.0",
+  "url": "https://www.python.org",
+  "kind": "runtime"
+ },
+ {
+  "name": "MuPDF",
+  "version": "(in PyMuPDF)",
+  "license": "AGPL-3.0",
+  "url": "https://mupdf.com",
+  "kind": "engine"
+ },
+ {
+  "name": "Tesseract OCR language data",
+  "version": "tessdata_fast",
+  "license": "Apache-2.0",
+  "url": "https://github.com/tesseract-ocr/tessdata_fast",
+  "kind": "downloaded when chosen"
+ },
+ {
+  "name": "bottle",
+  "version": "0.13.4",
+  "license": "MIT License",
+  "url": "https://github.com/bottlepy/bottle",
+  "kind": "python"
+ },
+ {
+  "name": "cffi",
+  "version": "2.1.1",
+  "license": "MIT-0",
+  "url": "https://github.com/python-cffi/cffi",
+  "kind": "python"
+ },
+ {
+  "name": "clr_loader",
+  "version": "0.3.1",
+  "license": "MIT",
+  "url": "",
+  "kind": "python"
+ },
+ {
+  "name": "proxy_tools",
+  "version": "0.1.0",
+  "license": "MIT License",
+  "url": "http://github.com/jtushman/proxy_tools",
+  "kind": "python"
+ },
+ {
+  "name": "psutil",
+  "version": "7.2.2",
+  "license": "BSD-3-Clause",
+  "url": "https://github.com/giampaolo/psutil",
+  "kind": "python"
+ },
+ {
+  "name": "pycparser",
+  "version": "3.11",
+  "license": "BSD-3-Clause",
+  "url": "https://github.com/eliben/pycparser",
+  "kind": "python"
+ },
+ {
+  "name": "pymupdf",
+  "version": "1.28.2",
+  "license": "AGPL-3.0 (or Artifex commercial)",
+  "url": "https://github.com/pymupdf/pymupdf",
+  "kind": "python"
+ },
+ {
+  "name": "pymupdf4llm",
+  "version": "0.3.4",
+  "license": "AGPL-3.0 (or Artifex commercial)",
+  "url": "https://github.com/pymupdf/pymupdf4llm/tree/main/pymupdf4llm",
+  "kind": "python"
+ },
+ {
+  "name": "pythonnet",
+  "version": "3.2.1",
+  "license": "MIT",
+  "url": "https://pythonnet.github.io/",
+  "kind": "python"
+ },
+ {
+  "name": "pywebview",
+  "version": "6.2.1",
+  "license": "BSD License",
+  "url": "https://pywebview.flowrl.com/",
+  "kind": "python"
+ },
+ {
+  "name": "pywinpty",
+  "version": "3.1.0",
+  "license": "MIT License",
+  "url": "https://github.com/andfoy/pywinpty",
+  "kind": "python"
+ },
+ {
+  "name": "tabulate",
+  "version": "0.10.0",
+  "license": "MIT",
+  "url": "https://github.com/astanin/python-tabulate",
+  "kind": "python"
+ },
+ {
+  "name": "typing_extensions",
+  "version": "4.16.0",
+  "license": "PSF-2.0",
+  "url": "https://github.com/python/typing_extensions",
+  "kind": "python"
+ },
+ {
+  "name": "@codemirror/autocomplete",
+  "version": "6.20.3",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/codemirror/autocomplete",
+  "kind": "frontend"
+ },
+ {
+  "name": "@codemirror/commands",
+  "version": "6.11.1",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/codemirror/commands",
+  "kind": "frontend"
+ },
+ {
+  "name": "@codemirror/lang-css",
+  "version": "6.3.1",
+  "license": "MIT",
+  "url": "https://github.com/codemirror/lang-css",
+  "kind": "frontend"
+ },
+ {
+  "name": "@codemirror/lang-html",
+  "version": "6.4.12",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/codemirror/lang-html",
+  "kind": "frontend"
+ },
+ {
+  "name": "@codemirror/lang-javascript",
+  "version": "6.2.5",
+  "license": "MIT",
+  "url": "https://github.com/codemirror/lang-javascript",
+  "kind": "frontend"
+ },
+ {
+  "name": "@codemirror/lang-markdown",
+  "version": "6.5.2",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/codemirror/lang-markdown",
+  "kind": "frontend"
+ },
+ {
+  "name": "@codemirror/language",
+  "version": "6.13.1",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/codemirror/language",
+  "kind": "frontend"
+ },
+ {
+  "name": "@codemirror/lint",
+  "version": "6.9.7",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/codemirror/lint",
+  "kind": "frontend"
+ },
+ {
+  "name": "@codemirror/search",
+  "version": "6.7.2",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/codemirror/search",
+  "kind": "frontend"
+ },
+ {
+  "name": "@codemirror/state",
+  "version": "6.7.6",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/codemirror/state",
+  "kind": "frontend"
+ },
+ {
+  "name": "@codemirror/streamparser",
+  "version": "6.0.0",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/codemirror/streamparser",
+  "kind": "frontend"
+ },
+ {
+  "name": "@codemirror/view",
+  "version": "6.43.14",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/codemirror/view",
+  "kind": "frontend"
+ },
+ {
+  "name": "@fontsource/atkinson-hyperlegible",
+  "version": "5.3.0",
+  "license": "OFL-1.1",
+  "url": "https://fontsource.org/fonts/atkinson-hyperlegible",
+  "kind": "frontend"
+ },
+ {
+  "name": "@fontsource/inter",
+  "version": "5.3.0",
+  "license": "OFL-1.1",
+  "url": "https://fontsource.org/fonts/inter",
+  "kind": "frontend"
+ },
+ {
+  "name": "@fontsource/jetbrains-mono",
+  "version": "5.3.0",
+  "license": "OFL-1.1",
+  "url": "https://fontsource.org/fonts/jetbrains-mono",
+  "kind": "frontend"
+ },
+ {
+  "name": "@fontsource/literata",
+  "version": "5.3.0",
+  "license": "OFL-1.1",
+  "url": "https://fontsource.org/fonts/literata",
+  "kind": "frontend"
+ },
+ {
+  "name": "@lezer/common",
+  "version": "1.5.3",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/lezer/common",
+  "kind": "frontend"
+ },
+ {
+  "name": "@lezer/css",
+  "version": "1.3.9",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/lezer/css",
+  "kind": "frontend"
+ },
+ {
+  "name": "@lezer/highlight",
+  "version": "1.2.5",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/lezer/highlight",
+  "kind": "frontend"
+ },
+ {
+  "name": "@lezer/html",
+  "version": "1.3.13",
+  "license": "MIT",
+  "url": "https://github.com/lezer-parser/html",
+  "kind": "frontend"
+ },
+ {
+  "name": "@lezer/javascript",
+  "version": "1.5.6",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/lezer/javascript",
+  "kind": "frontend"
+ },
+ {
+  "name": "@lezer/lr",
+  "version": "1.4.11",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/lezer/lr",
+  "kind": "frontend"
+ },
+ {
+  "name": "@lezer/markdown",
+  "version": "1.8.0",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/lezer/markdown",
+  "kind": "frontend"
+ },
+ {
+  "name": "@marijn/find-cluster-break",
+  "version": "1.0.4",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/marijn/find-cluster-break",
+  "kind": "frontend"
+ },
+ {
+  "name": "@xterm/addon-fit",
+  "version": "0.11.0",
+  "license": "MIT",
+  "url": "https://github.com/xtermjs/xterm.js/tree/master/addons/addon-fit",
+  "kind": "frontend"
+ },
+ {
+  "name": "@xterm/xterm",
+  "version": "6.0.0",
+  "license": "MIT",
+  "url": "https://github.com/xtermjs/xterm.js",
+  "kind": "frontend"
+ },
+ {
+  "name": "argparse",
+  "version": "3.0.2",
+  "license": "PSF-2.0",
+  "url": "https://github.com/nodeca/argparse",
+  "kind": "frontend"
+ },
+ {
+  "name": "codemirror",
+  "version": "6.0.2",
+  "license": "MIT",
+  "url": "https://github.com/codemirror/basic-setup",
+  "kind": "frontend"
+ },
+ {
+  "name": "commander",
+  "version": "8.3.0",
+  "license": "MIT",
+  "url": "https://github.com/tj/commander.js",
+  "kind": "frontend"
+ },
+ {
+  "name": "crelt",
+  "version": "1.0.7",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/marijn/crelt",
+  "kind": "frontend"
+ },
+ {
+  "name": "entities",
+  "version": "8.1.0",
+  "license": "BSD-2-Clause",
+  "url": "https://github.com/fb55/entities",
+  "kind": "frontend"
+ },
+ {
+  "name": "katex",
+  "version": "0.16.47",
+  "license": "MIT",
+  "url": "https://katex.org",
+  "kind": "frontend"
+ },
+ {
+  "name": "linkify-it",
+  "version": "6.1.0",
+  "license": "MIT",
+  "url": "https://github.com/markdown-it/linkify-it",
+  "kind": "frontend"
+ },
+ {
+  "name": "markdown-it",
+  "version": "15.0.2",
+  "license": "MIT",
+  "url": "https://github.com/markdown-it/markdown-it",
+  "kind": "frontend"
+ },
+ {
+  "name": "mdurl",
+  "version": "2.1.0",
+  "license": "MIT",
+  "url": "https://github.com/markdown-it/mdurl",
+  "kind": "frontend"
+ },
+ {
+  "name": "punycode.js",
+  "version": "2.3.1",
+  "license": "MIT",
+  "url": "https://mths.be/punycode",
+  "kind": "frontend"
+ },
+ {
+  "name": "style-mod",
+  "version": "4.1.4",
+  "license": "MIT",
+  "url": "https://code.haverbeke.berlin/marijn/style-mod",
+  "kind": "frontend"
+ },
+ {
+  "name": "uc.micro",
+  "version": "3.0.0",
+  "license": "MIT",
+  "url": "https://github.com/markdown-it/uc.micro",
+  "kind": "frontend"
+ },
+ {
+  "name": "w3c-keyname",
+  "version": "2.2.8",
+  "license": "MIT",
+  "url": "https://github.com/marijnh/w3c-keyname#readme",
+  "kind": "frontend"
+ }
+]

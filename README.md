@@ -5,8 +5,9 @@
 A lightweight, reader-first PDF app for heavy readers - with position memory, a built-in
 Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 
-> **Status:** early development (v0.5.8 - terminal tabs, default AI agent, steadier text selection). See [`HANDOFF.md`](HANDOFF.md) for the
-> full roadmap and design decisions.
+> **Status:** v0.7.0, in active development: book view and EPUB, PhDF Tools, printing,
+> password-protected PDFs, themes and more settings. Windows is the main platform; macOS and
+> Linux builds come from CI.
 
 ## Keyboard shortcuts
 
@@ -152,5 +153,15 @@ automatically, also through `fc-match`).
 
 ## License
 
-PhDF is licensed under the [GNU Affero General Public License v3.0](LICENSE) (or later).
-Contributions require agreeing to the [Contributor License Agreement](CLA.md).
+PhDF is free software, licensed under the [GNU Affero General Public License v3.0](LICENSE)
+(or later). You may use, share and change it; if you share a changed version, share its source
+code under the same license. Contributions require agreeing to the
+[Contributor License Agreement](CLA.md).
+
+PhDF is built on open-source software, listed with their licenses in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (also in the app: Settings → About). What PhDF
+does and doesn't do with your data: [PRIVACY.md](PRIVACY.md).
+
+Windows release signing (starting once SignPath approves the project): free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org); see
+[CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md).

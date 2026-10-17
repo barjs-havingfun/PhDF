@@ -46,7 +46,7 @@ Frontend `frontend/src/`
   AI, `MdSidebar` (a standalone note's Contents / Files), `live.ts` Live mode, markdown-it `render.ts`, typography), `lib/ai/` (`terminal.svelte.ts`: terminal tabs, default agent,
   `askAi`, terminal font, go to folder; `AiPanel`, `AgentPicker`, `TerminalGuide`, `DocAiMenu`, equation flow),
   `lib/focus/`, `lib/grading/`, `lib/library/`, `PaneView`, `Sidebar`, `LinkPeek`, `Help`,
-  `Settings` (incl. About), `PrintSheet`, `PdfTools` (PhDF Tools view), `CommandPalette`, `platform.ts` (`kbd()`, `copyText()`), `outside.ts` (close menus on outside press), `pin.ts`, `cite.ts`.
+  `Settings` (incl. About), `PrintSheet`, `PdfTools` (PhDF Tools view), `CommandPalette`, `platform.ts` (`kbd()`, `copyText()`), `updates.ts` (opt-in update check), `outside.ts` (close menus on outside press), `pin.ts`, `cite.ts`.
 
 ## Patterns
 - Engine access: `with self._core.lock:`; slow work outside the lock on a copy.

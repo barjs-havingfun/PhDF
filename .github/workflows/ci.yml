@@ -12,7 +12,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    # macOS and Linux are experimental until the end of Phase 1 (HANDOFF.md, D8).
+    # macOS and Linux are experimental: Windows is the main platform.
     continue-on-error: ${{ matrix.os != 'windows-latest' }}
 
     steps:

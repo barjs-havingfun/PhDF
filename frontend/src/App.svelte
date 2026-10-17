@@ -20,6 +20,7 @@
   import PrintSheet from "./lib/PrintSheet.svelte";
   import { loadTheme, theme } from "./lib/theme.svelte";
   import { loadPrefs, prefs } from "./lib/prefs.svelte";
+  import { checkAtStart } from "./lib/updates";
   import logo from "./assets/logo.png";
   import PdfTools from "./lib/PdfTools.svelte";
   import BookView from "./lib/focus/BookView.svelte";
@@ -825,6 +826,7 @@
     mdSidebarMode = sidebar.mdMode ?? "contents";
     // Settings → General → "Reopen my last tabs" (an undocked window always shows its tab).
     if (prefs.restore || appInfo.detached) await restoreSession(appInfo.windowId);
+    if (appInfo.windowId === "main") checkAtStart();
     setInterval(() => tickReading(), 1000);
     for (const type of ["pointermove", "keydown", "wheel", "pointerdown"]) {
       window.addEventListener(type, () => noteActivity(), { passive: true, capture: true });

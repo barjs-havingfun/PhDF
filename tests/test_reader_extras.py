@@ -95,3 +95,27 @@ def test_start_with_an_empty_window_keeps_one_window(tmp_path):
 
 def test_ui_zoom_without_a_window_is_a_no_op(tmp_path, monkeypatch):
     make_api(tmp_path, monkeypatch).ui_zoom(1.25)
+
+
+def test_check_update_compares_versions(tmp_path, monkeypatch):
+    import io
+    import json
+    import urllib.request
+
+    api = make_api(tmp_path, monkeypatch)
+
+    def fake(tag):
+        body = json.dumps({"tag_name": tag, "html_url": "https://example.org/r"}).encode()
+        return lambda request, timeout: io.BytesIO(body)
+
+    monkeypatch.setattr("phdf.api.__version__", "0.7.0")
+    monkeypatch.setattr(urllib.request, "urlopen", fake("v0.10.0"))
+    assert api.check_update()["newer"] is True  # 10 > 7, not text order
+    monkeypatch.setattr(urllib.request, "urlopen", fake("v0.7.0"))
+    assert api.check_update()["newer"] is False
+
+    def offline(request, timeout):
+        raise OSError("offline")
+
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
+    assert api.check_update() == {"ok": False, "current": "0.7.0"}

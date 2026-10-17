@@ -6,9 +6,34 @@
   import { notify, ui as appUi } from "./notify.svelte";
   import { copyText } from "./platform";
   import type { AboutInfo } from "./api";
+  import licenses from "../assets/licenses.json";
   import { setAutoDarkPages, setThemeMode, theme, type ThemeMode } from "./theme.svelte";
   import { prefs, setPref, setRestore, UI_SIZES, type ScrollSpeed } from "./prefs.svelte";
   import { chime, pomodoro, setFocusLength, setPomodoro } from "./reading.svelte";
+  import { checkForUpdate } from "./updates";
+  import { isMac } from "./platform";
+
+  let checkUpdates = $state(false);
+  api()
+    .then((py) => py.get_setting<boolean | null>("updates.check", null))
+    .then((v) => (checkUpdates = !!v));
+  async function toggleUpdates() {
+    checkUpdates = !checkUpdates;
+    await (await api()).set_setting("updates.check", checkUpdates);
+  }
+
+  async function makeDefault() {
+    const { result } = await (await api()).make_default_app();
+    const text = {
+      settings: "In Windows Settings, choose PhDF for .pdf (and .epub if you like).",
+      "settings-unregistered": "Windows Settings opened: search for .pdf and choose PhDF. (Installed with the PhDF installer, PhDF appears there by name.)",
+      done: "PhDF is now the default app for PDF files.",
+      howto: isMac
+        ? "In Finder: select a PDF → File → Get Info → Open with: PhDF → Change All…"
+        : "Right-click a PDF in your file manager → Open With → PhDF, and set it as default.",
+    }[result];
+    notify.show({ text }, 9000);
+  }
   import AgentPicker from "./ai/AgentPicker.svelte";
   import { APP_FONTS, FONTS, setAppFont, ui } from "./md/typography.svelte";
   import { loadAgent, setAgent, setFont, term, TERM_FONTS, TERM_SIZES } from "./ai/terminal.svelte";
@@ -62,6 +87,10 @@
     ];
     return lines.join(String.fromCharCode(10));
   }
+  const SOURCE = "https://github.com/barjs-havingfun/PhDF";
+  let showLicenses = $state(false);
+  const openLink = (url: string) => api().then((py) => py.open_external(url));
+
   async function copyAbout() {
     if (!about) return;
     await copyText(aboutText(about));
@@ -202,6 +231,17 @@
           <small>Off: PhDF starts with an empty window (your books stay in the Library).</small>
         </span>
       </label>
+      <label class="check-row">
+        <input type="checkbox" checked={checkUpdates} onchange={toggleUpdates} />
+        <span>
+          Check for updates when PhDF starts
+          <small>Asks GitHub for the latest version number; nothing else is sent. Off until you turn it on.</small>
+        </span>
+      </label>
+      <div class="row">
+        <button class="btn" onclick={makeDefault}>Make PhDF the Default PDF App…</button>
+        <button class="btn" onclick={() => checkForUpdate(true)}>Check for Updates Now</button>
+      </div>
       <div class="row">
         <span class="label">Scroll speed</span>
         <div class="fonts">
@@ -336,6 +376,29 @@
           <button class="btn" onclick={copyAbout}>Copy for a Bug Report</button>
         </div>
         <p class="hint">Nothing is sent anywhere. Check the text before sharing it: it shows your data folder.</p>
+        <p class="free">
+          PhDF is free software under the <b>GNU Affero General Public License v3.0</b> (or later): you may use, share and change it. If you share a
+          changed version, share its source code too.
+        </p>
+        <div class="row">
+          <button class="btn" onclick={() => openLink(SOURCE)}>Source Code</button>
+          <button class="btn" onclick={() => openLink(`${SOURCE}/blob/main/LICENSE`)}>License</button>
+          <button class="btn" onclick={() => openLink(`${SOURCE}/blob/main/PRIVACY.md`)}>Privacy</button>
+          <button class="btn" onclick={() => (showLicenses = !showLicenses)} aria-expanded={showLicenses}>
+            Open-Source Licenses ({licenses.length})
+          </button>
+        </div>
+        {#if showLicenses}
+          <ul class="licenses">
+            {#each licenses as l (l.name)}
+              <li>
+                {#if l.url}<button class="link" onclick={() => openLink(l.url)}>{l.name}</button>{:else}<span>{l.name}</span>{/if}
+                <span class="ver">{l.version}</span>
+                <span class="lic">{l.license}</span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
       {/if}
     </section>
   </div>
@@ -487,6 +550,43 @@
   .volume {
     flex: 1;
     max-width: 200px;
+  }
+
+  .free {
+    margin: 12px 0 8px;
+    line-height: 1.5;
+  }
+
+  .licenses {
+    max-height: 220px;
+    overflow: auto;
+    margin: 8px 0 0;
+    padding: 6px 10px;
+    list-style: none;
+    border-radius: 8px;
+    background: var(--hover);
+    font-size: 12px;
+  }
+
+  .licenses li {
+    display: flex;
+    gap: 8px;
+    padding: 2px 0;
+  }
+
+  .licenses .link {
+    color: var(--accent);
+    text-align: left;
+  }
+
+  .licenses .ver {
+    color: var(--tertiary);
+  }
+
+  .licenses .lic {
+    margin-left: auto;
+    color: var(--secondary);
+    text-align: right;
   }
 
   .about {

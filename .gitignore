@@ -30,3 +30,13 @@ desktop.ini
 
 # Test documents (large / copyrighted) — never commit
 *.pdf
+
+# Owner's local working notes and planning (kept on this computer, not on GitHub)
+notes.md
+OLDLOG.md
+HANDOFF.md
+CHECKLIST.md
+LEGAL.md
+FUTURE_EXPANSION_RESEARCH.md
+logo.af
+.claude/

@@ -1,0 +1,218 @@
+name: Release
+
+# Push a tag like v0.7.0 to build PhDF for Windows (installer + zip), macOS (.dmg) and Linux
+# (AppImage) and make one draft GitHub Release with all files and SHA256SUMS.txt. Check the
+# draft on GitHub, then publish it. Windows files are signed once SignPath is set up
+# (CODE_SIGNING_POLICY.md); until then everything is unsigned.
+# A manual run (Actions → Release → Run workflow) builds everything as artifacts only.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the release
+
+env:
+  # SignPath is used only when this repository variable exists.
+  SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          version=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+          if [[ "$GITHUB_REF" == refs/tags/* && "v$version" != "$GITHUB_REF_NAME" ]]; then
+            echo "Tag $GITHUB_REF_NAME but pyproject.toml says $version"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install, test and build
+        run: |
+          uv sync --locked
+          npm --prefix frontend ci
+          uv run pytest
+          npm --prefix frontend run build
+          uv run pyinstaller phdf.spec --noconfirm
+
+      - name: Upload the unsigned app (input for signing)
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-unsigned
+          path: dist/PhDF/
+
+      - name: Sign PhDF.exe with SignPath
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: PhDF
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: windows-app
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-app
+
+      - name: Installer and zip
+        shell: pwsh
+        run: |
+          $app = if (Test-Path signed-app/PhDF.exe) { (Resolve-Path signed-app).Path } else { (Resolve-Path dist/PhDF).Path }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Qp "/DAppVersion=$env:VERSION" "/DSourceDir=$app" packaging\windows\phdf.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Move-Item "dist/PhDF-$env:VERSION-setup.exe" out/
+          Compress-Archive -Path $app -DestinationPath "out/PhDF-$env:VERSION-windows-portable.zip"
+
+      - name: Upload the unsigned installer (input for signing)
+        id: setup
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-setup-unsigned
+          path: out/PhDF-${{ env.VERSION }}-setup.exe
+
+      - name: Sign the installer with SignPath
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: PhDF
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: windows-setup
+          github-artifact-id: ${{ steps.setup.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: out/
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build
+        run: |
+          uv sync --locked
+          npm --prefix frontend ci
+          npm --prefix frontend run build
+          uv run pyinstaller phdf.spec --noconfirm
+
+      # Unsigned for now: users open it once with right-click → Open (see the release notes).
+      - name: Disk image (.dmg) with an Applications shortcut
+        run: |
+          mkdir -p out dmg
+          cp -R dist/PhDF.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname PhDF -srcfolder dmg -ov -format UDZO "out/PhDF-$VERSION-macos.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: out/
+
+  linux:
+    needs: version
+    runs-on: ubuntu-22.04 # older glibc: the AppImage runs on more distributions
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages (GTK / WebKit2 for pywebview, FUSE-free AppImage tooling)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgirepository1.0-dev gobject-introspection libcairo2-dev \
+            pkg-config gir1.2-webkit2-4.1 file
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build
+        run: |
+          uv sync --locked
+          npm --prefix frontend ci
+          npm --prefix frontend run build
+          uv run pyinstaller phdf.spec --noconfirm
+          bash packaging/linux/build_appimage.sh "$VERSION"
+          mkdir -p out && mv dist/PhDF-*.AppImage out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: out/
+
+  release:
+    needs: [version, windows, macos, linux]
+    # macOS and Linux are experimental: release whatever was built.
+    if: ${{ !cancelled() && needs.windows.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: files
+
+      - name: Checksums
+        run: cd files && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Draft GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: PhDF ${{ github.ref_name }}
+          files: files/*
+          body: |
+            ## Download
+            - **Windows:** `PhDF-${{ needs.version.outputs.version }}-setup.exe` (installer), or the portable zip.
+            - **macOS:** `PhDF-${{ needs.version.outputs.version }}-macos.dmg`. Drag PhDF to Applications. The app isn't signed by Apple yet: the first time, right-click PhDF → Open → Open (or System Settings → Privacy & Security → Open Anyway).
+            - **Linux:** `PhDF-${{ needs.version.outputs.version }}-x86_64.AppImage`: `chmod +x` it and run. Needs GTK and WebKitGTK 4.1 (`gir1.2-webkit2-4.1` on Ubuntu / Debian).
+
+            Check downloads with `SHA256SUMS.txt`. ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && 'Windows files: free code signing provided by SignPath.io, certificate by SignPath Foundation.' || 'Windows files are not signed yet: SmartScreen may warn, choose More info → Run anyway.' }}
+
+            ## What's new
+            (write the changes here before publishing)
+
+      - name: Files (manual runs)
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhDF-all
+          path: files/

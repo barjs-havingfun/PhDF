@@ -248,6 +248,8 @@ interface PyApi {
   save_page_image(docId: string, page: number, name: string): Promise<string | null>;
   open_in_default_app(path: string): Promise<void>;
   ui_zoom(factor: number): Promise<void>;
+  check_update(): Promise<{ ok: boolean; current: string; latest?: string; newer?: boolean; url?: string }>;
+  make_default_app(): Promise<{ result: "settings" | "settings-unregistered" | "done" | "howto" }>;
   library_remove(docId: string): Promise<void>;
   library_relink(docId: string): Promise<{ ok: boolean; reason?: "cancelled" | "different"; path?: string }>;
   about(): Promise<AboutInfo>;
