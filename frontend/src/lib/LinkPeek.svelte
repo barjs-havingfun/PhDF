@@ -70,20 +70,29 @@
   // Drag the card by its header (not its buttons); it stays where it was dropped.
   let moved = $state<{ left: number; top: number } | null>(null);
 
-  function onCardDown(e: PointerEvent) {
+  // The enlarged preview moves by its header too.
+  let sheetMoved = $state<{ left: number; top: number } | null>(null);
+  $effect(() => {
+    if (!expanded) sheetMoved = null;
+  });
+
+  function onCardDown(e: PointerEvent, sheet = false) {
     const el = e.target as HTMLElement;
-    if (e.button !== 0 || !card || !el.closest("header") || el.closest("button, input")) return;
+    const box0 = e.currentTarget as HTMLElement;
+    if (e.button !== 0 || !el.closest("header") || el.closest("button, input")) return;
     e.preventDefault();
-    const box = card.getBoundingClientRect();
+    const box = box0.getBoundingClientRect();
     const dx = e.clientX - box.left;
     const dy = e.clientY - box.top;
     const bar = e.currentTarget as HTMLElement;
     bar.setPointerCapture(e.pointerId);
     const move = (ev: PointerEvent) => {
-      moved = {
+      const pos = {
         left: Math.min(Math.max(ev.clientX - dx, 0), innerWidth - box.width),
         top: Math.min(Math.max(ev.clientY - dy, 0), innerHeight - 40),
       };
+      if (sheet) sheetMoved = pos;
+      else moved = pos;
     };
     const up = () => {
       bar.removeEventListener("pointermove", move);
@@ -167,7 +176,14 @@
 <div class="backdrop" class:dim={expanded} onclick={close}></div>
 
 {#if expanded && target >= 0}
-  <div class="sheet" role="dialog" aria-label="Page {target + 1} preview">
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_interactive_supports_focus -->
+  <div
+    class="sheet"
+    role="dialog"
+    aria-label="Page {target + 1} preview"
+    style={sheetMoved ? `left:${sheetMoved.left}px;top:${sheetMoved.top}px;right:auto;transform:none` : ""}
+    onpointerdown={(e) => onCardDown(e, true)}
+  >
     <header>
       <span class="title">Page {target + 1}</span>
       {@render pageTools()}
@@ -186,7 +202,7 @@
     style={moved ? `left:${moved.left}px;top:${moved.top}px` : position}
     role="dialog"
     aria-label="Link preview"
-    onpointerdown={onCardDown}
+    onpointerdown={(e) => onCardDown(e)}
   >
     {#if target >= 0}
       <header>
@@ -233,12 +249,12 @@
 {/if}
 
 <style>
-  .card header {
+  :is(.card, .sheet) header {
     cursor: grab;
     touch-action: none;
   }
 
-  .card header:active {
+  :is(.card, .sheet) header:active {
     cursor: grabbing;
   }
 

@@ -77,18 +77,21 @@ export const pomodoro = $state({
   focusMin: 25,
   breakMin: 5,
   rounds: 0,
+  chime: true,
+  volume: 0.5, // 0..1
 });
 
 let timer: ReturnType<typeof setInterval> | undefined;
 
-function chime() {
+export function chime(force = false) {
+  if (!pomodoro.chime && !force) return;
   try {
     const ctx = new AudioContext();
     [660, 880].forEach((freq, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.12, ctx.currentTime + i * 0.25);
+      gain.gain.setValueAtTime(Math.max(0.002, 0.24 * pomodoro.volume), ctx.currentTime + i * 0.25);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.25 + 0.4);
       osc.connect(gain).connect(ctx.destination);
       osc.start(ctx.currentTime + i * 0.25);
@@ -136,17 +139,28 @@ export function stopPomodoro() {
   pomodoro.remaining = pomodoro.focusMin * 60;
 }
 
+function savePomodoro() {
+  const { focusMin, breakMin, chime, volume } = pomodoro;
+  api().then((py) => py.set_setting("pomodoro", { focusMin, breakMin, chime, volume }));
+}
+
 export function setFocusLength(min: number) {
   pomodoro.focusMin = min;
   if (pomodoro.phase === "idle") pomodoro.remaining = min * 60;
-  api().then((py) => py.set_setting("pomodoro", { focusMin: min, breakMin: pomodoro.breakMin }));
+  savePomodoro();
+}
+
+/** Settings → Focus: break length and the chime. */
+export function setPomodoro(change: Partial<Pick<typeof pomodoro, "breakMin" | "chime" | "volume">>) {
+  Object.assign(pomodoro, change);
+  savePomodoro();
 }
 
 export async function loadPomodoroSettings() {
-  const saved = await (await api()).get_setting<{ focusMin: number; breakMin: number } | null>("pomodoro", null);
+  type Saved = { focusMin: number; breakMin: number; chime?: boolean; volume?: number };
+  const saved = await (await api()).get_setting<Saved | null>("pomodoro", null);
   if (saved) {
-    pomodoro.focusMin = saved.focusMin;
-    pomodoro.breakMin = saved.breakMin;
+    Object.assign(pomodoro, saved);
     pomodoro.remaining = saved.focusMin * 60;
   }
 }

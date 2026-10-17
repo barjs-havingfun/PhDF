@@ -90,3 +90,14 @@ def test_equation_cleanup_only_touches_its_own_files(tmp_path):
     os.utime(old, (time.time() - 7200, time.time() - 7200))
     equations.cleanup(folder, older_than=3600)
     assert not old.exists() and new.exists()
+
+
+def test_md_files_lists_notes_in_a_folder_without_phdf_side_files(tmp_path, monkeypatch):
+    api = make_api(tmp_path, monkeypatch)
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    for name in ("b.md", "A.md", "Book.parking.md", "Exams.grades.md", "x.txt"):
+        (notes / name).write_text("#", encoding="utf-8")
+    (notes / "sub.md").mkdir()
+    assert [f["name"] for f in api.md_files(str(notes))] == ["A.md", "b.md"]
+    assert api.md_files(str(tmp_path / "missing")) == []

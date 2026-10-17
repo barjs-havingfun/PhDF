@@ -1,6 +1,6 @@
 <script lang="ts">
   // "Aa" popover of the Markdown editor: font and spacing.
-  import { FONTS, RANGES, reset, save, setFont, typo, type FontKey } from "./typography.svelte";
+  import { FONTS, RANGES, reset, save, setFont, typo, widthLabel, type FontKey } from "./typography.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -8,7 +8,7 @@
     { key: "size", label: "Size", format: (v: number) => `${v}px` },
     { key: "lineHeight", label: "Line spacing", format: (v: number) => v.toFixed(2) },
     { key: "letterSpacing", label: "Letter spacing", format: (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}em` },
-    { key: "width", label: "Text width", format: (v: number) => `${v}px` },
+    { key: "width", label: "Text width", format: widthLabel },
   ] as const;
 </script>
 

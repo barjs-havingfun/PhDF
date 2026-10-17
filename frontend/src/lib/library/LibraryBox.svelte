@@ -2,6 +2,7 @@
   // Library: every document PhDF has opened — cover, progress, time spent reading.
   import { onMount } from "svelte";
   import { api, type LibraryItem } from "../api";
+  import { notify } from "../notify.svelte";
 
   let { onopenpath }: { onopenpath: (path: string) => void } = $props();
 
@@ -27,6 +28,22 @@
     return showAll || q ? list : list.slice(0, LIMIT);
   });
 
+  async function remove(item: LibraryItem) {
+    await (await api()).library_remove(item.docId);
+    items = items.filter((i) => i.docId !== item.docId);
+    notify.show({ text: `“${item.title}” removed from the Library. The file was not touched.` }, 2500);
+  }
+
+  async function relink(item: LibraryItem) {
+    const r = await (await api()).library_relink(item.docId);
+    if (r.ok && r.path) {
+      items = items.map((i) => (i.docId === item.docId ? { ...i, path: r.path!, exists: true } : i));
+      covers[item.docId] = await (await api()).library_cover(item.docId, r.path);
+    } else if (r.reason === "different") {
+      notify.error("That is a different file. Choose the same PDF (moved or renamed), not an edited copy.");
+    }
+  }
+
   function progress(i: LibraryItem) {
     return i.pageCount ? Math.round(((i.page + 1) / i.pageCount) * 100) : 0;
   }
@@ -46,7 +63,9 @@
     </header>
     <div class="grid">
       {#each shown as item (item.docId)}
-        <button class="book" class:missing={!item.exists} disabled={!item.exists} onclick={() => onopenpath(item.path)} title={item.path}>
+        <div class="slot">
+        <button class="book" class:missing={!item.exists} onclick={() => (item.exists ? onopenpath(item.path) : relink(item))} title={item.exists ? item.path : `${item.path}
+Missing: click to find the file`}>
           <span class="cover">
             {#if covers[item.docId]}
               <img src={covers[item.docId]} alt="" />
@@ -56,8 +75,10 @@
             <span class="progress" style="width:{progress(item)}%"></span>
           </span>
           <span class="title">{item.title}</span>
-          <span class="meta">{item.exists ? `${progress(item)}% · ${time(item.seconds)}` : "File missing"}</span>
+          <span class="meta">{item.exists ? `${progress(item)}% · ${time(item.seconds)}` : "Missing: find file…"}</span>
         </button>
+        <button class="remove" title="Remove from Library (the file stays)" aria-label="Remove from Library" onclick={() => remove(item)}>×</button>
+        </div>
       {/each}
     </div>
     {#if !filter && items.length > LIMIT}
@@ -135,7 +156,34 @@
   }
 
   .book.missing {
-    opacity: 0.45;
+    opacity: 0.55;
+  }
+
+  .slot {
+    position: relative;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .remove {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    font-size: 15px;
+    line-height: 1;
+    color: white;
+    background: rgb(0 0 0 / 0.55);
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+
+  .slot:hover .remove,
+  .remove:focus-visible {
+    opacity: 1;
   }
 
   .cover {

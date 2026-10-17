@@ -189,7 +189,7 @@ export function answerResume(answer: boolean | null) {
 function theme() {
   const css = getComputedStyle(document.documentElement);
   const v = (name: string) => css.getPropertyValue(name).trim();
-  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const dark = css.colorScheme === "dark";
   return {
     background: v("--surface") || (dark ? "#2c2c2e" : "#ffffff"),
     foreground: v("--text") || (dark ? "#f5f5f7" : "#1d1d1f"),
@@ -230,7 +230,8 @@ async function createShell(id: number, cwd: string | null): Promise<Shell> {
   });
   if (!themeWatched) {
     themeWatched = true;
-    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    // Theme changed (OS or Settings): the CSS colors are already new.
+    addEventListener("phdf:theme", () => {
       for (const s of shells.values()) s.xterm.options.theme = theme();
     });
   }

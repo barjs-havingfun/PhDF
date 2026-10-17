@@ -32,7 +32,7 @@ import webview
 from phdf import __version__
 from phdf.db import Store
 from phdf.docid import document_id
-from phdf.engine import PdfDocument, PdfEngine, Rect
+from phdf.engine import PasswordRequired, PdfDocument, PdfEngine, Rect
 from phdf.engine.base import EDITABLE_KINDS
 from phdf.paths import data_dir
 from phdf.services import (
@@ -44,6 +44,8 @@ from phdf.services import (
     parking,
     pdftools,
     titlebar,
+    uizoom,
+    webpeek,
     webview_memory,
 )
 from phdf.services.terminal import AI_PROCESS_NAMES, Terminals, command_name
@@ -75,6 +77,8 @@ class Core:
         # Markdown copies are keyed by this, not by the render revisions.
         self.text_revs: Counter[str] = Counter()
         self.md_jobs: dict[str, dict[str, Any]] = {}  # whole-document conversions, by cache file
+        # Passwords of encrypted PDFs opened this session (memory only, never stored).
+        self.passwords: dict[str, str] = {}
 
     # All methods below expect the caller to hold `lock`, except `render` and `window_closed`.
 
@@ -88,7 +92,7 @@ class Core:
         doc_id = self.resolve(doc_id)
         doc = self._docs.get(doc_id)
         if doc is None:
-            doc = self._docs[doc_id] = self.engine.open(path)
+            doc = self._docs[doc_id] = self.engine.open(path, self.passwords.get(doc_id))
             self._paths[doc_id] = path
             # Page images cached earlier this session may show edits that were never saved.
             revs = self._revs.get(doc_id)
@@ -194,6 +198,7 @@ class Api:
             "version": __version__,
             "renderBaseUrl": self._core.render_base_url,
             "windowId": self._window_id,
+            "detached": self._window_id.startswith("d"),
             "platform": {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux"),
         }
 
@@ -235,9 +240,12 @@ class Api:
         path = result if isinstance(result, str) else result[0]
         return path if path.lower().endswith(".md") else path + ".md"
 
-    def open_window(self, paths: list[str], x: int | None = None, y: int | None = None) -> str:
-        """Open a new window showing `paths` as tabs (used when a tab is dragged out)."""
-        window_id = uuid.uuid4().hex[:8]
+    def open_window(
+        self, paths: list[str], x: int | None = None, y: int | None = None, detached: bool = False
+    ) -> str:
+        """Open a new window showing `paths` as tabs. A tab dragged out becomes a `detached`
+        window (id starts with "d"): just that document, docked back with Dock or at restart."""
+        window_id = ("d" if detached else "") + uuid.uuid4().hex[:8]
         session = {"panes": [{"paths": paths, "active": 0, "width": 1}], "focused": 0}
         self._core.store.set_setting(SESSION_PREFIX + window_id, session)
         if self._core.create_window:
@@ -252,14 +260,23 @@ class Api:
 
     # --- documents --------------------------------------------------------------------------
 
-    def open_document(self, path: str) -> dict[str, Any]:
+    def open_document(self, path: str, password: str | None = None) -> dict[str, Any]:
+        """Open a document for this window. An encrypted PDF answers `{needsPassword, wrong}`
+        until it is called again with the right password."""
         doc_id = document_id(path)
         core = self._core
         with core.lock:
             if doc_id in self._open:
                 doc = core.doc(doc_id)
             else:
-                doc = core.acquire(doc_id, path)
+                if password:
+                    core.passwords[doc_id] = password
+                try:
+                    doc = core.acquire(doc_id, path)
+                except PasswordRequired:
+                    if password:
+                        core.passwords.pop(doc_id, None)
+                    return {"needsPassword": True, "wrong": bool(password)}
                 self._open.add(doc_id)
             info = doc.info()
             sizes = doc.page_sizes()
@@ -313,6 +330,41 @@ class Api:
 
     def recent_documents(self, limit: int = 20) -> list[dict[str, Any]]:
         return self._core.store.recent_documents(limit)
+
+    def save_page_image(self, doc_id: str, page: int, name: str) -> str | None:
+        """Ask where to save one page as a PNG (or JPEG) image at about 200 DPI."""
+        window = self._window or webview.active_window()
+        if window is None:
+            return None
+        result = window.create_file_dialog(
+            webview.FileDialog.SAVE,
+            save_filename=name,
+            file_types=("PNG image (*.png)", "JPEG image (*.jpg)"),
+        )
+        if not result:
+            return None
+        path = Path(result if isinstance(result, str) else result[0])
+        if path.suffix.lower() not in (".png", ".jpg", ".jpeg"):
+            path = path.with_suffix(".png")
+        fmt = "png" if path.suffix.lower() == ".png" else "jpg"
+        with self._core.lock:
+            doc = self._core.doc(doc_id)
+            width, height = doc.page_size(page)
+            scale = min(200 / 72, 6000 / max(width, height, 1))  # big pages stay < 6000 px
+            data = doc.page_image(page, scale, fmt)
+        path.write_bytes(data)
+        return str(path)
+
+    def open_in_default_app(self, path: str) -> None:
+        """Open a file with the system's default app (e.g. to print from Preview on a Mac)."""
+        if not Path(path).is_file():
+            return
+        if sys.platform == "win32":
+            os.startfile(path)  # noqa: S606
+        else:
+            import subprocess
+
+            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])  # noqa: S603
 
     # --- annotations ------------------------------------------------------------------------
 
@@ -439,6 +491,10 @@ class Api:
         self._dark = dark
         titlebar.apply(self._window, dark, self._fullscreen)
 
+    def ui_zoom(self, factor: float) -> None:
+        """Interface size (Settings → Appearance): zoom this window's web view."""
+        uizoom.set_zoom(self._window, min(max(float(factor), 0.5), 2.0))
+
     def epub_text_size(self, size: float) -> list[dict[str, Any]]:
         """Text size of e-books (EPUB): remembered, and every open e-book of this window is laid
         out again. Returns their new page sizes (the page count changes)."""
@@ -476,7 +532,11 @@ class Api:
         """Close this window after the page has dealt with unsaved changes."""
         self._force_close = True
         if self._window is not None:
-            self._window.destroy()
+            # A moment later, so this call's answer reaches the page before the webview is gone
+            # (else pywebview logs "Cannot access a disposed object").
+            later = threading.Timer(0.15, self._window.destroy)
+            later.daemon = True
+            later.start()
 
     # --- bookmarks ------------------------------------------------------------------------------
 
@@ -548,6 +608,55 @@ class Api:
             )
         return items
 
+    def library_remove(self, doc_id: str) -> None:
+        """Take a document out of the library; the file itself is not touched."""
+        self._core.store.forget_document(doc_id)
+
+    def library_relink(self, doc_id: str) -> dict[str, Any]:
+        """A document's file moved: pick it again. Only the same file (same content) is
+        accepted, so bookmarks and reading history still belong to it."""
+        path = self.pick_file("document")
+        if not path:
+            return {"ok": False, "reason": "cancelled"}
+        if document_id(path) != doc_id:
+            return {"ok": False, "reason": "different"}
+        self._core.store.set_document_path(doc_id, str(Path(path)))
+        return {"ok": True, "path": str(Path(path))}
+
+    def about(self) -> dict[str, Any]:
+        """Versions, platform and storage, for the About section and bug reports."""
+        import platform
+        from importlib.metadata import PackageNotFoundError, version
+
+        import pymupdf
+
+        def pkg(name: str) -> str:
+            try:
+                return version(name)
+            except PackageNotFoundError:
+                return "?"
+
+        def size(folder: Path) -> int:
+            if not folder.is_dir():
+                return 0
+            return sum(p.stat().st_size for p in folder.rglob("*") if p.is_file())
+
+        root = data_dir()
+        return {
+            "version": __version__,
+            "python": platform.python_version(),
+            "pymupdf": pymupdf.VersionBind,
+            "pywebview": pkg("pywebview"),
+            "os": platform.platform(),
+            "gui": getattr(webview, "renderer", "") or "",
+            "frozen": bool(getattr(sys, "frozen", False)),
+            "dataDir": str(root),
+            "dbBytes": sum(p.stat().st_size for p in root.glob("phdf.db*") if p.is_file()),
+            "aiCacheBytes": ai_cache.info(ai_cache.folder(root))["bytes"],
+            "coverBytes": size(root / "covers"),
+            "ocrLanguages": ocr.installed_languages(),
+        }
+
     def library_cover(self, doc_id: str, path: str) -> str | None:
         """A small PNG of page 1 (data URL), cached in PhDF's data folder."""
         import pymupdf
@@ -581,6 +690,18 @@ class Api:
                 if win.x <= px < win.x + win.width and win.y <= py < win.y + win.height:
                     return wid
         return None
+
+    def dock(self, paths: list[str]) -> None:
+        """A detached window's tabs go back into a main window (a new one if none is open)."""
+        main = next((w for w in self._core.windows if not w.startswith("d")), None)
+        if main is None:
+            self.open_window(paths)
+            return
+        for path in paths:
+            self.send_to_window(main, path)
+        target = self._core.windows[main]._window
+        if target is not None:
+            threading.Thread(target=target.restore, daemon=True).start()
 
     def send_to_window(self, window_id: str, path: str) -> bool:
         """Move a tab to another open window: it takes its own reference first, then opens it."""
@@ -1021,6 +1142,19 @@ class Api:
     def link_md(self, pdf_path: str, md_path: str) -> None:
         self._core.store.set_md_link(pdf_path, md_path)
 
+    def md_files(self, folder: str) -> list[dict[str, str]]:
+        """The Markdown notes in a folder (a standalone note's sidebar), by name. PhDF's own
+        side files (parking lots, grades tables) are left out."""
+        try:
+            found = [p for p in Path(folder).iterdir() if p.suffix.lower() == ".md" and p.is_file()]
+        except OSError:
+            return []
+        own = (".parking.md", ".grades.md")
+        found = sorted(
+            (p for p in found if not p.name.lower().endswith(own)), key=lambda p: p.name.lower()
+        )
+        return [{"name": p.name, "path": str(p)} for p in found]
+
     def read_text(self, path: str) -> dict[str, Any]:
         p = Path(path)
         if not p.is_file():
@@ -1072,24 +1206,37 @@ class Api:
         if urlsplit(url).scheme in ("http", "https", "mailto"):
             webbrowser.open(url)
 
-    def peek_url(self, url: str) -> bool:
-        """Show a web link in a small floating preview window (R11)."""
+    def peek_url(self, url: str, large: bool = False) -> bool:
+        """Show a web link in a floating preview window (R11): small beside a PDF, `large`
+        (most of the app window, centered) for links in notes. A movable native window with
+        a bar on top: Back, Open in Browser, close."""
         if urlsplit(url).scheme not in ("http", "https"):
             return False
+        main = self._window
+        width, height = PEEK_SIZE
+        x = y = None
+        if main is not None:
+            if large:
+                width, height = max(int(main.width * 0.8), 640), max(int(main.height * 0.82), 480)
+                x, y = main.x + (main.width - width) // 2, main.y + (main.height - height) // 2
+            else:
+                x, y = max(main.x + main.width - width - 24, 0), main.y + 96
         if self._peek is not None:
             self._peek.load_url(url)
             self._peek.restore()
+            if large and x is not None and y is not None:
+                self._peek.resize(width, height)
+                self._peek.move(x, y)
             return True
-        x = y = None
-        if main := self._window:
-            x = max(main.x + main.width - PEEK_SIZE[0] - 24, 0)
-            y = main.y + 96
-        # No js_api here: never expose the app API to third-party pages.
+        # Never the app API for third-party pages: only the bar's two actions.
+        bridge = webpeek.PeekBridge()
         peek = webview.create_window(
-            "Link preview", url, width=PEEK_SIZE[0], height=PEEK_SIZE[1], x=x, y=y, on_top=True
+            "Link preview", url, js_api=bridge, width=width, height=height, x=x, y=y, on_top=True
         )
         if peek is None:
             return False
+        bridge._window = peek
+        peek.events.loaded += lambda: webpeek.add_bar(peek)
         peek.events.closed += self._on_peek_closed
         self._peek = peek
         return True

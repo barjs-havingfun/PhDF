@@ -30,7 +30,7 @@
   import { kbd } from "../platform";
   import { outsideClose } from "../outside";
   import { livePreview } from "./live";
-  import { DEFAULT_SIZE, RANGES, loadTypography, setTextSize, typo, typographyVars, zoomText } from "./typography.svelte";
+  import { DEFAULT_SIZE, RANGES, loadTypography, setTextSize, setTextWidth, typo, typographyVars, widthLabel, zoomText } from "./typography.svelte";
 
   interface Props {
     md: MdDoc;
@@ -344,6 +344,11 @@
     const r = md.reveal;
     if (!r) return;
     queueMicrotask(() => {
+      if (mode === "preview" && r.heading !== undefined) {
+        const hs = preview?.querySelectorAll(":is(h1, h2, h3, h4, h5, h6)");
+        hs?.[r.heading]?.scrollIntoView({ block: "start", behavior: "smooth" });
+        return;
+      }
       if (mode === "preview" || !view) return;
       const pos = Math.min(r.pos, view.state.doc.length);
       view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });
@@ -447,7 +452,7 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
     <span>{words} {words === 1 ? "word" : "words"} · {Math.max(1, Math.round(words / 220))} min read</span>
     <span class="grow"></span>
     <div class="zoom-wrap" bind:this={zoomWrap}>
-      <button class="zoom" class:on={zoomMenu} title={kbd("Text size (also Ctrl+wheel, Ctrl+= / Ctrl+-, Ctrl+0)")} onclick={() => (zoomMenu = !zoomMenu)}>
+      <button class="zoom" class:on={zoomMenu} title={kbd("Text size and width (size also Ctrl+wheel, Ctrl+= / Ctrl+-, Ctrl+0)")} onclick={() => (zoomMenu = !zoomMenu)}>
         {Math.round((typo.size / DEFAULT_SIZE) * 100)}%
       </button>
       {#if zoomMenu}
@@ -466,6 +471,21 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
             {/each}
           </div>
           <button class="reset" onclick={() => zoomText(0)}>Reset to 100%</button>
+          <div class="width-label">Text width <span>{widthLabel(typo.width)}</span></div>
+          <input
+            type="range"
+            min={RANGES.width.min}
+            max={RANGES.width.max}
+            step={RANGES.width.step}
+            value={typo.width}
+            oninput={(e) => setTextWidth(Number(e.currentTarget.value))}
+            aria-label="Note text width"
+          />
+          <div class="presets">
+            {#each [["Narrow", 640], ["Wide", 1000], ["Full", RANGES.width.max]] as [label, w]}
+              <button class:on={typo.width === w} onclick={() => setTextWidth(Number(w))}>{label}</button>
+            {/each}
+          </div>
         </div>
       {/if}
     </div>
@@ -653,6 +673,16 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
   .zoom-menu input[type="range"] {
     width: 100%;
     accent-color: var(--accent);
+  }
+
+  .zoom-menu .width-label {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--separator);
+    font-size: 12px;
+    color: var(--secondary);
   }
 
   .zoom-menu .presets {

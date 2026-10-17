@@ -17,6 +17,10 @@
   import { ocrLanguages } from "./lib/ocr";
   import Settings from "./lib/Settings.svelte";
   import Help from "./lib/Help.svelte";
+  import PrintSheet from "./lib/PrintSheet.svelte";
+  import { loadTheme, theme } from "./lib/theme.svelte";
+  import { loadPrefs, prefs } from "./lib/prefs.svelte";
+  import logo from "./assets/logo.png";
   import PdfTools from "./lib/PdfTools.svelte";
   import BookView from "./lib/focus/BookView.svelte";
   import AiPanel from "./lib/ai/AiPanel.svelte";
@@ -55,6 +59,7 @@
   import LinkPeek, { type Peek } from "./lib/LinkPeek.svelte";
   import PaneView from "./lib/PaneView.svelte";
   import Sidebar, { type SidebarMode } from "./lib/Sidebar.svelte";
+  import MdSidebar, { type MdSidebarMode } from "./lib/md/MdSidebar.svelte";
   import Toolbar from "./lib/Toolbar.svelte";
   import { GradingSession, grading, loadGradingSettings, type Host } from "./lib/grading/grading.svelte";
   import { MdDoc } from "./lib/md.svelte";
@@ -84,7 +89,14 @@
   let invert = $state(false);
   let sidebarOpen = $state(false);
   let sidebarMode = $state<SidebarMode>("pages");
+  let mdSidebarMode = $state<MdSidebarMode>("contents");
   let palette = $state(false);
+  // The palette lists the bookmarks of the focused PDF.
+  $effect(() => {
+    if (palette) active?.loadBookmarks();
+  });
+  // Fewer animations (Settings → Appearance), applied to the whole window.
+  $effect(() => void document.documentElement.classList.toggle("reduce-motion", ui.reduceMotion));
   let restored = $state(false);
 
   let toolbarHeight = $state(52);
@@ -98,6 +110,7 @@
   /** Focused tab of any kind; `active` is the same tab when it is a PDF. */
   const current = $derived(ws.activeTab);
   const active = $derived(current?.kind === "pdf" ? (current as Tab) : null);
+  const sidebarShown = $derived(sidebarOpen && !read.zen);
   const note = $derived(current?.kind === "md" ? (current as MdTab) : null);
 
   // Close confirmation for tabs with unsaved annotations.
@@ -127,7 +140,13 @@
           ws.add(tab, pane);
         }
       } else {
-        const doc = await (await api()).open_document(path);
+        const py = await api();
+        let doc = await py.open_document(path);
+        while ("needsPassword" in doc) {
+          const password = await askPassword(path.split(/[\/]/).pop() ?? path, doc.wrong);
+          if (password === null) return null;
+          doc = await py.open_document(path, password);
+        }
         tab = ws.findPdf(doc.docId, doc.path);
         if (!tab) {
           tab = new Tab(doc);
@@ -141,6 +160,14 @@
       notify.error(`Could not open ${path}: ${e}`);
       return null;
     }
+  }
+
+  // Encrypted PDFs: ask for the password (kept in memory for this session only).
+  let passwordAsk = $state<{ name: string; wrong: boolean; resolve: (pw: string | null) => void } | null>(null);
+  let passwordValue = $state("");
+  function askPassword(name: string, wrong: boolean): Promise<string | null> {
+    passwordValue = "";
+    return new Promise((resolve) => (passwordAsk = { name, wrong, resolve })).finally(() => (passwordAsk = null)) as Promise<string | null>;
   }
 
   async function pickAndOpen(pane: Pane = ws.focused) {
@@ -401,6 +428,10 @@
       add("Document", "Redo", redo, "Ctrl+Y");
       add("Document", pdf.isBookmarked(pdf.page) ? "Remove bookmark" : "Bookmark this page", toggleBookmark, "Ctrl+B");
       add("Document", "Show bookmarks", () => ((sidebarOpen = true), (sidebarMode = "bookmarks")));
+      add("Document", "Print…", () => (ui.print = true), "Ctrl+P");
+      for (const b of pdf.bookmarks) {
+        add("Bookmarks", `${b.label || "Bookmark"} (p. ${b.page + 1})`, () => pdf.navigate({ page: b.page }));
+      }
       add("Document", "Export highlights to note", exportHighlights);
       add("Document", "Export as Markdown…", () => exportMarkdown("file"));
       add("Document", "Export to Obsidian vault", () => exportMarkdown("vault"));
@@ -488,6 +519,11 @@
   /** Save / Don't Save / Cancel for a tab with unsaved annotations. */
   async function askSave(tab: Tab): Promise<CloseChoice> {
     ws.activate(tab);
+    // Settings → General: save without asking.
+    if (prefs.unsaved === "save") {
+      await tab.save();
+      return "save";
+    }
     const choice = await new Promise<CloseChoice>((resolve) => (confirmClose = { tab, resolve }));
     confirmClose = null;
     if (choice === "save") await tab.save();
@@ -537,7 +573,8 @@
   // --- tab drag & drop ------------------------------------------------------------------------
 
   function acceptDrop(tab: AnyTab, target: DropTarget): boolean {
-    if (target.kind === "window") return ws.tabCount > 1;
+    // An undocked window's only tab may leave too: dropped onto a PhDF window, it goes back.
+    if (target.kind === "window") return ws.tabCount > 1 || !!info?.detached;
     const pane = ws.pane(target.paneId);
     if (!pane) return false;
     if (target.kind === "split") return ws.canSplit(tab, pane);
@@ -554,7 +591,8 @@
       // Dropped on another PhDF window: move the tab there; anywhere else: a new window.
       const other = await py.window_at(target.screenX, target.screenY, devicePixelRatio);
       if (other) await py.send_to_window(other, tab.path);
-      else await py.open_window([tab.path], target.screenX - 160, target.screenY - 20);
+      else if (ws.tabCount === 1) return; // undocked window: it already is its own window
+      else await py.open_window([tab.path], target.screenX - 160, target.screenY - 20, true);
       ws.remove(tab);
       await releaseDocument(tab);
       return;
@@ -564,6 +602,24 @@
     else if (target.kind === "into") ws.move(tab, pane, pane.tabs.length);
     else ws.split(tab, pane, target.side);
   }
+
+  /** Detached window: its tabs go back to the main window, then it closes. */
+  async function dock() {
+    const tabs = ws.allTabs();
+    for (const t of tabs) await t.md?.flush();
+    const py = await api();
+    await py.dock(tabs.map((t) => t.path));
+    for (const t of tabs) {
+      ws.remove(t);
+      await releaseDocument(t);
+    }
+    await py.close_window();
+  }
+
+  // A detached window whose last tab was closed has nothing left to show.
+  $effect(() => {
+    if (restored && info?.detached && ws.tabCount === 0) api().then((py) => py.close_window());
+  });
 
   function onTabDragStart(e: PointerEvent, tab: AnyTab) {
     startTabDrag(e, tab, { accept: acceptDrop, drop: dropTab });
@@ -626,7 +682,7 @@
 
   function inTextField(e: KeyboardEvent) {
     const el = e.target as HTMLElement;
-    return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
+    return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -641,6 +697,9 @@
     }
     if ((e.target as HTMLElement).closest?.(".xterm")) return;
     if (e.defaultPrevented) return; // handled by the note editor (Ctrl+= zoom, Ctrl+E code…)
+    // A dialog is open: it handles its own keys (Escape, Enter); nothing reaches the page.
+    if (passwordAsk || confirmClose || ui.print || ui.settingsOpen) return;
+    const typing = inTextField(e);
 
     if (mod && e.shiftKey && (key === " " || e.code === "Space")) parking = !parking;
     else if (mod && key === ".") toggleZen();
@@ -652,20 +711,21 @@
     else if (mod && !e.shiftKey && key === "z" && active && !inTextField(e)) undo();
     else if (mod && (key === "y" || (e.shiftKey && key === "z")) && active && !inTextField(e)) redo();
     else if (mod && key === "b" && active && !inTextField(e)) toggleBookmark();
-    else if (mod && e.shiftKey && key === "c" && active && getSelection()?.toString()) copyWithCitation();
+    else if (mod && e.shiftKey && key === "c" && active && !typing && getSelection()?.toString()) copyWithCitation();
+    else if (mod && key === "p" && active) ui.print = true;
     else if (mod && key === "t") newTab();
     else if (mod && key === "w") current && closeTab(current);
     else if (key === "escape" && active && active.tool !== "select") active.tool = "select";
     else if (mod && key === "tab") cycleTab(e.shiftKey ? -1 : 1);
-    else if (mod && key === "f" && active) toolbar?.focusSearch();
-    else if (mod && key === "g" && active) toolbar?.startGoto();
-    else if (mod && (key === "=" || key === "+") && active) viewer()?.zoomBy(1.2);
-    else if (mod && key === "-" && active) viewer()?.zoomBy(1 / 1.2);
-    else if (mod && key === "0" && active) viewer()?.setZoom(1);
+    else if (mod && key === "f" && active && !typing) toolbar?.focusSearch();
+    else if (mod && key === "g" && active && !typing) toolbar?.startGoto();
+    else if (mod && (key === "=" || key === "+") && active && !typing) viewer()?.zoomBy(1.2);
+    else if (mod && key === "-" && active && !typing) viewer()?.zoomBy(1 / 1.2);
+    else if (mod && key === "0" && active && !typing) viewer()?.setZoom(1);
     else if (mod && key === "\\") toggleSidebar();
-    else if ((e.altKey && key === "arrowleft") || (e.metaKey && key === "[")) active?.goBack(); // ⌘[ ⌘] on a Mac
-    else if (e.metaKey && key === "]") active?.goForward();
-    else if (e.altKey && key === "arrowright") active?.goForward();
+    else if (!typing && ((e.altKey && key === "arrowleft") || (e.metaKey && key === "["))) active?.goBack(); // ⌘[ ⌘] on a Mac
+    else if (!typing && e.metaKey && key === "]") active?.goForward();
+    else if (!typing && e.altKey && key === "arrowright") active?.goForward();
     else if (active && !mod && !e.altKey && !inTextField(e) && !peek) {
       if (key === "arrowright") active.pendingJump = { page: stepRow(active.page, 1, active.pageCount) };
       else if (key === "arrowleft") active.pendingJump = { page: stepRow(active.page, -1, active.pageCount) };
@@ -697,7 +757,7 @@
     if (!restored || !info) return;
     const key = `session.${info.windowId}`;
     const session = sessionSnapshot();
-    const sidebar = { open: sidebarOpen, mode: sidebarMode };
+    const sidebar = { open: sidebarOpen, mode: sidebarMode, mdMode: mdSidebarMode };
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       const py = await api();
@@ -739,11 +799,15 @@
     const appInfo = await py.app_info();
     setRenderBaseUrl(appInfo.renderBaseUrl);
     invert = await py.get_setting("invertPages", false);
+    ui.reduceMotion = await py.get_setting("ui.reduceMotion", matchMedia("(prefers-reduced-motion: reduce)").matches);
     await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace(), loadLayout(), loadInk(), loadTextStyle(), loadGradingSettings(), loadAppFont()]);
-    // The window's title bar follows the light / dark theme (Windows colors it like the toolbar).
-    const scheme = matchMedia("(prefers-color-scheme: dark)");
-    (await api()).window_theme(scheme.matches);
-    scheme.addEventListener("change", (e) => api().then((py) => py.window_theme(e.matches)));
+    // Light / dark theme (also colors the Windows title bar); dark pages follow it if asked.
+    addEventListener("phdf:theme", (e) => {
+      const dark = (e as CustomEvent<boolean>).detail;
+      if (theme.autoDarkPages && invert !== dark) invert = dark;
+    });
+    await loadTheme();
+    await loadPrefs();
     // E-books laid out again (Read menu → text size): update their tabs.
     window.addEventListener("phdf:reflow", (e) => {
       for (const change of (e as CustomEvent<{ docId: string; pageSizes: [number, number][]; revs: Record<number, number> }[]>).detail) {
@@ -755,10 +819,12 @@
       ui.helpOpen = true;
       (await api()).set_setting("help.seen", true);
     }
-    const sidebar = await py.get_setting("sidebar", { open: false, mode: "pages" as const });
+    const sidebar = await py.get_setting<{ open: boolean; mode: SidebarMode; mdMode?: MdSidebarMode }>("sidebar", { open: false, mode: "pages" });
     sidebarOpen = sidebar.open;
     sidebarMode = sidebar.mode;
-    await restoreSession(appInfo.windowId);
+    mdSidebarMode = sidebar.mdMode ?? "contents";
+    // Settings → General → "Reopen my last tabs" (an undocked window always shows its tab).
+    if (prefs.restore || appInfo.detached) await restoreSession(appInfo.windowId);
     setInterval(() => tickReading(), 1000);
     for (const type of ["pointermove", "keydown", "wheel", "pointerdown"]) {
       window.addEventListener(type, () => noteActivity(), { passive: true, capture: true });
@@ -774,6 +840,15 @@
     });
     // A tab dragged here from another PhDF window.
     window.addEventListener("phdf:open-path", (e) => openPath((e as CustomEvent<string>).detail));
+    // A link in a note (or anywhere in the UI) never takes over the app window: web pages open
+    // in the large preview window, other targets are ignored. In-page `#` links still work.
+    document.addEventListener("click", (e) => {
+      const a = (e.target as Element).closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a || e.defaultPrevented || a.getAttribute("href")!.startsWith("#")) return;
+      e.preventDefault();
+      if (/^https?:/i.test(a.href)) api().then((py) => py.peek_url(a.href, true));
+      else if (/^mailto:/i.test(a.href)) api().then((py) => py.open_external(a.href));
+    });
     window.addEventListener("beforeunload", () => flushReading());
     // Notes may be edited in Obsidian or elsewhere meanwhile: reload them when we come back.
     window.addEventListener("focus", () => {
@@ -793,13 +868,17 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="window" class:dragging={drag.tab}>
-  {#if active && sidebarOpen && !read.zen}
+  {#if sidebarShown && current?.kind === "md"}
+    <div class="sidebar" style="width:{SIDEBAR_WIDTH}px">
+      <MdSidebar md={current.md} mode={mdSidebarMode} onmode={(m) => (mdSidebarMode = m)} onopen={(p) => openPath(p)} />
+    </div>
+  {:else if active && sidebarShown}
     <div class="sidebar" style="width:{SIDEBAR_WIDTH}px">
       <Sidebar tab={active} mode={sidebarMode} {invert} onmode={setSidebarMode} />
     </div>
   {/if}
 
-  <div class="main" style="left:{active && sidebarOpen && !read.zen ? SIDEBAR_WIDTH : 0}px">
+  <div class="main" style="left:{sidebarShown && (active || current?.kind === "md") ? SIDEBAR_WIDTH : 0}px">
     <header bind:clientHeight={toolbarHeight} class:hidden={read.zen}>
       <Toolbar
         bind:this={toolbar}
@@ -811,6 +890,7 @@
         paneId={ws.focused.id}
         {viewer}
         ontogglesidebar={toggleSidebar}
+        cansidebar={!!active || current?.kind === "md"}
         onzen={toggleZen}
         onfullscreen={toggleFullscreen}
         onpark={() => (parking = !parking)}
@@ -825,6 +905,7 @@
         oncopynote={copyNoteToVault}
         onrecognize={recognizeAll}
         onopen={() => pickAndOpen()}
+        ondock={info?.detached ? dock : undefined}
       />
     </header>
 
@@ -941,11 +1022,33 @@
     <Settings onclose={() => (ui.settingsOpen = false)} />
   {/if}
 
+  {#if ui.print && active}
+    <PrintSheet tab={active} onclose={() => (ui.print = false)} />
+  {/if}
+
+  {#if passwordAsk}
+    {@const p = passwordAsk}
+    <div class="sheet-backdrop">
+      <form class="sheet" aria-labelledby="pw-title" onsubmit={(e) => (e.preventDefault(), p.resolve(passwordValue))}>
+        <img class="sheet-icon logo" src={logo} alt="" />
+        <h2 id="pw-title">“{p.name}” is protected by a password</h2>
+        <p>{p.wrong ? "That password is not right. Try again." : "Enter its password to open it. PhDF keeps it only until you quit."}</p>
+        <!-- svelte-ignore a11y_autofocus -->
+        <input class="pw" type="password" bind:value={passwordValue} autofocus onkeydown={(e) => e.key === "Escape" && p.resolve(null)} aria-label="Password" />
+        <div class="sheet-actions">
+          <span class="grow"></span>
+          <button type="button" class="plain" onclick={() => p.resolve(null)}>Cancel</button>
+          <button type="submit" class="default" disabled={!passwordValue}>Open</button>
+        </div>
+      </form>
+    </div>
+  {/if}
+
   {#if confirmClose}
     {@const c = confirmClose}
     <div class="sheet-backdrop">
       <div class="sheet" role="alertdialog" aria-labelledby="save-title">
-        <div class="sheet-icon">Ph</div>
+        <img class="sheet-icon logo" src={logo} alt="" />
         <h2 id="save-title">Do you want to save the changes made to “{c.tab.title}”?</h2>
         <p>Your annotations will be lost if you don’t save them.</p>
         <div class="sheet-actions">
@@ -1169,6 +1272,22 @@
     margin: 6px 0 16px;
     font-size: 12px;
     color: var(--secondary);
+  }
+
+  .sheet-icon.logo {
+    background: none;
+    box-shadow: none;
+  }
+
+  .pw {
+    width: 100%;
+    margin-top: 12px;
+    padding: 6px 10px;
+    border: 1px solid var(--separator);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
   }
 
   .sheet-actions {

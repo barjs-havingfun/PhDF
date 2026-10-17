@@ -31,6 +31,25 @@ def fix_mimetypes() -> None:
     mimetypes.add_type("text/css", ".css")
 
 
+def on_screen(x: int, y: int, width: int) -> bool:
+    """Whether a window at x, y has its title bar on a connected monitor (a monitor that was
+    unplugged leaves saved positions pointing at nothing)."""
+    px, py = x + width // 2, y + 15
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
+        user32.MonitorFromPoint.restype = ctypes.c_void_p
+        return bool(user32.MonitorFromPoint(wintypes.POINT(px, py), 0))  # MONITOR_DEFAULTTONULL
+    try:
+        screens = webview.screens
+        return any(s.x <= px < s.x + s.width and s.y <= py < s.y + s.height for s in screens)
+    except Exception:  # noqa: BLE001 - screens unknown before the GUI starts on some backends
+        return True
+
+
 def remember_geometry(window: webview.Window, key: str, store: Store) -> None:
     """Save a window's size, position and maximized state as it changes."""
     geo = dict(store.get_setting(key) or {})
@@ -57,7 +76,23 @@ def remember_geometry(window: webview.Window, key: str, store: Store) -> None:
     window.events.resized += on_resized
     window.events.moved += on_moved
     window.events.maximized += lambda: save(maximized=True)
-    window.events.restored += lambda: save(maximized=False)
+
+    def on_restored() -> None:
+        save(maximized=False)
+
+        # Un-maximizing goes back to the saved spot, which may be on a monitor that is gone.
+        def bring_back() -> None:
+            try:
+                if not on_screen(window.x, window.y, window.width):
+                    window.move(80, 80)
+            except Exception:  # noqa: BLE001 - window closed meanwhile
+                pass
+
+        later = threading.Timer(0.3, bring_back)
+        later.daemon = True
+        later.start()
+
+    window.events.restored += on_restored
 
     def flush() -> None:
         if timer and timer.is_alive():
@@ -84,6 +119,24 @@ def saved_window_ids(store: Store) -> list[str]:
         if not store.settings_with_prefix(SESSION_PREFIX):
             store.set_setting(SESSION_PREFIX + MAIN_WINDOW, legacy)
     ids = [key.removeprefix(SESSION_PREFIX) for key in store.settings_with_prefix(SESSION_PREFIX)]
+    # Detached windows (a dragged-out tab) don't come back on their own: their tabs dock into
+    # a main window.
+    main = next((i for i in ids if not i.startswith("d")), MAIN_WINDOW)
+    for wid in [i for i in ids if i.startswith("d")]:
+        tabs = [p for pane in (store.get_setting(SESSION_PREFIX + wid) or {}).get("panes", [])
+                for p in pane.get("paths", [])]  # fmt: skip
+        store.delete_setting(SESSION_PREFIX + wid)
+        session = store.get_setting(SESSION_PREFIX + main) or {"panes": [], "focused": 0}
+        if not session.get("panes"):
+            session["panes"] = [{"paths": [], "active": 0, "width": 1}]
+        pane = session["panes"][0]
+        have = pane.setdefault("paths", [])
+        have.extend(p for p in tabs if p not in have)
+        store.set_setting(SESSION_PREFIX + main, session)
+    ids = [i for i in ids if not i.startswith("d")]
+    # Settings → General → "Start with an empty window": one window, its tabs not restored.
+    if not store.get_setting("session.restore", True):
+        ids = [MAIN_WINDOW] if MAIN_WINDOW in ids else ids[:1]
     return ids or [MAIN_WINDOW]
 
 
@@ -132,9 +185,19 @@ def main() -> None:
     def create_window(window_id: str, x: int | None = None, y: int | None = None) -> None:
         api = Api(core, window_id)
         key = f"window.{window_id}"
-        geo = store.get_setting(key) or {}
+        detached = window_id.startswith("d")
+        geo = {} if detached else store.get_setting(key) or {}
+        title = "PhDF"
+        if detached:  # a dragged-out tab: a smaller window named after its document
+            session = store.get_setting(SESSION_PREFIX + window_id) or {}
+            paths = [p for pane in session.get("panes", []) for p in pane.get("paths", [])]
+            geo = {"width": 1000, "height": 760}
+            title = f"{Path(paths[0]).name} - PhDF" if paths else "PhDF"
+        lost = "x" in geo and not on_screen(geo["x"], geo.get("y", 0), geo.get("width", 1200))
+        if x is None and lost:
+            geo = {k: v for k, v in geo.items() if k not in ("x", "y")}  # centered instead
         window = webview.create_window(
-            "PhDF", url, js_api=api,
+            title, url, js_api=api,
             width=geo.get("width", 1200), height=geo.get("height", 800),
             x=x if x is not None else geo.get("x"), y=y if y is not None else geo.get("y"),
             maximized=bool(geo.get("maximized")), min_size=(640, 480), text_select=True,
@@ -147,7 +210,8 @@ def main() -> None:
         window.events.shown += lambda: titlebar.apply(window, titlebar.os_dark())
         window.events.closing += api._on_closing
         window.events.closed += api._on_closed
-        remember_geometry(window, key, store)
+        if not detached:
+            remember_geometry(window, key, store)
 
     core.create_window = create_window
     for window_id in saved_window_ids(store):

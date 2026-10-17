@@ -16,6 +16,7 @@ from phdf.engine.base import (
     DocumentInfo,
     Link,
     OutlineItem,
+    PasswordRequired,
     PdfDocument,
     PdfEngine,
     Rect,
@@ -63,9 +64,12 @@ def new_annotation_id() -> str:
 
 
 class MuPdfDocument(PdfDocument):
-    def __init__(self, doc: pymupdf.Document, path: str | Path | None = None) -> None:
+    def __init__(
+        self, doc: pymupdf.Document, path: str | Path | None = None, password: str | None = None
+    ) -> None:
         self._doc = doc
         self._path = Path(path) if path else None
+        self._password = password  # kept in memory only, to reopen after a full save
         # Tracked ourselves: PyMuPDF's is_dirty stays set after an incremental save.
         self._dirty = False
 
@@ -82,6 +86,10 @@ class MuPdfDocument(PdfDocument):
     def page_size(self, page: int) -> tuple[float, float]:
         rect = self._doc[page].rect
         return rect.width, rect.height
+
+    def page_image(self, page: int, scale: float, fmt: str = "png") -> bytes:
+        pix = self._doc[page].get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
+        return pix.tobytes("jpg", jpg_quality=92) if fmt == "jpg" else pix.tobytes("png")
 
     def render_page(self, page: int, scale: float = 1.0, clip: Rect | None = None) -> bytes:
         p = self._doc[page]
@@ -442,6 +450,8 @@ class MuPdfDocument(PdfDocument):
         self._doc.close()
         os.replace(tmp, self._path)
         self._doc = pymupdf.open(self._path)
+        if self._password:
+            self._doc.authenticate(self._password)
         self._dirty = False
 
     def close(self) -> None:
@@ -469,8 +479,11 @@ class MuPdfEngine(PdfEngine):
     # E-book page layout: an A5-like page; the text size is the reader's choice (Read menu).
     reflow: dict[str, float] = {"width": 420, "height": 595, "fontsize": 11}
 
-    def open(self, path: str | Path) -> PdfDocument:
+    def open(self, path: str | Path, password: str | None = None) -> PdfDocument:
         doc = pymupdf.open(path)
+        if doc.needs_pass and not (password and doc.authenticate(password)):
+            doc.close()
+            raise PasswordRequired(str(path))
         if doc.is_reflowable:
             doc.layout(**self.reflow)
-        return MuPdfDocument(doc, path)
+        return MuPdfDocument(doc, path, password)

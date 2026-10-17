@@ -3,6 +3,7 @@
   // "How to use PhDF": a short tour of what PhDF is good for, opened from the ? button.
   import { fly } from "svelte/transition";
   import Icon from "./Icon.svelte";
+  import { ui } from "./notify.svelte";
   import { kbd } from "./platform";
 
   let { onclose }: { onclose: () => void } = $props();
@@ -196,7 +197,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="stage">
     {#key card}
-    <div class="card" onclick={() => go(1)} in:fly={{ x: 320 * dir, duration: 320, opacity: 0 }} out:fly={{ x: -320 * dir, duration: 320, opacity: 0 }}>
+    <div class="card" onclick={() => go(1)} in:fly={{ x: 320 * dir, duration: ui.reduceMotion ? 0 : 320, opacity: 0 }} out:fly={{ x: -320 * dir, duration: ui.reduceMotion ? 0 : 320, opacity: 0 }}>
       {#if card < sections.length}
         {@const s = sections[card]}
         <section>

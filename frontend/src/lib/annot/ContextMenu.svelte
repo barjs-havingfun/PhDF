@@ -64,6 +64,12 @@
   }
 
   /** The page as a PNG on the clipboard (photo pages come as JPEG and are converted). */
+  async function savePage() {
+    const name = `${tab.title.replace(/[\/:*?"<>|]/g, "_")} p${page + 1}.png`;
+    const path = await (await api()).save_page_image(tab.doc.docId, page, name);
+    if (path) notify.show({ text: `Page ${page + 1} saved as ${path.split(/[\/]/).pop()}.` }, 2500);
+  }
+
   async function copyPage() {
     const [w] = tab.doc.pageSizes[page];
     const url = pageImageUrl(tab.doc.docId, page, Math.min(3, 1800 / w), undefined, tab.revs[page] ?? 0);
@@ -130,6 +136,7 @@
       {tab.isBookmarked(page) ? "Remove Bookmark" : "Bookmark This Page"} <span class="shortcut">{kbd("Ctrl+B")}</span>
     </button>
     <button role="menuitem" onclick={() => run(copyPage)}>Copy Page as Image</button>
+    <button role="menuitem" onclick={() => run(savePage)}>Save Page as Image…</button>
     <div class="sep"></div>
     <button role="menuitem" onclick={() => run(askPage)}>Ask AI About This Page…</button>
     {#if onpark}

@@ -52,10 +52,10 @@ export const RANGES = {
   size: { min: 10, max: 32, step: 1, unit: "px" }, // Ctrl+wheel in a note zooms this
   lineHeight: { min: 1.2, max: 2.2, step: 0.05, unit: "" },
   letterSpacing: { min: -0.02, max: 0.12, step: 0.01, unit: "em" },
-  width: { min: 520, max: 1000, step: 20, unit: "px" },
+  width: { min: 480, max: 1600, step: 20, unit: "px" }, // the max means "Full": the whole pane
 } as const;
 
-const DEFAULTS = { font: "system" as FontKey, size: 14, lineHeight: 1.65, letterSpacing: 0, width: 720 };
+const DEFAULTS = { font: "system" as FontKey, size: 14, lineHeight: 1.65, letterSpacing: 0, width: 900 };
 
 export const typo = $state({ ...DEFAULTS });
 
@@ -97,6 +97,16 @@ export function setTextSize(px: number) {
   save();
 }
 
+/** Set the note's text width (px); the range's max means the full pane width. */
+export function setTextWidth(px: number) {
+  const { min, max } = RANGES.width;
+  typo.width = Math.min(max, Math.max(min, Math.round(px)));
+  save();
+}
+
+/** "720px", or "Full" at the top of the range. */
+export const widthLabel = (v: number) => (v >= RANGES.width.max ? "Full" : `${v}px`);
+
 export function reset() {
   Object.assign(typo, DEFAULTS);
   save();
@@ -137,6 +147,6 @@ export function typographyVars() {
     `--md-size:${typo.size}px`,
     `--md-line:${typo.lineHeight}`,
     `--md-letter:${typo.letterSpacing}em`,
-    `--md-width:${typo.width}px`,
+    `--md-width:${typo.width >= RANGES.width.max ? "none" : `${typo.width}px`}`,
   ].join(";");
 }

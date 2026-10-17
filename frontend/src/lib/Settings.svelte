@@ -3,7 +3,12 @@
   import { onMount } from "svelte";
   import { api } from "./api";
   import Icon from "./Icon.svelte";
-  import { notify } from "./notify.svelte";
+  import { notify, ui as appUi } from "./notify.svelte";
+  import { copyText } from "./platform";
+  import type { AboutInfo } from "./api";
+  import { setAutoDarkPages, setThemeMode, theme, type ThemeMode } from "./theme.svelte";
+  import { prefs, setPref, setRestore, UI_SIZES, type ScrollSpeed } from "./prefs.svelte";
+  import { chime, pomodoro, setFocusLength, setPomodoro } from "./reading.svelte";
   import AgentPicker from "./ai/AgentPicker.svelte";
   import { APP_FONTS, FONTS, setAppFont, ui } from "./md/typography.svelte";
   import { loadAgent, setAgent, setFont, term, TERM_FONTS, TERM_SIZES } from "./ai/terminal.svelte";
@@ -31,6 +36,37 @@
   });
 
   let agentReady = $state(false);
+
+  async function toggleMotion() {
+    appUi.reduceMotion = !appUi.reduceMotion;
+    await (await api()).set_setting("ui.reduceMotion", appUi.reduceMotion);
+  }
+
+  // About: versions and storage, copied as one text for bug reports.
+  let about = $state<AboutInfo | null>(null);
+  api()
+    .then((py) => py.about())
+    .then((a) => (about = a));
+  function aboutText(a: AboutInfo) {
+    const lines = [
+      `PhDF ${a.version}${a.frozen ? " (app)" : " (source)"}`,
+      `OS: ${a.os}`,
+      `Python ${a.python}, PyMuPDF ${a.pymupdf}, pywebview ${a.pywebview}${a.gui ? ` (${a.gui})` : ""}`,
+      `Web view: ${navigator.userAgent}`,
+      `Data folder: ${a.dataDir}`,
+      `Database ${mb(a.dbBytes)}, AI cache ${mb(a.aiCacheBytes)}, covers ${mb(a.coverBytes)}`,
+      `OCR languages: ${a.ocrLanguages.join(", ") || "none"}`,
+      "",
+      "Recent errors:",
+      ...(notify.recent.length ? notify.recent.map((e) => `${e.time}  ${e.text}`) : ["none"]),
+    ];
+    return lines.join(String.fromCharCode(10));
+  }
+  async function copyAbout() {
+    if (!about) return;
+    await copyText(aboutText(about));
+    notify.show({ text: "Copied. Paste it into a bug report." }, 2000);
+  }
 
   let perMonitorDpi = $state(true);
   api()
@@ -108,6 +144,29 @@
     <section>
       <h3>Appearance</h3>
       <div class="row">
+        <span class="label">Theme</span>
+        <div class="fonts">
+          {#each [["system", "System"], ["light", "Light"], ["dark", "Dark"]] as [mode, label] (mode)}
+            <button class="font" class:on={theme.mode === mode} onclick={() => setThemeMode(mode as ThemeMode)}>{label}</button>
+          {/each}
+        </div>
+      </div>
+      <label class="check-row">
+        <input type="checkbox" checked={theme.autoDarkPages} onchange={(e) => setAutoDarkPages(e.currentTarget.checked)} />
+        <span>
+          Dark pages automatically when the theme is dark
+          <small>Pages turn dark with the app (like the moon button) and light again with it.</small>
+        </span>
+      </label>
+      <div class="row">
+        <span class="label">Interface size</span>
+        <div class="fonts">
+          {#each UI_SIZES as size (size)}
+            <button class="font" class:on={prefs.uiSize === size} onclick={() => setPref("uiSize", size)}>{Math.round(size * 100)} %</button>
+          {/each}
+        </div>
+      </div>
+      <div class="row">
         <span class="label">App font</span>
         <div class="fonts">
           {#each APP_FONTS as key}
@@ -125,6 +184,70 @@
           <small>For monitors with different scaling (e.g. 150 % and 100 %). Takes effect after restarting PhDF.</small>
         </span>
       </label>
+      <label class="check-row">
+        <input type="checkbox" checked={appUi.reduceMotion} onchange={toggleMotion} />
+        <span>
+          Fewer animations
+          <small>Cards, page turns and menus appear without sliding or fading.</small>
+        </span>
+      </label>
+    </section>
+
+    <section>
+      <h3>General</h3>
+      <label class="check-row">
+        <input type="checkbox" checked={prefs.restore} onchange={(e) => setRestore(e.currentTarget.checked)} />
+        <span>
+          Reopen my last tabs when PhDF starts
+          <small>Off: PhDF starts with an empty window (your books stay in the Library).</small>
+        </span>
+      </label>
+      <div class="row">
+        <span class="label">Scroll speed</span>
+        <div class="fonts">
+          {#each [["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]] as [speed, label] (speed)}
+            <button class="font" class:on={prefs.scroll === speed} onclick={() => setPref("scroll", speed as ScrollSpeed)}>{label}</button>
+          {/each}
+        </div>
+      </div>
+      <div class="row">
+        <span class="label">Closing with unsaved marks</span>
+        <div class="fonts">
+          <button class="font" class:on={prefs.unsaved === "ask"} onclick={() => setPref("unsaved", "ask")}>Ask me</button>
+          <button class="font" class:on={prefs.unsaved === "save"} onclick={() => setPref("unsaved", "save")}>Save automatically</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h3>Focus timer</h3>
+      <div class="row">
+        <span class="label">Focus</span>
+        <div class="fonts">
+          {#each [15, 25, 45, 50] as min (min)}
+            <button class="font" class:on={pomodoro.focusMin === min} onclick={() => setFocusLength(min)}>{min} min</button>
+          {/each}
+        </div>
+      </div>
+      <div class="row">
+        <span class="label">Break</span>
+        <div class="fonts">
+          {#each [5, 10, 15] as min (min)}
+            <button class="font" class:on={pomodoro.breakMin === min} onclick={() => setPomodoro({ breakMin: min })}>{min} min</button>
+          {/each}
+        </div>
+      </div>
+      <label class="check-row">
+        <input type="checkbox" checked={pomodoro.chime} onchange={(e) => setPomodoro({ chime: e.currentTarget.checked })} />
+        <span>Chime when a round or a break ends</span>
+      </label>
+      {#if pomodoro.chime}
+        <div class="row">
+          <span class="label">Volume</span>
+          <input class="volume" type="range" min="0.05" max="1" step="0.05" value={pomodoro.volume} oninput={(e) => setPomodoro({ volume: Number(e.currentTarget.value) })} aria-label="Chime volume" />
+          <button class="btn small" onclick={() => chime(true)}>Test</button>
+        </div>
+      {/if}
     </section>
 
     <section>
@@ -203,6 +326,17 @@
         Markdown copies of documents the AI reads (✦ menu). PhDF keeps them small by itself: only the latest version
         of each document, nothing unused for 30 days, at most 500 MB.
       </p>
+    </section>
+
+    <section>
+      <h3>About</h3>
+      {#if about}
+        <pre class="about">{aboutText(about)}</pre>
+        <div class="row">
+          <button class="btn" onclick={copyAbout}>Copy for a Bug Report</button>
+        </div>
+        <p class="hint">Nothing is sent anywhere. Check the text before sharing it: it shows your data folder.</p>
+      {/if}
     </section>
   </div>
 </div>
@@ -348,6 +482,24 @@
   .code {
     color: var(--tertiary);
     font-size: 11px;
+  }
+
+  .volume {
+    flex: 1;
+    max-width: 200px;
+  }
+
+  .about {
+    margin: 0 0 8px;
+    padding: 10px 12px;
+    max-height: 180px;
+    overflow: auto;
+    border-radius: 8px;
+    background: var(--hover);
+    font: 11.5px/1.5 ui-monospace, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    user-select: text;
   }
 
   .hint {

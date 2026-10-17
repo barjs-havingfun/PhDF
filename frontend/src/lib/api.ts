@@ -3,11 +3,18 @@
 export type Rect = [number, number, number, number]; // x0, y0, x1, y1 in PDF points
 export type FitMode = "width" | "page" | "none";
 
+export interface MdFile {
+  name: string;
+  path: string;
+}
+
 export interface AppInfo {
   name: string;
   version: string;
   renderBaseUrl: string;
   windowId: string;
+  /** A window made by dragging a tab out: it docks back instead of being restored. */
+  detached: boolean;
   platform: "windows" | "macos" | "linux";
 }
 
@@ -28,6 +35,27 @@ export interface OpenedDocument {
   dirty: boolean;
   revs: Revs;
   lastOpened: number | null; // unix time of the previous visit
+}
+
+export interface NeedsPassword {
+  needsPassword: true;
+  /** A password was given and it was not right. */
+  wrong: boolean;
+}
+
+export interface AboutInfo {
+  version: string;
+  python: string;
+  pymupdf: string;
+  pywebview: string;
+  os: string;
+  gui: string;
+  frozen: boolean;
+  dataDir: string;
+  dbBytes: number;
+  aiCacheBytes: number;
+  coverBytes: number;
+  ocrLanguages: string[];
 }
 
 export interface Bookmark {
@@ -181,7 +209,9 @@ interface PyApi {
   startup_paths(): Promise<string[]>;
   pick_file(kind: "document" | "pdf" | "md"): Promise<string | null>;
   pick_new_md(name?: string): Promise<string | null>;
-  open_window(paths: string[], x?: number, y?: number): Promise<string>;
+  open_window(paths: string[], x?: number, y?: number, detached?: boolean): Promise<string>;
+  dock(paths: string[]): Promise<void>;
+  md_files(folder: string): Promise<MdFile[]>;
   close_window(): Promise<void>;
   toggle_fullscreen(): Promise<void>;
   window_theme(dark: boolean): Promise<void>;
@@ -213,7 +243,14 @@ interface PyApi {
     document?: string | null,
   ): Promise<{ path: string; items: ParkedItem[] }>;
   parking_done(line: number, text: string, done?: boolean, document?: string | null): Promise<boolean>;
-  open_document(path: string): Promise<OpenedDocument>;
+  /** An encrypted PDF answers `{needsPassword}` until called with the right password. */
+  open_document(path: string, password?: string): Promise<OpenedDocument | NeedsPassword>;
+  save_page_image(docId: string, page: number, name: string): Promise<string | null>;
+  open_in_default_app(path: string): Promise<void>;
+  ui_zoom(factor: number): Promise<void>;
+  library_remove(docId: string): Promise<void>;
+  library_relink(docId: string): Promise<{ ok: boolean; reason?: "cancelled" | "different"; path?: string }>;
+  about(): Promise<AboutInfo>;
   close_document(docId: string): Promise<void>;
   outline(docId: string): Promise<OutlineItem[]>;
   text_layer(docId: string, page: number): Promise<TextLine[]>;
@@ -293,7 +330,7 @@ interface PyApi {
   tools_split(id: string, parts: number[][], keepAnnotations?: boolean): Promise<string[]>;
   tools_close(id: string): Promise<void>;
   open_external(url: string): Promise<void>;
-  peek_url(url: string): Promise<boolean>;
+  peek_url(url: string, large?: boolean): Promise<boolean>;
   peek_expand(): Promise<void>;
   peek_close(): Promise<void>;
   get_setting<T>(key: string, defaultValue?: T): Promise<T>;

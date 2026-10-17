@@ -1,6 +1,6 @@
 # PhDF - Handoff
 
-> Status: **v0.6.0** (2026-10-16). Repo: github.com/barjs-havingfun/PhDF; the owner commits and
+> Status: **v0.7.0** (2026-10-17). Repo: github.com/barjs-havingfun/PhDF; the owner commits and
 > pushes by hand. Ask the owner before starting new work ("start" / "başla").
 > Code map and conventions: `CLAUDE.md`. Full history up to v0.5.8: `OLDLOG.md` (archive, don't
 > read unless asked). Original requirements: `notes.md`.
@@ -134,6 +134,71 @@ Also open:
 - Built as planned: `services/pdftools.py` (`ToolsSession`: original bytes + operations; undo
   = replay without the last), `Api.tools_*`, `lib/PdfTools.svelte` (full-window view, opened via
   `ui.tools`). Session ids are 64 hex so `RenderServer` serves thumbnails. Crop: not yet.
+
+Done in v0.7.0 (2026-10-17, not yet tested by the owner):
+- **Tutorial**: shorter cards about what PhDF is good for, each with a **Details: how to use
+  it** button that opens a scrolling step-by-step list inside the card (`Help.svelte`).
+- **Window on a disconnected monitor**: `app.on_screen()` checks a saved position against the
+  connected monitors; off-screen positions are dropped at start (window centered), and
+  un-maximizing onto a missing monitor moves the window to the main screen.
+- **Note text width**: the note's % menu (status line) has a Text width slider and Narrow /
+  Wide / Full; range 480-1600 px, the max = **Full** (`--md-width: none`), default now 900 px.
+- **Enlarged link preview** moves by its header too (`sheetMoved` in `LinkPeek.svelte`).
+- **Dragging a tab out = undocking** (like MATLAB): a smaller window with just that document
+  (id starts with `d`, title `<file> - PhDF`, size not remembered). Its toolbar has **Dock**
+  (`Api.dock`: tabs go to a main window, a new one if none is open), it closes with its last
+  tab, and at the next start its tabs are merged into the main window (`saved_window_ids`).
+  Dropping onto another PhDF window still moves the tab there; an undocked window's only tab
+  can be dragged back that way (dropped elsewhere it stays).
+- **Sidebar for standalone notes** (`md/MdSidebar.svelte`, same Ctrl+\ toggle): **Contents**
+  (the note's `#` headings, click to jump, also in Preview via `MdDoc.reveal.heading`) and
+  **Files** (the other `.md` notes in its folder, `Api.md_files`, without `.parking.md` /
+  `.grades.md`). Its tab is remembered in the `sidebar` setting (`mdMode`).
+- **Web links never take over the app window**: a document-level click handler in `App.svelte`
+  sends `http(s)` links (notes' Preview, anywhere in the UI) to `peek_url(url, large=True)`: a
+  movable, on-top native window at 80 % of the app window. Every web preview gets a bar on top
+  (`services/webpeek.py`: Back, Open in Browser, close) injected after each load; the page's
+  only JS API is `PeekBridge` (those two actions), never `Api`.
+- **From the research list (easy items)**:
+  - **Bookmarks in the palette** (Ctrl+K lists the focused PDF's bookmarks; loaded when it opens).
+  - **Reading spot saved on close**: the viewer used to *cancel* its pending 400 ms position save
+    when a tab closed; now it writes it (`flushPosition`, also on `pagehide`).
+  - **Password-protected PDFs**: `engine.open(path, password)` raises `PasswordRequired`;
+    `open_document` answers `{needsPassword, wrong}` and the app asks (sheet). Passwords live
+    in `Core.passwords` for the session only (also used to reopen after a full save). PDF
+    Tools, export and AI Markdown open files themselves and don't handle encrypted PDFs yet.
+  - **Print** (Ctrl+P, ⋯ menu, palette; `PrintSheet.svelte`): all / current / range, pages
+    rendered at 150 DPI into a print-only `#phdf-print` layer, then `window.print()` (annotations
+    as shown, saved or not; max 500 pages). macOS (WKWebView has no print): opens the PDF in
+    Preview via `open_in_default_app`.
+  - **Save Page as Image…** (right-click a page): PNG or JPEG at about 200 DPI (`page_image`).
+  - **Library**: × on a cover removes it from the Library (file untouched, `library_remove`);
+    a missing file's cover is **find file…** (`library_relink`, accepts only the same content
+    hash so bookmarks and history stay right).
+  - **Settings → About**: versions, OS, web view, data folder, database / cache sizes, OCR
+    languages and the last 20 error toasts (`notify.recent`); **Copy for a Bug Report**.
+  - **Keyboard**: no global shortcut while a dialog (password, save, print, Settings) is open;
+    Ctrl+F / G / zoom / Alt+arrows / Ctrl+Shift+C no longer act on the PDF while typing in a
+    field or note.
+  - **Fewer animations** (Settings → Appearance, `ui.reduceMotion`, default = the OS setting):
+    a `reduce-motion` class stops CSS animations / transitions; Help and book view slide with
+    duration 0.
+- **More settings** (Settings sheet):
+  - **Theme** System (default) / Light / Dark (`theme.svelte.ts`, setting `ui.theme`):
+    `data-theme` on `<html>`; `app.css` has the dark tokens twice (OS dark unless
+    `data-theme="light"`, and `[data-theme="dark"]`). Theme changes fire `phdf:theme` (title
+    bar, terminal colors). **Dark pages automatically** (`autoDarkPages`) sets the moon state
+    with the theme.
+  - **Interface size** 90 / 100 / 110 / 125 %: the web view's own zoom (`services/uizoom.py`:
+    WebView2 `ZoomFactor`, WKWebView `pageZoom`, WebKitGTK zoom level), not CSS zoom, so
+    coordinates stay consistent. Applied per window at start (`loadPrefs`).
+  - **General**: reopen last tabs (`session.restore`, read by `saved_window_ids` too: off =
+    one window, no tabs), scroll speed Slow / Normal / Fast (the viewer scales wheel deltas;
+    Normal leaves scrolling to the browser), closing with unsaved marks: Ask / Save automatically
+    (`askSave`). Stored in `prefs` (`prefs.svelte.ts`).
+  - **Focus timer**: focus and break length, chime on/off, volume, Test.
+  - **Toolbar buttons**: right-click the toolbar to tick which buttons show
+    (`prefs.toolbarHidden`; sidebar and ⋯ always stay; Show All).
 **v1.0** when Phases 0-5.5 and 7 are stable on all three OSes.
 
 **Upcoming (unscheduled):** `phdf://` deep links from Obsidian; send to the currently open
@@ -145,6 +210,109 @@ rotated text in the text layer. (Window frame: kept native, colored like the too
 folder, flashcards from highlights, text-to-speech, translation, dual-page mode, EPUB / XPS /
 CBZ, plugins, mobile companion.
 
+## Performance, reliability and cleanup: future work
+
+Expansion research and preparation: [FUTURE_EXPANSION_RESEARCH.md](FUTURE_EXPANSION_RESEARCH.md)
+(2026-10-16). Covers improvements to existing features, 18 proposed additions, architecture,
+validation, dependencies, and sources. Proposals are not implementation commitments.
+
+Code review 2026-10-16. Backlog only; no implementation changes made. Prioritize data loss
+and wrong-file saves before optimization. Baseline: 80 Python tests passed, 1 skipped;
+Svelte check, Ruff lint/format and frontend build passed (large editor chunk warning).
+Reproduced items are marked below; other findings are from static inspection and need
+focused regression coverage plus desktop interaction checks.
+
+### Reliability bugs
+- **P1, reproduced: identical PDF copies share a writable document.** `Core.acquire` keys
+  instances by content hash, so opening A.pdf then identical B.pdf and saving edits through
+  B's returned id writes A. Separate writable file identity from content/history identity.
+- **P1: window close can lose recent note edits.** `Api._on_closing` only holds closure for
+  dirty PDF annotations; Markdown-only edits can miss the awaited frontend flush. Always
+  await note persistence before closing, including parking notes and grading state.
+- **P1: shared PDF, independent frontend edit state.** `App.openBeside` and other windows
+  create separate Tab annotation lists, dirty flags, revisions and undo stacks for the same
+  backend document. Share edit state or broadcast changes to every view.
+- **P1, reproduced: rejected Tools operation leaves rendering on a closed document.**
+  `ToolsSession.apply` rebuilds on failure, but `Api.tools_apply` only reattaches the renderer
+  on success. Deleting all pages triggers it. Reattach on error too.
+- **P1: Tools extract permits the source as destination.** Reject the source path/file identity
+  in the backend to enforce the promise that the original is never overwritten.
+- **Tools Change PDF discards unsaved changes.** `PdfTools.openFile` closes the old session
+  without confirmation; failure opening its replacement leaves stale UI state. Confirm first
+  and acquire the replacement before releasing the old session.
+- **Tools undo after Save Copy leaves saved=true.** Track the saved history position.
+- **Competing note writers.** Integrated/standalone notes and windows can hold separate MdDoc
+  buffers and queues for one file, sharing a fixed `.phdf-tmp` filename. Share note ownership
+  and serialize backend writes per normalized path; handle conflicting buffers explicitly.
+- **External note reload can replace newly typed edits.** `MdDoc.checkExternal` checks dirty
+  only before awaited I/O; verify an edit generation before applying the loaded text.
+- **Two-page visibility excludes the right page of the last live row.** `Viewer.pageAt`
+  returns a row's first page; expand liveRange's end to include the whole row.
+- **Viewer teardown cancels the pending position save.** Flush the latest location before
+  clearing the 400 ms timer so rapid tab changes preserve reading position.
+- **Book view consumes typing keys and ignores links.** Its capture handler needs editable
+  target checks; PageView's empty onlink callback needs the normal preview/navigation flow.
+- **Tools merge undo reopens external files.** Snapshot inserted PDF bytes instead of relying
+  on an unchanged source path during replay.
+- **Reproduced: render cache overcounts replacement entries.** `_remember` adds new bytes
+  without subtracting the prior entry. Concurrent misses can trigger this. Correct accounting
+  and combine concurrent requests for the same image.
+- **AI Markdown job registration races.** Status checking and registration are separate;
+  duplicate workers can write the same `.part`. Register atomically and define active-job
+  behavior when saving changes the document/cache identity.
+
+### Follow-up bug search (2026-10-16)
+- **Reproduced: discarded OCR survives in AI context.** OCR, create AI context, close without
+  saving, reopen: the disk/text layer is original but AI context still contains unsaved OCR.
+  `Core.release` keeps text_revs and the matching cache file. Invalidate discarded text/cache
+  identity without accidentally reusing a previous unsaved revision on subsequent OCR.
+  Reproduction used a stub recognizer/converter to isolate lifecycle behavior.
+- **Reproduced: EPUB reflow leaves AI page context stale.** After changing text size from 11
+  to 24, a fixture grew from 3 to 16 pages, but ai_context reused the original page-1 file
+  without converting again. Cache identity must include layout, because page boundaries change.
+  Converter was stubbed to extract actual page text for this check.
+- **EPUB reflow leaves other windows stale.** Backend relayout changes the shared document;
+  only the initiating frontend receives new page sizes/revisions. Broadcast to all views.
+  `Tab.reflow` also leaves the cached outline/back-forward destinations and per-page text
+  presence state at the old pagination; invalidate/remap these too.
+- **P1: native window close bypasses Tools' unsaved confirmation.** Tools wrappers report
+  dirty=false even after operations, and `_has_unsaved` only checks normal opened documents.
+  Clicking the OS close button can lose Tools work without its save/cancel dialog. Include
+  Tools state in the window close protocol, not only the Tools panel's Close button.
+- **P1: typed grades are not committed on window close or Ctrl+S.** Grade/identification
+  inputs live in GradingSession fields; closing flushes MdDocs but does not call commit/leave,
+  and Tab.save does not commit them either. Persist pending grading inputs before either path.
+- **Grading marks an exam Done before saving succeeds.** `GradingSession.next` updates done
+  before show/leave saves. Save failure leaves the current exam marked complete; a later
+  progress write can persist it. Mark complete only after successful persistence.
+- **Markdown preview links use default webview navigation.** `MdEditor.onPreviewClick` only
+  handles pins and does not intercept ordinary anchors. Route external links through the
+  existing open_external API, retain in-note fragment navigation, and define relative-link
+  handling so clicking a note link cannot navigate away from the app shell.
+
+### Performance investigations (costly paths identified, desktop impact not benchmarked)
+- Search scans pages while holding the global Core lock, blocking rendering in every window.
+  Use a safe snapshot or cancellable batches; avoid running obsolete queued searches.
+- `PdfDocument.page_sizes` visits all pages during open under the shared lock, contrary to the
+  large-document guidance below. Investigate cached/progressive page dimensions.
+- Tools split serializes the whole document for every part under the global lock. Copy only
+  required pages into each output, with link/annotation preservation verified.
+- Sidebar and Tools thumbnail grids create DOM nodes for every page. Virtualize them.
+- Live Markdown math reparses the entire note per edit; repeated block membership checks add
+  work in equation-heavy notes. Investigate incremental parsing.
+- MuPDF's store is emptied every four renders (`store_shrink(100)`). Benchmark a less
+  aggressive policy against scanned-book memory before changing it.
+
+### Cleanup candidates
+- README is stale: v0.5.8 status; Tools and icon still listed as upcoming.
+- Consolidate duplicate PDF edit state and note ownership before deleting isolated code.
+- Prefer Markdown parser extensions to preprocessing regexes: footnotes currently process
+  code-block contents too (`md/render.ts`). Add representative rendering checks.
+- Investigate WOFF2-only assets and loading selected font families while retaining language
+  coverage. The frontend build emits many font formats/subsets.
+- Split `api.py` into feature services with a thin bridge and explicit lock ownership.
+- No whole feature module/dependency was established as unused; do not delete by guesswork.
+
 ## Gotchas (read before changing related code)
 - **Windows `.js` MIME**: `fix_mimetypes()` in `app.py` must stay (else a blank window).
 - **TypeScript pinned to 5.x** (svelte-check). **pymupdf4llm pinned to 0.3.x** (1.x pulls a
@@ -153,7 +321,7 @@ CBZ, plugins, mobile companion.
   access under `core.lock`; slow work (OCR recognition, Markdown conversion on `to_bytes()`
   copies) runs outside it. `Store` serializes its one SQLite connection.
 - **pywebview exposes every public attribute** of `Api` → internals are `_private`. Web link
-  previews open in a window **without** `js_api`.
+  previews get only `webpeek.PeekBridge` (open in browser, close), never `Api`.
 - **Page images** come from `RenderServer` (127.0.0.1, random port + token), not the bridge;
   URLs carry `&r=<rev>`; `Core` bumps per-page revisions on every change. Revisions restart at 0
   each launch (so `r<rev>` in AI cache names can't be compared across launches).
@@ -168,7 +336,8 @@ CBZ, plugins, mobile companion.
   `.end-of-content` box (v0.5.8) keeps slow selections from jumping to the page end.
 - **Position** = page + 0..1 offset within it (survives zoom / resize).
 - **Tab drag & drop** uses pointer events + capture, not HTML5 DnD. Session format
-  `{panes: [{paths, active, width}], focused}` per window (`session.<windowId>`).
+  `{panes: [{paths, active, width}], focused}` per window (`session.<windowId>`). Window ids
+  starting with `d` are detached (undocked) windows: never restored as windows, see `dock`.
 - **`MdDoc.flush()` is queued** (two writes raced on the `.phdf-tmp` file). Grading shares one
   `MdDoc` across exam tabs (`attachNote` / `detachNote`).
 - **Menus inside the toolbar / note header**: `backdrop-filter` and container queries make
@@ -180,6 +349,8 @@ CBZ, plugins, mobile companion.
   `app.per_monitor_dpi()` sets Per-Monitor-V2 before any window (setting `window.perMonitorDpi`,
   Settings → Appearance, default on). Not confirmed by the owner yet; a script can't bring a
   test window to the front, so the corner couldn't be verified automatically.
+- **Closing a window from JS** (`close_window`): destroy it a moment later, so pywebview can
+  return the call's result first (else "Cannot access a disposed object" in the console).
 - **Platform differences** live in `lib/platform.ts` (`kbd()`, `copyText()`, `isMac`).
 - **Equation temp files**: only `.phdf-tmp/eq-*` are deleted; `term_start` cleans leftovers > 1 h.
 - **Screenshots of the app**: use `PrintWindow(..., PW_RENDERFULLCONTENT=2)`; don't force focus.

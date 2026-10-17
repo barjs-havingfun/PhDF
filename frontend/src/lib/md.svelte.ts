@@ -13,8 +13,9 @@ export class MdDoc {
   revision = $state(0);
   /** Last cursor position in the editor (null until the user has clicked into it). */
   cursor: number | null = null;
-  /** Ask the editor to show a position (after an insert). */
-  reveal = $state<{ pos: number; nonce: number } | null>(null);
+  /** Ask the editor to show a position (after an insert, or a heading picked in the sidebar:
+   * `heading` is its index, used by the preview). */
+  reveal = $state<{ pos: number; nonce: number; heading?: number } | null>(null);
 
   private savedText = "";
   private mtime: number | null = null;

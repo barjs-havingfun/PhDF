@@ -17,6 +17,7 @@
   // Continuous, virtualized page view. Only pages near the viewport load images/text/links.
   // Owns scrolling, zoom/fit and position tracking for one tab.
   import { onMount, tick } from "svelte";
+  import { prefs, SCROLL_FACTOR } from "../prefs.svelte";
   import { api, type Annotation, type FitMode, type PdfLink, type Rect } from "../api";
   import { ink, type Jump, type Tab } from "../tab.svelte";
   import type { Point } from "../api";
@@ -194,9 +195,19 @@
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   function savePosition() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
-      (await api()).save_position(tab.doc.docId, tab.page, tab.scroll, tab.zoom, tab.fit);
-    }, 400);
+    saveTimer = setTimeout(writePosition, 400);
+  }
+
+  function writePosition() {
+    saveTimer = undefined;
+    api().then((py) => py.save_position(tab.doc.docId, tab.page, tab.scroll, tab.zoom, tab.fit));
+  }
+
+  /** Closing the tab or the window right after moving: write the waiting position now. */
+  function flushPosition() {
+    if (saveTimer === undefined) return;
+    clearTimeout(saveTimer);
+    writePosition();
   }
 
   let frame = 0;
@@ -452,7 +463,15 @@
   }
 
   function onWheel(e: WheelEvent) {
-    if (!e.ctrlKey) return;
+    if (!e.ctrlKey) {
+      // Settings → Scroll speed: scale the wheel ourselves (Normal leaves it to the browser).
+      const f = SCROLL_FACTOR[prefs.scroll];
+      if (f === 1) return;
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? scroller.clientHeight : 1;
+      scroller.scrollBy({ left: e.deltaX * unit * f, top: e.deltaY * unit * f });
+      return;
+    }
     e.preventDefault();
     // In proportion to the scroll: a touchpad pinch zooms smoothly, a wheel notch about 10%.
     zoomBy(Math.min(1.25, Math.max(0.8, Math.exp(-e.deltaY * 0.001))));
@@ -504,10 +523,12 @@
       ready = true;
     });
 
+    addEventListener("pagehide", flushPosition);
     return () => {
       observer.disconnect();
       scroller.removeEventListener("wheel", onWheel);
-      clearTimeout(saveTimer);
+      removeEventListener("pagehide", flushPosition);
+      flushPosition();
       cancelAnimationFrame(frame);
     };
   });

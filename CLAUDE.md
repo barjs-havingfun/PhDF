@@ -38,15 +38,15 @@ Frontend `frontend/src/`
 - State classes (`*.svelte.ts`): `tab.svelte.ts` (`Tab`: view, history, search, annotations +
   undo, OCR, integrated note / parking; `MdTab`), `workspace.svelte.ts` (panes), `md.svelte.ts`
   (`MdDoc`: load / autosave / reload), `reading.svelte.ts` (Read / Focus / pace / pomodoro),
-  `notify.svelte.ts` (toasts, `ui` sheet flags), `dnd.svelte.ts` (tab drag).
+  `notify.svelte.ts` (toasts, `ui` sheet flags), `theme.svelte.ts` (System / Light / Dark), `prefs.svelte.ts` (general settings, toolbar buttons), `dnd.svelte.ts` (tab drag).
 - `lib/viewer/`: `Viewer.svelte` (virtualized scroll, zoom, selection → rects, ink, moving
   annotations), `PageView.svelte` (image, text layer, links, selection fix).
 - `lib/annot/` (selection menu, right-click `ContextMenu`, editor, annotations panel), `lib/md/`
   (CodeMirror `MdEditor`, `format.ts` commands, `FormatBar`, right-click `EditorMenu` with Ask
-  AI, `live.ts` Live mode, markdown-it `render.ts`, typography), `lib/ai/` (`terminal.svelte.ts`: terminal tabs, default agent,
+  AI, `MdSidebar` (a standalone note's Contents / Files), `live.ts` Live mode, markdown-it `render.ts`, typography), `lib/ai/` (`terminal.svelte.ts`: terminal tabs, default agent,
   `askAi`, terminal font, go to folder; `AiPanel`, `AgentPicker`, `TerminalGuide`, `DocAiMenu`, equation flow),
   `lib/focus/`, `lib/grading/`, `lib/library/`, `PaneView`, `Sidebar`, `LinkPeek`, `Help`,
-  `Settings`, `PdfTools` (PhDF Tools view), `CommandPalette`, `platform.ts` (`kbd()`, `copyText()`), `outside.ts` (close menus on outside press), `pin.ts`, `cite.ts`.
+  `Settings` (incl. About), `PrintSheet`, `PdfTools` (PhDF Tools view), `CommandPalette`, `platform.ts` (`kbd()`, `copyText()`), `outside.ts` (close menus on outside press), `pin.ts`, `cite.ts`.
 
 ## Patterns
 - Engine access: `with self._core.lock:`; slow work outside the lock on a copy.

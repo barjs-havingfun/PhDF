@@ -17,7 +17,11 @@ class Notifier {
     this.timer = setTimeout(() => (this.current = null), ms);
   }
 
+  /** The latest errors, for Settings → About (bug reports). */
+  recent: { time: string; text: string }[] = [];
+
   error(text: string) {
+    this.recent = [{ time: new Date().toLocaleString(), text }, ...this.recent].slice(0, 20);
     this.show({ text, error: true });
   }
 
@@ -35,4 +39,8 @@ export const ui = $state({
   helpOpen: false,
   /** PhDF Tools: open (with a PDF to start on, or null to choose one). */
   tools: null as { path: string | null } | null,
+  /** The print sheet for the focused PDF. */
+  print: false,
+  /** Settings → Appearance: fewer animations (also follows the OS setting). */
+  reduceMotion: false,
 });

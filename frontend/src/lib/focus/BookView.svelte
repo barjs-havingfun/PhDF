@@ -5,6 +5,7 @@
   import { untrack } from "svelte";
   import { fly } from "svelte/transition";
   import Icon from "../Icon.svelte";
+  import { ui } from "../notify.svelte";
   import { read, rowStart } from "../reading.svelte";
   import type { Tab } from "../tab.svelte";
   import PageView from "../viewer/PageView.svelte";
@@ -78,8 +79,8 @@
       <div
         class="spread"
         style="width:{spreadW}px"
-        in:fly={{ x: 70 * dir, duration: 260, opacity: 0 }}
-        out:fly={{ x: -70 * dir, duration: 200, opacity: 0 }}
+        in:fly={{ x: 70 * dir, duration: ui.reduceMotion ? 0 : 260, opacity: 0 }}
+        out:fly={{ x: -70 * dir, duration: ui.reduceMotion ? 0 : 200, opacity: 0 }}
       >
         {#each pages as p, k}
           {@const [pw, ph] = tab.doc.pageSizes[p]}

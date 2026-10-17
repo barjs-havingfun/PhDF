@@ -6,6 +6,7 @@
   import type { FitMode } from "./api";
   import Icon from "./Icon.svelte";
   import { ui } from "./notify.svelte";
+  import { setPref, shown, toggleToolbarItem, TOOLBAR_ITEMS } from "./prefs.svelte";
   import DocAiMenu from "./ai/DocAiMenu.svelte";
   import { term } from "./ai/terminal.svelte";
   import FocusMenu from "./focus/FocusMenu.svelte";
@@ -24,6 +25,8 @@
     paneId: number;
     viewer: () => Viewer | undefined;
     ontogglesidebar: () => void;
+    /** The sidebar has something to show (a PDF, or a standalone note). */
+    cansidebar: boolean;
     onzen: () => void;
     onfullscreen: () => void;
     onpark: () => void;
@@ -38,12 +41,14 @@
     oncopynote: () => void;
     onrecognize: () => void;
     onopen: () => void;
+    /** Only in a detached window: put its tabs back into the main window. */
+    ondock?: () => void;
   }
 
   let {
-    active, note, ready, invert, parking, paneId, viewer,
+    active, note, ready, invert, parking, paneId, viewer, cansidebar,
     ontogglesidebar, onzen, onfullscreen, onpark, onsetfit, oninvert, onsnip, onterminal, ongrading,
-    onstopgrading, onexporthighlights, onexportmarkdown, oncopynote, onrecognize, onopen,
+    onstopgrading, onexporthighlights, onexportmarkdown, oncopynote, onrecognize, onopen, ondock,
   }: Props = $props(); // prettier-ignore
 
   let zoomMenu = $state(false);
@@ -65,6 +70,23 @@
       if (inside !== "more") moreMenu = false;
       if (inside !== "ai") aiMenu = aiTools = false;
     };
+    document.addEventListener("pointerdown", down, true);
+    return () => document.removeEventListener("pointerdown", down, true);
+  });
+
+  // Right-click the toolbar: tick which buttons it shows.
+  let barMenu = $state<{ x: number; y: number } | null>(null);
+  function onBarContext(e: MouseEvent) {
+    if ((e.target as Element).closest("input, .menu")) return; // the search box keeps its menu
+    e.preventDefault();
+    // The header's backdrop filter makes it the menu's frame for position:fixed.
+    const frame = (e.currentTarget as HTMLElement).closest("header")?.getBoundingClientRect();
+    const left = frame?.left ?? 0;
+    barMenu = { x: Math.min(e.clientX - left, (frame?.width ?? innerWidth) - 250), y: e.clientY - (frame?.top ?? 0) };
+  }
+  $effect(() => {
+    if (!barMenu) return;
+    const down = (e: PointerEvent) => !(e.target as Element).closest?.(".bar-menu") && (barMenu = null);
     document.addEventListener("pointerdown", down, true);
     return () => document.removeEventListener("pointerdown", down, true);
   });
@@ -145,11 +167,13 @@
   }
 </script>
 
-<div class="toolbar">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="toolbar" oncontextmenu={onBarContext}>
   <div class="group">
-    <button class="tool" title={kbd("Sidebar (Ctrl+\\)")} onclick={ontogglesidebar} disabled={!active}>
+    <button class="tool" title={kbd("Sidebar (Ctrl+\\)")} onclick={ontogglesidebar} disabled={!cansidebar}>
       <Icon name="sidebar" />
     </button>
+    {#if shown("nav")}
     <button class="tool nav" title={kbd("Back (Alt+←)")} onclick={() => active?.goBack()} disabled={!active?.back.length}>
       <Icon name="left" />
     </button>
@@ -161,6 +185,8 @@
     >
       <Icon name="right" />
     </button>
+    {/if}
+    {#if shown("read")}
     <div class="drop" data-menu="read">
       <button class="pill" class:on={readMenu || read.ruler || read.tint !== "none"} onclick={() => (readMenu = !readMenu)}>
         <Icon name="book" size={15} /> <span class="pill-label">Read</span> <Icon name="chevron" size={12} />
@@ -169,6 +195,8 @@
         <ReadMenu onclose={() => (readMenu = false)} onzen={() => ((readMenu = false), onzen())} onfullscreen={() => ((readMenu = false), onfullscreen())} />
       {/if}
     </div>
+    {/if}
+    {#if shown("focus")}
     <div class="drop" data-menu="focus">
       <button class="pill" class:on={focusMenu || pomodoro.phase !== "idle"} onclick={() => (focusMenu = !focusMenu)}>
         <Icon name="timer" size={15} />
@@ -185,6 +213,8 @@
         <FocusMenu tab={active} onclose={() => (focusMenu = false)} />
       {/if}
     </div>
+    {/if}
+    {#if shown("park")}
     <button
       class="pill park"
       class:on={parking}
@@ -193,6 +223,7 @@
     >
       <Icon name="park" size={15} /> <span class="pill-label">Park</span>
     </button>
+    {/if}
   </div>
 
   <div class="title">
@@ -228,6 +259,7 @@
     {#if active}
       {@const pdf = active}
       <div class="tools" class:book={pdf.isBook}>
+        {#if shown("annotate")}
         <button
           class="tool"
           class:on={pdf.tool === "note"}
@@ -252,6 +284,8 @@
         >
           <Icon name="pen" />
         </button>
+        {/if}
+        {#if shown("annotations")}
         <button
           class="tool"
           class:on={pdf.panelOpen}
@@ -260,6 +294,8 @@
         >
           <Icon name="list" />
         </button>
+        {/if}
+        {#if shown("note")}
         <button
           class="tool"
           class:on={pdf.mdOpen}
@@ -268,8 +304,10 @@
         >
           <Icon name="mdnote" />
         </button>
+        {/if}
       </div>
 
+      {#if shown("zoom")}
       <div class="segmented zoom" data-menu="zoom">
         <button title={kbd("Zoom out (Ctrl+-)")} onclick={() => viewer()?.zoomBy(1 / 1.2)}>
           <Icon name="minus" size={14} />
@@ -324,11 +362,15 @@
           </div>
         {/if}
       </div>
+      {/if}
 
+      {#if shown("darkpages")}
       <button class="tool dark" class:on={invert} title="Dark pages" onclick={oninvert}>
         <Icon name="moon" />
       </button>
+      {/if}
 
+      {#if shown("search")}
       <label class="search">
         <Icon name="search" size={14} />
         <input
@@ -347,8 +389,10 @@
           </span>
         {/if}
       </label>
+      {/if}
     {/if}
     {#if active}
+      {#if shown("ai")}
       <div class="drop ai-drop" data-menu="ai">
         <button class="tool" class:on={aiMenu} title="Ask the AI about this document, chapter or page" onclick={() => (aiMenu = !aiMenu)}>
           <Icon name="sparkle" />
@@ -370,11 +414,15 @@
           </div>
         {/if}
       </div>
+      {/if}
     {/if}
+    {#if shown("terminal")}
     <button class="tool" class:on={term.open} title={kbd("AI terminal (Ctrl+`)")} onclick={onterminal} disabled={!ready}>
       <Icon name="terminal" />
     </button>
+    {/if}
 
+    {#if shown("grade")}
     <button
       class="tool grade"
       class:on={!!grading.session}
@@ -384,9 +432,17 @@
     >
       <Icon name="grade" />
     </button>
+    {/if}
+    {#if ondock}
+      <button class="tool dock" title="Dock: put this tab back into the main PhDF window" onclick={ondock}>
+        <Icon name="down" /> Dock
+      </button>
+    {/if}
+    {#if shown("help")}
     <button class="tool help" title="How to use PhDF" onclick={() => (ui.helpOpen = true)}>
       <Icon name="help" />
     </button>
+    {/if}
     <div class="more" data-menu="more">
       <button class="tool" class:on={moreMenu} title="More" onclick={() => (moreMenu = !moreMenu)} disabled={!ready}>
         <Icon name="more" />
@@ -419,6 +475,7 @@
               <button role="menuitem" onclick={() => ((moreMenu = false), onstopgrading())}>Stop Grading</button>
               <div class="menu-sep"></div>
             {/if}
+            <button role="menuitem" onclick={more(() => (ui.print = true))}>Print… <span class="shortcut">{kbd("Ctrl+P")}</span></button>
             <button role="menuitem" onclick={more(() => (ui.tools = { path: pdf.path }))}>PDF Tools… (rotate, reorder, split…)</button>
             <div class="menu-sep"></div>
             <button role="menuitem" onclick={more(onexporthighlights)}>Export Highlights to Note</button>
@@ -436,13 +493,47 @@
         </div>
       {/if}
     </div>
+    {#if shown("open")}
     <button class="tool" title={kbd("Open PDF or Markdown (Ctrl+O)")} onclick={() => onopen()} disabled={!ready}>
       <Icon name="open" />
     </button>
+    {/if}
   </div>
 </div>
 
+{#if barMenu}
+  <div class="menu bar-menu" role="menu" style="left:{barMenu.x}px;top:{barMenu.y}px">
+    <div class="bar-menu-title">Show in the toolbar</div>
+    {#each TOOLBAR_ITEMS as [key, label] (key)}
+      <button role="menuitemcheckbox" aria-checked={shown(key)} onclick={() => toggleToolbarItem(key)}>
+        <span class="tick">{shown(key) ? "✓" : ""}</span>{label}
+      </button>
+    {/each}
+    <div class="menu-sep"></div>
+    <button role="menuitem" onclick={() => ((barMenu = null), setPref("toolbarHidden", []))}><span class="tick"></span>Show All</button>
+  </div>
+{/if}
+
 <style>
+  .bar-menu {
+    position: fixed;
+    transform: none;
+    z-index: 70;
+    width: 240px;
+  }
+
+  .bar-menu-title {
+    padding: 4px 10px 6px;
+    font-size: 11.5px;
+    color: var(--secondary);
+  }
+
+  .bar-menu .tick {
+    display: inline-block;
+    width: 18px;
+    color: var(--accent);
+  }
+
   .drop {
     position: relative;
     margin-left: 4px;
@@ -673,6 +764,16 @@
     height: 28px;
     border-radius: var(--radius-s);
     color: var(--secondary);
+  }
+
+  .tool.dock {
+    display: flex;
+    gap: 4px;
+    width: auto;
+    padding: 0 10px 0 6px;
+    font-weight: 600;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
 
   .tool:hover:not(:disabled) {

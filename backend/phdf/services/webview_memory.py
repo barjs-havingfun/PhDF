@@ -5,6 +5,7 @@ WebView2's MemoryUsageTargetLevel to Low makes it drop them; we switch back to N
 after so scrolling stays smooth. Elsewhere this is a no-op.
 """
 
+import contextlib
 import sys
 import threading
 from typing import Any
@@ -28,8 +29,12 @@ def trim(window: Any) -> bool:
                 Action(lambda: setattr(webview.CoreWebView2, "MemoryUsageTargetLevel", level))
             )
 
+        def restore() -> None:
+            with contextlib.suppress(Exception):  # the window was closed meanwhile
+                set_level(Level.Normal)
+
         set_level(Level.Low)
-        threading.Timer(RESTORE_AFTER_S, set_level, args=(Level.Normal,)).start()
+        threading.Timer(RESTORE_AFTER_S, restore).start()
         return True
     except Exception:  # noqa: BLE001 — older runtimes / other GUI backends: just skip
         return False

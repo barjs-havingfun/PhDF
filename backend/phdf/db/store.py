@@ -191,6 +191,15 @@ class Store:
             ).fetchall()
         return [r["day"] for r in rows]
 
+    def forget_document(self, doc_id: str) -> None:
+        """Remove a document from the library (the file and its bookmarks stay)."""
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+
+    def set_document_path(self, doc_id: str, path: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute("UPDATE documents SET path = ? WHERE doc_id = ?", (path, doc_id))
+
     def save_position(
         self, doc_id: str, page: int, scroll: float, zoom: float, fit: str = "width"
     ) -> None:

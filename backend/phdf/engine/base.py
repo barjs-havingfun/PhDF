@@ -59,6 +59,10 @@ class SearchHit:
     rects: list[Rect]
 
 
+class PasswordRequired(Exception):  # noqa: N818 - a state, not an error
+    """The PDF is encrypted and needs a (different) password to open."""
+
+
 AnnotKind = Literal["highlight", "underline", "strikeout", "note", "freetext", "ink", "other"]
 EDITABLE_KINDS = ("highlight", "underline", "strikeout", "note", "freetext", "ink")
 MOVABLE_KINDS = ("note", "freetext", "ink")
@@ -93,6 +97,10 @@ class PdfDocument(ABC):
 
     def page_sizes(self) -> list[tuple[float, float]]:
         return [self.page_size(i) for i in range(self.info().page_count)]
+
+    def page_image(self, page: int, scale: float, fmt: str = "png") -> bytes:
+        """A whole page as an image file ("png" or "jpg"), for saving."""
+        raise NotImplementedError
 
     @abstractmethod
     def render_page(self, page: int, scale: float = 1.0, clip: Rect | None = None) -> bytes:
@@ -196,7 +204,7 @@ class PdfEngine(ABC):
     name: str
 
     @abstractmethod
-    def open(self, path: str | Path) -> PdfDocument: ...
+    def open(self, path: str | Path, password: str | None = None) -> PdfDocument: ...
 
     def trim_cache(self, everything: bool = False) -> None:  # noqa: B027 (optional hook)
         """Let go of some (or all) of the engine's shared cache (decoded images, fonts…)."""
