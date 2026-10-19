@@ -23,7 +23,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: v
         run: |
           version=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
@@ -38,9 +38,9 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload the unsigned app (input for signing)
         id: unsigned
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-unsigned
           path: dist/PhDF/
@@ -87,7 +87,7 @@ jobs:
       - name: Upload the unsigned installer (input for signing)
         id: setup
         if: env.SIGN == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-setup-unsigned
           path: out/PhDF-${{ env.VERSION }}-setup.exe
@@ -105,7 +105,7 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: release-windows
           path: out/
@@ -116,9 +116,9 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -139,7 +139,7 @@ jobs:
           ln -s /Applications dmg/Applications
           hdiutil create -volname PhDF -srcfolder dmg -ov -format UDZO "out/PhDF-$VERSION-macos.dmg"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: release-macos
           path: out/
@@ -150,14 +150,14 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: System packages (GTK / WebKit2 for pywebview, FUSE-free AppImage tooling)
         run: |
           sudo apt-get update
           sudo apt-get install -y libgirepository1.0-dev gobject-introspection libcairo2-dev \
             pkg-config gir1.2-webkit2-4.1 file
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-node@v4
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -172,10 +172,52 @@ jobs:
           bash packaging/linux/build_appimage.sh "$VERSION"
           mkdir -p out && mv dist/PhDF-*.AppImage out/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: release-linux
           path: out/
+
+  # Does the AppImage start on other distributions? Runs it on a virtual screen with only the
+  # packages the release notes ask for; still running after 20 s counts as started. Doesn't
+  # block the release: check this job's results before publishing the draft.
+  linux-test:
+    needs: linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu 24.04
+            image: ubuntu:24.04
+            setup: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y gir1.2-webkit2-4.1 xvfb
+          - name: Fedora
+            image: fedora:latest
+            setup: dnf install -y gtk3 webkit2gtk4.1 xorg-x11-server-Xvfb
+          - name: Arch
+            image: archlinux:latest
+            setup: pacman -Syu --noconfirm gtk3 webkit2gtk-4.1 xorg-server-xvfb
+    name: Start on ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-linux
+      - run: ${{ matrix.setup }}
+      - name: Start PhDF
+        shell: bash
+        env:
+          PHDF_DATA_DIR: /tmp/phdf
+          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: "1" # containers have no user namespaces
+        run: |
+          chmod +x PhDF-*.AppImage
+          Xvfb :99 & export DISPLAY=:99; sleep 2
+          set +e
+          timeout 20 ./PhDF-*.AppImage --appimage-extract-and-run > log.txt 2>&1
+          code=$?
+          cat log.txt
+          if [ $code -ne 124 ]; then echo "PhDF stopped by itself (exit $code)"; exit 1; fi
+          if grep -q Traceback log.txt; then echo "PhDF started with an error"; exit 1; fi
+          echo "PhDF started"
 
   release:
     needs: [version, windows, macos, linux]
@@ -183,7 +225,7 @@ jobs:
     if: ${{ !cancelled() && needs.windows.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: release-*
           merge-multiple: true
@@ -194,7 +236,7 @@ jobs:
 
       - name: Draft GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: true
           name: PhDF ${{ github.ref_name }}
@@ -203,7 +245,7 @@ jobs:
             ## Download
             - **Windows:** `PhDF-${{ needs.version.outputs.version }}-setup.exe` (installer), or the portable zip.
             - **macOS:** `PhDF-${{ needs.version.outputs.version }}-macos.dmg`. Drag PhDF to Applications. The app isn't signed by Apple yet: the first time, right-click PhDF → Open → Open (or System Settings → Privacy & Security → Open Anyway).
-            - **Linux:** `PhDF-${{ needs.version.outputs.version }}-x86_64.AppImage`: `chmod +x` it and run. Needs GTK and WebKitGTK 4.1 (`gir1.2-webkit2-4.1` on Ubuntu / Debian).
+            - **Linux:** `PhDF-${{ needs.version.outputs.version }}-x86_64.AppImage`: `chmod +x` it and run. Needs GTK and WebKitGTK 4.1: `gir1.2-webkit2-4.1` on Ubuntu / Debian, `webkit2gtk4.1` on Fedora, `webkit2gtk-4.1` on Arch. If double-clicking does nothing, install `libfuse2` (`libfuse2t64` on Ubuntu 24.04) or start it with `--appimage-extract-and-run`.
 
             Check downloads with `SHA256SUMS.txt`. ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && 'Windows files: free code signing provided by SignPath.io, certificate by SignPath Foundation.' || 'Windows files are not signed yet: SmartScreen may warn, choose More info → Run anyway.' }}
 
@@ -212,7 +254,7 @@ jobs:
 
       - name: Files (manual runs)
         if: "!startsWith(github.ref, 'refs/tags/')"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: PhDF-all
           path: files/

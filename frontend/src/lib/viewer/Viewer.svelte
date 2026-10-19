@@ -540,6 +540,7 @@
   class:placing={tab.tool !== "select"}
   class:movable={overMovable || !!tab.moving}
   bind:this={scroller}
+  style="--top-inset:{topInset}px"
   onscroll={onScroll}
   onpointerdown={onPointerDown}
   onpointermove={(e) => (onPointerMove(e), onMove(e), onRulerMove(e))}
@@ -602,6 +603,12 @@
     inset: 0;
     overflow: auto;
     background: var(--canvas);
+  }
+
+  /* The translucent header covers the top of the scroller: start the scrollbar below it, or
+     its thumb hides there on the first pages. */
+  .scroller::-webkit-scrollbar-track:vertical {
+    margin-top: var(--top-inset);
   }
 
   .content {

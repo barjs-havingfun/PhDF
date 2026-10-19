@@ -17,7 +17,7 @@ from phdf.db import Store
 from phdf.engine import default_engine
 from phdf.env import load_dotenv
 from phdf.paths import data_dir, frontend_dist, icon_file
-from phdf.services import ai_cache, titlebar
+from phdf.services import ai_cache, macfiles, titlebar
 from phdf.services.render_server import RenderServer
 
 MAIN_WINDOW = "main"
@@ -35,6 +35,21 @@ def on_screen(x: int, y: int, width: int) -> bool:
     """Whether a window at x, y has its title bar on a connected monitor (a monitor that was
     unplugged leaves saved positions pointing at nothing)."""
     px, py = x + width // 2, y + 15
+    if sys.platform == "darwin":
+        # pywebview places windows from the top-left of the main screen; NSScreen frames count
+        # from the bottom-left (webview.screens mixes the two), so flip y the same way.
+        try:
+            from AppKit import NSScreen  # type: ignore[import-not-found]
+
+            height = NSScreen.mainScreen().frame().size.height
+            cy = height - py
+            return any(
+                f.origin.x <= px < f.origin.x + f.size.width
+                and f.origin.y <= cy < f.origin.y + f.size.height
+                for f in (s.frame() for s in NSScreen.screens())
+            )
+        except Exception:  # noqa: BLE001 - screens unknown: keep the saved spot
+            return True
     if sys.platform == "win32":
         import ctypes
         from ctypes import wintypes
@@ -153,7 +168,27 @@ def per_monitor_dpi() -> None:
         ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # PMv2
 
 
+def system_typelibs() -> None:
+    """Linux app build: PyInstaller points GObject at its own typelibs only, and those lack
+    WebKit2, which then is found only where Debian / Ubuntu keep it. Also look where Fedora,
+    openSUSE and Arch do (the bundled ones stay first). Before pywebview loads GTK."""
+    if not sys.platform.startswith("linux") or not getattr(sys, "frozen", False):
+        return
+    dirs = [
+        d
+        for d in (
+            "/usr/lib/x86_64-linux-gnu/girepository-1.0",  # Debian, Ubuntu
+            "/usr/lib64/girepository-1.0",  # Fedora, openSUSE
+            "/usr/lib/girepository-1.0",  # Arch
+        )
+        if os.path.isdir(d)
+    ]
+    current = os.environ.get("GI_TYPELIB_PATH")
+    os.environ["GI_TYPELIB_PATH"] = os.pathsep.join([current, *dirs] if current else dirs)
+
+
 def main() -> None:
+    system_typelibs()
     load_dotenv()
     fix_mimetypes()
     dev = os.environ.get("PHDF_DEV") == "1"
@@ -214,6 +249,7 @@ def main() -> None:
             remember_geometry(window, key, store)
 
     core.create_window = create_window
+    macfiles.listen(lambda paths: core.open_from_system(startup_paths(paths)))
     for window_id in saved_window_ids(store):
         create_window(window_id)
 
@@ -224,9 +260,19 @@ def main() -> None:
         private_mode=False,
         storage_path=str(data_dir() / "webview"),
     )
-    core.shutdown()
-    render_server.stop()
-    store.close()
+    # Last window closed. Clean up, but never hang on the way out: if something is stuck (a
+    # terminal process, a long engine call), leave anyway after a few seconds.
+    finished = threading.Event()
+
+    def clean_up() -> None:
+        core.shutdown()
+        render_server.stop()
+        store.close()
+        finished.set()
+
+    threading.Thread(target=clean_up, daemon=True).start()
+    if not finished.wait(5):
+        os._exit(0)
 
 
 if __name__ == "__main__":

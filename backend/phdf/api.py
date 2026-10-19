@@ -70,6 +70,7 @@ class Core:
         self.on_closed_document: Callable[[str], None] | None = None  # e.g. drop image cache
         self.windows: dict[str, Api] = {}
         self.startup_paths: list[str] = []  # files from the command line, opened once
+        self.startup_taken = False  # a page has asked for them: later files go to a window
         self._docs: dict[str, PdfDocument] = {}
         self._paths: dict[str, str] = {}
         self._refs: Counter[str] = Counter()
@@ -171,6 +172,19 @@ class Core:
         if self.windows:
             self.store.delete_setting(SESSION_PREFIX + window_id)
 
+    def open_from_system(self, paths: list[str]) -> None:
+        """Files the system hands the running PhDF (macOS Finder: "Open With", double-click):
+        a tab each in a main window, which comes to the front. Before any page is ready they
+        wait with the start-up files."""
+        target = next((a for w, a in self.windows.items() if not w.startswith("d")), None)
+        target = target or next(iter(self.windows.values()), None)
+        if not self.startup_taken or target is None or target._window is None:
+            self.startup_paths += [p for p in paths if p not in self.startup_paths]
+            return
+        for path in paths:
+            target._show_path(path)
+        threading.Thread(target=target._window.restore, daemon=True).start()
+
     def shutdown(self) -> None:
         with self.lock:
             for doc in self._docs.values():
@@ -207,6 +221,7 @@ class Api:
     def startup_paths(self) -> list[str]:
         """Files PhDF was started with; handed to the first window that asks."""
         paths, self._core.startup_paths = self._core.startup_paths, []
+        self._core.startup_taken = True
         return paths
 
     def pick_file(self, kind: str = "document") -> str | None:
@@ -537,8 +552,21 @@ class Api:
             )
 
     def _on_closing(self) -> bool:
-        """pywebview `closing` handler: returning False keeps the window open."""
-        if self._force_close or not self._has_unsaved():
+        """pywebview `closing` handler: returning False keeps the window open.
+
+        Runs on the GUI thread, so it must never wait long: if the engine is busy (a big
+        render, an e-book layout…), don't wait for it; the page knows its own unsaved tabs and
+        closes the window itself when there are none."""
+        if self._force_close:
+            return True
+        if self._core.lock.acquire(timeout=0.5):
+            try:
+                unsaved = self._has_unsaved()
+            finally:
+                self._core.lock.release()
+        else:
+            unsaved = True  # busy: let the page check
+        if not unsaved:
             return True
         # Let the page show its Save / Don't Save / Cancel sheet. evaluate_js would block the
         # GUI thread we are on, so dispatch from a helper thread.
@@ -775,10 +803,16 @@ class Api:
             return False
         if path.lower().endswith(".pdf"):
             target.open_document(path)
+        target._show_path(path)
+        return True
+
+    def _show_path(self, path: str) -> None:
+        """Open `path` as a tab in this window's page (from another thread: evaluate_js waits)."""
+        if self._window is None:
+            return
         event = f"new CustomEvent('phdf:open-path', {{detail: {json.dumps(path)}}})"
         script = f"window.dispatchEvent({event})"
-        threading.Thread(target=target._window.evaluate_js, args=(script,), daemon=True).start()
-        return True
+        threading.Thread(target=self._window.evaluate_js, args=(script,), daemon=True).start()
 
     # --- OCR ----------------------------------------------------------------------------------
 
@@ -1329,6 +1363,13 @@ class Api:
     # --- lifecycle --------------------------------------------------------------------------
 
     def _on_closed(self) -> None:
+        self._core.window_closed(self._window_id)
+        # The rest can take a moment (stopping terminals waits for their processes, closing
+        # the link preview needs the GUI thread on macOS): never on the thread that closes the
+        # window, or the app freezes while quitting.
+        threading.Thread(target=self._clean_up, daemon=True).start()
+
+    def _clean_up(self) -> None:
         self.peek_close()
         for tid in list(self._tools):
             self.tools_close(tid)
@@ -1337,4 +1378,3 @@ class Api:
             for doc_id in self._open:
                 self._core.release(doc_id)
             self._open.clear()
-        self._core.window_closed(self._window_id)

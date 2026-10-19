@@ -16,7 +16,7 @@ jobs:
     continue-on-error: ${{ matrix.os != 'windows-latest' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Linux system packages (GTK / WebKit2 for pywebview)
         if: runner.os == 'Linux'
@@ -26,9 +26,9 @@ jobs:
           sudo apt-get install -y libgirepository1.0-dev libgirepository-2.0-dev gobject-introspection \
             libcairo2-dev pkg-config gir1.2-webkit2-4.1
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -54,7 +54,7 @@ jobs:
       - name: Package
         run: uv run pyinstaller phdf.spec --noconfirm
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: PhDF-${{ runner.os }}
           path: dist/

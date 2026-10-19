@@ -5,7 +5,7 @@
 A lightweight, reader-first PDF app for heavy readers - with position memory, a built-in
 Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 
-> **Status:** v0.7.0, in active development: book view and EPUB, PhDF Tools, printing,
+> **Status:** v0.7.1, in active development: book view and EPUB, PhDF Tools, printing,
 > password-protected PDFs, themes and more settings. Windows is the main platform; macOS and
 > Linux builds come from CI.
 

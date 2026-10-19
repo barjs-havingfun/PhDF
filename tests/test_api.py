@@ -1,3 +1,6 @@
+import threading
+import time
+
 from phdf.api import SESSION_PREFIX, Api, Core
 from phdf.app import saved_window_ids
 from phdf.db import Store
@@ -27,8 +30,59 @@ def test_closing_a_window_releases_its_documents(tmp_path, sample_pdf):
     core.windows["a"] = a
     doc_id = a.open_document(str(sample_pdf))["docId"]
     a._on_closed()
+    assert core.windows == {}  # right away
+    for _ in range(100):  # the rest is cleaned up in the background
+        if core.render(doc_id, 0, 0.5, None) is None:
+            break
+        time.sleep(0.02)
     assert core.render(doc_id, 0, 0.5, None) is None
-    assert core.windows == {}
+
+
+def test_closing_never_waits_for_a_busy_engine(tmp_path, sample_pdf):
+    core = make_core(tmp_path)
+    a = Api(core, "a")
+    a.open_document(str(sample_pdf))
+    busy = threading.Event()
+    done = threading.Event()
+
+    def hold_lock():
+        with core.lock:
+            busy.set()
+            done.wait(5)
+
+    threading.Thread(target=hold_lock, daemon=True).start()
+    busy.wait(2)
+    start = time.monotonic()
+    assert a._on_closing() is False  # can't tell: the page is asked instead
+    assert time.monotonic() - start < 2
+    done.set()
+
+
+def test_files_from_the_system_wait_for_a_page_then_open_in_a_main_window(tmp_path):
+    class FakeWindow:
+        def __init__(self):
+            self.scripts, self.restored = [], threading.Event()
+
+        def evaluate_js(self, script):
+            self.scripts.append(script)
+
+        def restore(self):
+            self.restored.set()
+
+    core = make_core(tmp_path)
+    detached, main = Api(core, "d1"), Api(core, "main")
+    detached._window, main._window = FakeWindow(), FakeWindow()
+    core.windows.update({"d1": detached, "main": main})
+    core.open_from_system(["/a.pdf"])  # no page has started yet
+    assert main.startup_paths() == ["/a.pdf"]
+    core.open_from_system(["/b.md"])
+    assert main._window.restored.wait(2)
+    for _ in range(100):
+        if main._window.scripts:
+            break
+        time.sleep(0.02)
+    assert "/b.md" in main._window.scripts[0]
+    assert not detached._window.scripts
 
 
 def test_open_window_writes_its_session(tmp_path):
