@@ -10,9 +10,26 @@ frontend = root / "frontend" / "dist"
 if not (frontend / "index.html").exists():
     raise SystemExit("frontend/dist is missing — run `npm --prefix frontend run build` first.")
 
+# Windows terminal (pywinpty): ConPTY starts OpenConsole.exe from the winpty folder, and the
+# winpty fallback needs winpty-agent.exe. PyInstaller only picks up the DLLs, and without these
+# the shell exits as soon as it starts.
+helpers = []
+if sys.platform == "win32":
+    import winpty
+
+    winpty_dir = Path(winpty.__file__).parent
+    helpers = [
+        (str(winpty_dir / name), "winpty")
+        for name in ("OpenConsole.exe", "winpty-agent.exe")
+        if (winpty_dir / name).exists()
+    ]
+    if len(helpers) < 2:
+        raise SystemExit("pywinpty's OpenConsole.exe / winpty-agent.exe not found: the terminal would not start.")
+
 a = Analysis(
     [str(root / "backend" / "phdf" / "__main__.py")],
     pathex=[str(root / "backend")],
+    binaries=helpers,
     datas=[
         (str(frontend), "frontend"),
         (str(root / "packaging" / "icons"), "icons"),

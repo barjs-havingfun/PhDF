@@ -5,11 +5,15 @@
 A lightweight, reader-first PDF app for heavy readers - with position memory, a built-in
 Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 
-> **Status:** v0.8.0, in active development: book view and EPUB, PhDF Tools, printing,
+> **Status:** v0.8.1, in active development: book view and EPUB, PhDF Tools, printing,
 > password-protected PDFs, themes and more settings. Windows is the main platform; macOS and
 > Linux builds come from CI.
 
 > **Beta:** PhDF may still crash now and then. Save your work regularly (Ctrl+S).
+
+## What's new in 0.8.1
+
+- Windows: the AI terminal works in the installed app again (the shell closed right away).
 
 ## What's new in 0.8.0
 
