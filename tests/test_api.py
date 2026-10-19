@@ -245,3 +245,20 @@ def test_image_snips_are_cleaned_up_when_the_window_closes(tmp_path, sample_pdf)
     api._clean_up()
     assert not png.exists()
     assert not png.parent.exists()  # the temp folder goes when empty
+
+
+def test_linux_build_prefers_the_distros_typelibs(monkeypatch):
+    import os
+    import sys
+
+    from phdf import app
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(os.path, "isdir", lambda d: d == "/usr/lib64/girepository-1.0")
+    monkeypatch.setenv("GI_TYPELIB_PATH", "/bundle/gi_typelibs")
+    app.system_typelibs()
+    assert os.environ["GI_TYPELIB_PATH"].split(os.pathsep) == [
+        "/usr/lib64/girepository-1.0",
+        "/bundle/gi_typelibs",
+    ]

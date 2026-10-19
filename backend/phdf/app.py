@@ -187,8 +187,9 @@ def per_monitor_dpi() -> None:
 
 def system_typelibs() -> None:
     """Linux app build: PyInstaller points GObject at its own typelibs only, and those lack
-    WebKit2, which then is found only where Debian / Ubuntu keep it. Also look where Fedora,
-    openSUSE and Arch do (the bundled ones stay first). Before pywebview loads GTK."""
+    WebKit2. The app uses the distro's GLib / GTK / WebKit (phdf.spec leaves them out), so the
+    distro's typelibs come first (Debian / Ubuntu, Fedora / openSUSE, Arch); the bundled ones
+    stay as a fallback. Before pywebview loads GTK."""
     if not sys.platform.startswith("linux") or not getattr(sys, "frozen", False):
         return
     dirs = [
@@ -201,7 +202,7 @@ def system_typelibs() -> None:
         if os.path.isdir(d)
     ]
     current = os.environ.get("GI_TYPELIB_PATH")
-    os.environ["GI_TYPELIB_PATH"] = os.pathsep.join([current, *dirs] if current else dirs)
+    os.environ["GI_TYPELIB_PATH"] = os.pathsep.join([*dirs, current] if current else dirs)
 
 
 def main() -> None:

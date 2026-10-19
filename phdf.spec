@@ -22,6 +22,18 @@ a = Analysis(
     hiddenimports=[],
     excludes=["tkinter"],
 )
+if sys.platform.startswith("linux"):
+    # WebKitGTK always comes from the user's distro (it can't be bundled), and it needs the
+    # distro's GLib / GTK stack: older copies from the build machine (Ubuntu 22.04) would load
+    # first and lack newer symbols (g_once_init_enter_pointer...). Every distro with WebKitGTK
+    # has these, and newer versions still serve code built against older ones.
+    system_libs = re.compile(
+        r"^lib(glib|gobject|gio|gmodule|gthread)-2\.0\.so|^lib(gtk|gdk|gdk_pixbuf)-[0-9.]+\.so"
+        r"|^lib(pango|cairo|harfbuzz|fontconfig|freetype|atk|atspi|epoxy|wayland|xkbcommon"
+        r"|X|xcb|gudev|javascriptcoregtk|webkit2gtk|soup|gst|pixman|png16|stdc\+\+|gcc_s)"
+    )
+    a.binaries = [b for b in a.binaries if not system_libs.match(Path(b[0]).name)]
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
