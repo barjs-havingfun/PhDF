@@ -155,7 +155,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgirepository1.0-dev gobject-introspection libcairo2-dev \
-            pkg-config gir1.2-webkit2-4.1 file
+            pkg-config gir1.2-webkit2-4.1 gir1.2-freedesktop file
       - uses: astral-sh/setup-uv@v7
       - uses: actions/setup-node@v5
         with:

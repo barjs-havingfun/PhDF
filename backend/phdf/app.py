@@ -8,6 +8,7 @@ import mimetypes
 import os
 import shutil
 import sys
+import tempfile
 import threading
 from pathlib import Path
 
@@ -189,7 +190,7 @@ def system_typelibs() -> None:
     """Linux app build: PyInstaller points GObject at its own typelibs only, and those lack
     WebKit2. The app uses the distro's GLib / GTK / WebKit (phdf.spec leaves them out), so the
     distro's typelibs come first (Debian / Ubuntu, Fedora / openSUSE, Arch); the bundled ones
-    stay as a fallback. Before pywebview loads GTK."""
+    stay as a fallback; module folders are left to the distro too. Before pywebview loads GTK."""
     if not sys.platform.startswith("linux") or not getattr(sys, "frozen", False):
         return
     dirs = [
@@ -203,6 +204,24 @@ def system_typelibs() -> None:
     ]
     current = os.environ.get("GI_TYPELIB_PATH")
     os.environ["GI_TYPELIB_PATH"] = os.pathsep.join([*dirs, current] if current else dirs)
+    # PyInstaller's start-up hooks point GIO / GdkPixbuf / GTK / Pango at module folders in the
+    # bundle, which no longer holds them: the distro's GTK would then miss its TLS module (https
+    # in link previews), image loaders, themes and input methods. Let it use its own.
+    bundle = getattr(sys, "_MEIPASS", None)
+    for name in (
+        "GIO_MODULE_DIR",
+        "GDK_PIXBUF_MODULE_FILE",
+        "GTK_DATA_PREFIX",
+        "GTK_EXE_PREFIX",
+        "GTK_PATH",
+        "PANGO_LIBDIR",
+        "PANGO_SYSCONFDIR",
+    ):
+        value = os.environ.get(name, "")
+        # GDK_PIXBUF_MODULE_FILE may be the hook's rewritten copy in the temp folder.
+        ours = (bundle,) if name != "GDK_PIXBUF_MODULE_FILE" else (bundle, tempfile.gettempdir())
+        if bundle and value.startswith(ours):
+            del os.environ[name]
 
 
 def main() -> None:

@@ -256,9 +256,15 @@ def test_linux_build_prefers_the_distros_typelibs(monkeypatch):
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(os.path, "isdir", lambda d: d == "/usr/lib64/girepository-1.0")
+    monkeypatch.setattr(sys, "_MEIPASS", "/bundle", raising=False)
     monkeypatch.setenv("GI_TYPELIB_PATH", "/bundle/gi_typelibs")
+    monkeypatch.setenv("GIO_MODULE_DIR", "/bundle/gio_modules")
+    monkeypatch.setenv("GTK_PATH", "/bundle")
+    monkeypatch.setenv("PANGO_LIBDIR", "/somewhere/else")  # not the bundle's: kept
     app.system_typelibs()
     assert os.environ["GI_TYPELIB_PATH"].split(os.pathsep) == [
         "/usr/lib64/girepository-1.0",
         "/bundle/gi_typelibs",
     ]
+    assert "GIO_MODULE_DIR" not in os.environ and "GTK_PATH" not in os.environ
+    assert os.environ["PANGO_LIBDIR"] == "/somewhere/else"

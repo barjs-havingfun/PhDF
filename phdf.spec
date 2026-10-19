@@ -35,6 +35,15 @@ if sys.platform.startswith("linux"):
     a.binaries = [
         b for b in a.binaries if not (b[1] or "").startswith(system_dirs) or keep.match(Path(b[0]).name)
     ]
+    # The distro's typelibs are used first (app.system_typelibs), but the small base ones that
+    # HarfBuzz / cairo point to (freetype2, cairo, fontconfig, xlib...) live in a package that
+    # Fedora / Arch don't always install (gobject-introspection(-runtime)). They describe
+    # long-stable C types, so the build machine's copies are a safe fallback.
+    base_typelibs = Path("/usr/lib/x86_64-linux-gnu/girepository-1.0")
+    for name in ("freetype2", "cairo", "fontconfig", "xlib", "xfixes", "xft", "xrandr", "GL",
+                 "DBus", "DBusGLib", "libxml2", "Vulkan", "win32"):
+        for typelib in base_typelibs.glob(f"{name}-*.typelib"):
+            a.datas.append((f"gi_typelibs/{typelib.name}", str(typelib), "DATA"))
 
 pyz = PYZ(a.pure)
 
