@@ -12,6 +12,7 @@ export const TOOLBAR_ITEMS = [
   ["read", "Read"],
   ["focus", "Focus"],
   ["park", "Park"],
+  ["save", "Save"],
   ["annotate", "Note, Text and Pen tools"],
   ["annotations", "Annotations panel"],
   ["note", "Note (.md)"],

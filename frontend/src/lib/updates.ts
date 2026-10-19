@@ -4,6 +4,14 @@
 import { api } from "./api";
 import { notify } from "./notify.svelte";
 
+/** PhDF's GitHub page: source, releases, bug reports. */
+export const GITHUB_URL = "https://github.com/barjs-havingfun/PhDF";
+
+/** Shown in the ⋯ menu and Settings → About while PhDF is a beta. */
+export const BETA_NOTE = "PhDF is still in development and may crash. Save your work regularly (Ctrl+S).";
+
+export const openGithub = () => api().then((py) => py.open_external(GITHUB_URL));
+
 /** Checks once, quietly. `manual`: the user pressed "Check Now", so also say "up to date". */
 export async function checkForUpdate(manual = false) {
   const py = await api();

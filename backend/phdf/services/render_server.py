@@ -11,9 +11,10 @@ import re
 import secrets
 import threading
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from phdf.engine.base import Rect
@@ -31,6 +32,7 @@ class RenderServer:
         self._cache: OrderedDict[str, bytes] = OrderedDict()
         self._cache_bytes = 0
         self._cache_lock = threading.Lock()
+        self._rendering: dict[str, list[Any]] = {}  # key -> [lock, waiting requests]
         server = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -68,11 +70,29 @@ class RenderServer:
         if len(png) > CACHE_BYTES // 4:
             return
         with self._cache_lock:
+            # Two requests for the same image may both miss and render it.
+            if (old := self._cache.pop(key, None)) is not None:
+                self._cache_bytes -= len(old)
             self._cache[key] = png
             self._cache_bytes += len(png)
             while self._cache_bytes > CACHE_BYTES:
                 _, old = self._cache.popitem(last=False)
                 self._cache_bytes -= len(old)
+
+    @contextlib.contextmanager
+    def _one_render(self, key: str) -> Iterator[None]:
+        """Requests for the same image wait for one render instead of each doing it."""
+        with self._cache_lock:
+            entry = self._rendering.setdefault(key, [threading.Lock(), 0])
+            entry[1] += 1
+        try:
+            with entry[0]:
+                yield
+        finally:
+            with self._cache_lock:
+                entry[1] -= 1
+                if not entry[1]:
+                    del self._rendering[key]
 
     def forget(self, doc_id: str) -> None:
         """Drop cached images of a closed document."""
@@ -99,12 +119,15 @@ class RenderServer:
 
         png = self._cached(req.path)
         if png is None:
-            try:
-                png = render(match["doc"], int(match["page"]), scale, clip)
-            except (IndexError, ValueError):
-                png = None
-            if png is not None:
-                self._remember(req.path, png)
+            with self._one_render(req.path):
+                png = self._cached(req.path)  # rendered by a request we waited for
+                if png is None:
+                    try:
+                        png = render(match["doc"], int(match["page"]), scale, clip)
+                    except (IndexError, ValueError):
+                        png = None
+                    if png is not None:
+                        self._remember(req.path, png)
         if png is None:
             req.send_error(HTTPStatus.NOT_FOUND)
             return

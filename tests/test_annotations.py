@@ -120,11 +120,19 @@ def test_reopen_after_discard_gets_fresh_page_images(tmp_path, text_pdf):
 
 
 def test_closing_window_with_unsaved_changes_is_held(tmp_path, text_pdf):
+    class Window:
+        def evaluate_js(self, script):
+            pass
+
+        def destroy(self):
+            pass
+
     core = Core(default_engine(), Store(tmp_path / "db.sqlite"))
     api = Api(core, "main")
-    assert api._on_closing() is True
+    assert api._on_closing() is True  # no window (yet): nothing to ask
+    api._window = Window()
     doc_id = api.open_document(str(text_pdf))["docId"]
     api.add_annotation(doc_id, 0, "underline", [word_rect(text_pdf, "need")], "#0a84ff")
     assert api._on_closing() is False  # the page asks Save / Don't Save / Cancel
-    api.close_window()  # user answered; no window object in tests
+    api.close_window()  # user answered
     assert api._on_closing() is True

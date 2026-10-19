@@ -120,6 +120,10 @@ class PdfDocument(ABC):
         """Case-insensitive search over all pages, in page order."""
 
     @abstractmethod
+    def search_page(self, page: int, query: str, max_hits: int = 1000) -> SearchHit | None:
+        """`search` on one page (None: no hits), so callers can search in small steps."""
+
+    @abstractmethod
     def outline(self) -> list[OutlineItem]: ...
 
     # --- annotations (changes stay in memory until `save`) ---------------------------------

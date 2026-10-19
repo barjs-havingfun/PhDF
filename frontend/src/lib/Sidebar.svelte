@@ -318,6 +318,9 @@
     gap: 4px;
     width: 100%;
     padding: 8px 0;
+    /* A long book has thousands: skip layout and painting of the ones out of view. */
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 200px;
   }
 
   .frame {

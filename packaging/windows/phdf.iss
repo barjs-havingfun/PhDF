@@ -39,6 +39,11 @@ CloseApplications=yes
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
+; An update only overwrites files: empty the old bundle first so files the new version no
+; longer has don't stay behind (the user's data lives in %APPDATA%\PhDF, not here).
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 

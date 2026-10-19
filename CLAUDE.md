@@ -10,19 +10,22 @@ unless the owner asks.
 - Never commit or push: the owner does git by hand.
 - Keep token use low: find code with grep and read only the parts you change; batch edits;
   test only what changed, once at the end (`uv run pytest tests/test_<area>.py`, plus
-  `npm --prefix frontend run check` if the frontend changed). The owner tests the UI by hand.
+  `npm --prefix frontend run check` + `npm --prefix frontend test` if the frontend changed). The owner tests the UI by hand.
 - No em dashes in UI strings, generated notes or docs. Repo is LF: after editing on Windows run
   `sed -i 's/\r$//'` on changed files. Update `HANDOFF.md` (open work, gotchas) at the end.
 
 ## Code map
 Backend `backend/phdf/`
 - `app.py`: entry (`uv run phdf`), creates windows, render server, startup cleanups.
-- `api.py`: `Core` (shared by windows: open docs + refcounts, id aliases after saves, page
-  render revisions, `lock`) and `Api` (one per window, exposed to JS as
-  `window.pywebview.api.*`; public methods only, internals `_private`). Grouped by feature:
-  documents, annotations, bookmarks, reading stats / library, OCR, export, grading, Obsidian,
-  AI terminal (`term_*`, `ai_context`, `ai_cache_*`, equations), parking, markdown files, links,
-  settings.
+- `api/` package: `core.py` `Core` (shared by windows: open docs + refcounts, id aliases after
+  saves, `open_id` for identical copies, page render revisions, `lock`, `tell_windows`);
+  `Api` (one per window, exposed to JS as `window.pywebview.api.*`; public methods only,
+  internals `_private`) is built in `__init__.py` from one class per feature file:
+  `windows` (app, dialogs, closing, theme, zoom, updates, settings, cleanup), `documents`
+  (open, text, search, positions, bookmarks), `annotations` (+ save / revert), `library`
+  (reading stats, Library, About), `ocr_export`, `notes` (grading folders, Obsidian, parking,
+  Markdown files), `ai` (terminal, equations, AI context / cache), `tools` (PhDF Tools),
+  `links`. Per-window state: `base.py` `ApiBase`.
 - `engine/base.py` (interface, dataclasses) + `engine/mupdf.py` (all PyMuPDF specifics).
 - `db/store.py`: SQLite; append-only `MIGRATIONS`; settings are JSON key/values.
 - `services/`: small path-based modules used by `Api`: `terminal` (PTY sessions, AI process
@@ -31,9 +34,11 @@ Backend `backend/phdf/`
 - `docid.py` (content hash), `paths.py` (data dir, `PHDF_DATA_DIR`), `env.py` (`.env`).
 
 Frontend `frontend/src/`
-- `App.svelte`: shell: windows / panes / tabs, opening files, sidebar, palette commands,
-  keyboard shortcuts (`onKeydown`), session restore, sheets, toasts. `lib/Toolbar.svelte`: the
-  toolbar (its own menus, search, go to page; actions come in as `on…` props).
+- `App.svelte`: shell: windows / panes / tabs, opening files, sidebar, session restore,
+  toasts. It hands its actions to `lib/commands.ts` (palette commands), `lib/shortcuts.ts`
+  (keyboard) and asks through `lib/ask.svelte.ts` (password, Save / Don't Save; shown by
+  `AskSheets`). `lib/Toolbar.svelte`: the toolbar (its own menus, search, go to page; actions
+  come in as `on…` props); its ⋯ menu is `lib/MoreMenu.svelte`.
 - `lib/api.ts`: typed mirror of `Api`. **Add every new backend method here.**
 - State classes (`*.svelte.ts`): `tab.svelte.ts` (`Tab`: view, history, search, annotations +
   undo, OCR, integrated note / parking; `MdTab`), `workspace.svelte.ts` (panes), `md.svelte.ts`
@@ -54,5 +59,6 @@ Frontend `frontend/src/`
   through `&r=<rev>`. Undo: raw `_add/_update/_delete` + public wrappers that `record()` a step.
 - New feature state that should persist: a settings key (`get_setting` / `set_setting`).
 - Comments are short and explain why. Platform-specific code goes in `lib/platform.ts`.
+- Frontend tests: Vitest, `frontend/src/test/*.test.ts` (pure modules; `api` mocked with `vi.mock`).
 - Tests: `tests/test_<area>.py`, `Api(Core(default_engine(), Store(tmp)), "main")` with
   `PHDF_DATA_DIR` set to a temp folder; `sample_pdf` fixture in `conftest.py`.

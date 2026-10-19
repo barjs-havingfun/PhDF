@@ -76,3 +76,34 @@ def test_forget_drops_a_documents_images(server):
     server.forget(DOC)
     get(url)
     assert len(server.calls) == 2
+
+
+def test_cache_counts_a_replaced_image_once(server):
+    server._remember("k", b"12345")
+    server._remember("k", b"123")
+    assert server._cache_bytes == 3
+
+
+def test_one_render_for_requests_of_the_same_image():
+    import threading
+    import time
+
+    calls = []
+
+    def render(doc_id, page, scale, clip):
+        calls.append(page)
+        time.sleep(0.2)
+        return b"\x89PNG slow"
+
+    srv = RenderServer(render).start()
+    try:
+        url = f"{srv.base_url}/page/{DOC}/0.png?s=1"
+        threads = [threading.Thread(target=get, args=(url,)) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert calls == [0]
+        assert srv._rendering == {}
+    finally:
+        srv.stop()

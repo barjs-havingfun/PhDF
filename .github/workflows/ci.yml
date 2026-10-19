@@ -46,7 +46,9 @@ jobs:
           npm --prefix frontend run check
 
       - name: Test
-        run: uv run pytest
+        run: |
+          uv run pytest
+          npm --prefix frontend test
 
       - name: Build frontend
         run: npm --prefix frontend run build

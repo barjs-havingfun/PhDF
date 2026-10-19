@@ -17,7 +17,8 @@ import {
   type TextLine,
   type TextStyle,
 } from "./api";
-import type { EqJob } from "./ai/equation.svelte";
+import type { EqJob, SnipKind } from "./ai/equation.svelte";
+import type { TextSelection } from "./viewer/Viewer.svelte";
 import { MdDoc } from "./md.svelte";
 import { pinBlock, sectionFor } from "./pin";
 
@@ -143,12 +144,16 @@ export class Tab {
   private ocrCancel = false;
 
   /** Equation → LaTeX: the page is in "draw a rectangle" mode, then the job and its preview. */
-  snipping = $state(false);
+  snipping = $state<SnipKind | null>(null); // drawing a rectangle for the AI
   equation = $state<EqJob | null>(null);
 
   /** Finished pen strokes still drawn on top of their page until its new image (with the saved
    *  drawing) has loaded; `rev` is that image's revision, null while saving. */
   pendingInk = $state.raw<{ page: number; points: Point[]; color: string; width: number; rev: number | null }[]>([]);
+
+  /** Earlier parts of a Ctrl / ⌘-drag selection. The browser holds only the newest range, so
+   *  the viewer draws these itself. */
+  keptSel = $state.raw<TextSelection[]>([]);
 
   /** An annotation being dragged: drawn as an outline at its new place until released. */
   moving = $state<{ id: string; dx: number; dy: number } | null>(null);
@@ -304,6 +309,18 @@ export class Tab {
   private apply(change: AnnotChange) {
     this.dirty = change.dirty;
     this.revs = change.revs;
+    // Other tabs of this window on the same document (Open Beside); other windows hear it from
+    // the backend.
+    const detail = { docId: this.doc.docId, dirty: change.dirty, revs: change.revs, source: this };
+    window.dispatchEvent(new CustomEvent("phdf:doc-changed", { detail }));
+  }
+
+  /** The same document was changed in another view (pane or window): show its state. Undo
+   *  steps stay per view. */
+  async sync(change: { dirty: boolean; revs: Revs }) {
+    this.dirty = change.dirty;
+    this.revs = change.revs;
+    if (this.annotations) this.annotations = await (await api()).annotations(this.doc.docId);
   }
 
   // The raw operations (no history); the public ones below record undo steps.
@@ -504,6 +521,7 @@ export class Tab {
   async save() {
     if (this.dirty) this.apply({ ...(await (await api()).save_document(this.doc.docId)) });
     await this.md?.flush();
+    await this.parking?.flush();
   }
 
   /** Scroll to an annotation and select it. */

@@ -1,9 +1,10 @@
-"""Equation → LaTeX through the AI in the terminal.
+"""Page areas for the AI in the terminal: Equation → LaTeX and Image → AI.
 
-A region of a page is saved as a PNG; the AI (Claude Code / Codex) is asked to read it and write
-the LaTeX to a .tex file next to it, which the page polls for. Both files sit in a hidden temp
-folder inside the terminal's working folder (Codex may only write inside its workspace) and are
-deleted as soon as the answer is read, or on cancel.
+A region of a page is saved as a PNG in a hidden temp folder inside the terminal's working
+folder (Codex may only read and write inside its workspace). Equations: the AI writes the LaTeX
+to a .tex file next to it, which the page polls for; both are deleted as soon as the answer is
+read, or on cancel. Images: the AI reads the PNG with the user's question; it is deleted a while
+later, when the window closes, or at the next terminal start (leftovers).
 """
 
 import contextlib
@@ -15,7 +16,9 @@ from pathlib import Path
 
 TEMP_DIR = ".phdf-tmp"
 SCALE = 4.0  # 288 DPI: small symbols stay readable for the AI
+IMAGE_SCALE = 2.0  # 144 DPI: figures and tables, without multi-MB files
 PREFIX = "eq-"
+IMAGE_PREFIX = "img-"
 
 
 def work_dir(folder: str | None) -> Path:
@@ -32,19 +35,19 @@ def _hide(path: Path) -> None:
         ctypes.windll.kernel32.SetFileAttributesW(str(path), 0x2)  # FILE_ATTRIBUTE_HIDDEN
 
 
-def prepare(directory: Path, png: bytes) -> dict[str, str]:
+def prepare(directory: Path, png: bytes, prefix: str = PREFIX) -> dict[str, str]:
     new = not directory.exists()
     directory.mkdir(parents=True, exist_ok=True)
     if new:
         _hide(directory)
-    name = PREFIX + uuid.uuid4().hex[:8]
+    name = prefix + uuid.uuid4().hex[:8]
     png_path = directory / f"{name}.png"
     png_path.write_bytes(png)
     return {"png": str(png_path), "tex": str(directory / f"{name}.tex")}
 
 
 def _is_ours(path: Path) -> bool:
-    return path.parent.name == TEMP_DIR and path.name.startswith(PREFIX)
+    return path.parent.name == TEMP_DIR and path.name.startswith((PREFIX, IMAGE_PREFIX))
 
 
 def result(tex_path: str) -> str | None:
@@ -76,7 +79,7 @@ def cleanup(directory: Path, older_than: float = 0) -> None:
     if not directory.is_dir():
         return
     now = time.time()
-    for p in directory.glob(PREFIX + "*"):
+    for p in [*directory.glob(PREFIX + "*"), *directory.glob(IMAGE_PREFIX + "*")]:
         with contextlib.suppress(OSError):
             if now - p.stat().st_mtime >= older_than:
                 p.unlink()

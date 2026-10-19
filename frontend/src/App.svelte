@@ -21,11 +21,15 @@
   import { loadTheme, theme } from "./lib/theme.svelte";
   import { loadPrefs, prefs } from "./lib/prefs.svelte";
   import { checkAtStart } from "./lib/updates";
-  import logo from "./assets/logo.png";
+  import AskSheets from "./lib/AskSheets.svelte";
+  import { appCommands, typedCommands } from "./lib/commands";
+  import { handleShortcut } from "./lib/shortcuts";
+  import { askCloseChoice, askPassword, asking, type CloseChoice } from "./lib/ask.svelte";
   import PdfTools from "./lib/PdfTools.svelte";
   import BookView from "./lib/focus/BookView.svelte";
   import AiPanel from "./lib/ai/AiPanel.svelte";
-  import CommandPalette, { type Command } from "./lib/CommandPalette.svelte";
+  import CommandPalette from "./lib/CommandPalette.svelte";
+  import type { SnipKind } from "./lib/ai/equation.svelte";
   import { citation } from "./lib/cite";
   import { loadInk, loadTextStyle } from "./lib/tab.svelte";
   import { loadAppFont } from "./lib/md/typography.svelte";
@@ -34,7 +38,6 @@
     HEADER_HEIGHT,
     closeTerminal,
     loadLayout,
-    newTab as newTerminalTab,
     openTerminal,
     saveLayout,
     term,
@@ -46,16 +49,9 @@
     flushReading,
     loadReadSettings,
     noteActivity,
-    pausePomodoro,
-    saveReadSettings,
-    startPomodoro,
-    TINTS,
-    type Tint,
     notePage,
     tickReading,
-    pomodoro,
     read,
-    stepRow,
   } from "./lib/reading.svelte";
   import LinkPeek, { type Peek } from "./lib/LinkPeek.svelte";
   import PaneView from "./lib/PaneView.svelte";
@@ -106,6 +102,7 @@
   let peek = $state<Peek | null>(null);
 
   let toolbar = $state<Toolbar>();
+  let pdfTools = $state<PdfTools>();
   let parking = $state(false);
 
   /** Focused tab of any kind; `active` is the same tab when it is a PDF. */
@@ -114,9 +111,6 @@
   const sidebarShown = $derived(sidebarOpen && !read.zen);
   const note = $derived(current?.kind === "md" ? (current as MdTab) : null);
 
-  // Close confirmation for tabs with unsaved annotations.
-  type CloseChoice = "save" | "discard" | "cancel";
-  let confirmClose = $state<{ tab: Tab; resolve: (choice: CloseChoice) => void } | null>(null);
   const viewer = () => viewers.get(ws.focused.id);
 
   // --- documents & tabs -----------------------------------------------------------------------
@@ -161,14 +155,6 @@
       notify.error(`Could not open ${path}: ${e}`);
       return null;
     }
-  }
-
-  // Encrypted PDFs: ask for the password (kept in memory for this session only).
-  let passwordAsk = $state<{ name: string; wrong: boolean; resolve: (pw: string | null) => void } | null>(null);
-  let passwordValue = $state("");
-  function askPassword(name: string, wrong: boolean): Promise<string | null> {
-    passwordValue = "";
-    return new Promise((resolve) => (passwordAsk = { name, wrong, resolve })).finally(() => (passwordAsk = null)) as Promise<string | null>;
   }
 
   async function pickAndOpen(pane: Pane = ws.focused) {
@@ -361,11 +347,11 @@
     notify.show({ text: `${n} highlight${n === 1 ? "" : "s"} written under the line in ${active.md?.name}.` });
   }
 
-  /** Equation → LaTeX: draw a rectangle on the page (see EquationSnip). */
-  function startSnip() {
+  /** Equation → LaTeX / Image → AI: draw a rectangle on the page (see EquationSnip). */
+  function startSnip(kind: SnipKind = "equation") {
     if (!active) return;
     active.tool = "select";
-    active.snipping = true;
+    active.snipping = kind;
   }
 
   // --- grading mode -----------------------------------------------------------------------------
@@ -413,101 +399,23 @@
 
   // --- command palette ----------------------------------------------------------------------------
 
-  function setTint(tint: Tint) {
-    read.tint = tint;
-    saveReadSettings();
-  }
-
-  const commands = $derived.by((): Command[] => {
-    const c: Command[] = [];
-    const add = (group: string, title: string, run: () => void, keys?: string) =>
-      c.push({ id: `${group}:${title}`, group, title, run, keys });
-    const pdf = active;
-    if (pdf) {
-      add("Document", "Save annotations", saveCurrent, "Ctrl+S");
-      add("Document", "Undo", undo, "Ctrl+Z");
-      add("Document", "Redo", redo, "Ctrl+Y");
-      add("Document", pdf.isBookmarked(pdf.page) ? "Remove bookmark" : "Bookmark this page", toggleBookmark, "Ctrl+B");
-      add("Document", "Show bookmarks", () => ((sidebarOpen = true), (sidebarMode = "bookmarks")));
-      add("Document", "Print…", () => (ui.print = true), "Ctrl+P");
-      for (const b of pdf.bookmarks) {
-        add("Bookmarks", `${b.label || "Bookmark"} (p. ${b.page + 1})`, () => pdf.navigate({ page: b.page }));
-      }
-      add("Document", "Export highlights to note", exportHighlights);
-      add("Document", "Export as Markdown…", () => exportMarkdown("file"));
-      add("Document", "Export to Obsidian vault", () => exportMarkdown("vault"));
-      add("Document", "Copy note to Obsidian", copyNoteToVault);
-      add("Document", "Recognize text (OCR)", recognizeAll);
-      add("Document", "Go to first page", () => pdf.navigate({ page: 0 }), "Home");
-      add("Document", "Go to last page", () => pdf.navigate({ page: pdf.pageCount - 1 }), "End");
-      add("Annotate", "Add note", () => (pdf.tool = "note"));
-      add("Annotate", "Add text", () => (pdf.tool = "text"));
-      add("Annotate", "Draw", () => (pdf.tool = "draw"));
-      add("View", "Toggle annotations panel", () => (pdf.panelOpen = !pdf.panelOpen));
-      add("View", "Toggle integrated note", () => pdf.toggleMd());
-      add("View", "Show parking lot", () => pdf.showParking());
-      add("View", "Zoom in", () => viewer()?.zoomBy(1.2), "Ctrl++");
-      add("View", "Zoom out", () => viewer()?.zoomBy(1 / 1.2), "Ctrl+-");
-      add("View", "Fit width", () => setFit("width"));
-      add("View", "Fit page", () => setFit("page"));
-      add("View", "Actual size", () => setFit("none"), "Ctrl+0");
-      add("View", invert ? "Light pages" : "Dark pages", toggleInvert);
-    }
-    add("View", "Toggle sidebar", toggleSidebar, "Ctrl+\\");
-    const g = grading.session;
-    if (g) {
-      add("Grading", "Done, next exam", () => g.next());
-      add("Grading", "Previous exam", () => g.prev());
-      add("Grading", "Export grades as CSV", () => g.exportCsv());
-      add("Grading", "Stop grading", stopGrading);
-    } else add("Grading", "Grade a folder of exams…", () => startGrading());
-    add("Read & Focus", read.ruler ? "Hide reading ruler" : "Show reading ruler", () => ((read.ruler = !read.ruler), saveReadSettings()));
-    if (pdf) add("Read & Focus", "Read like a book (two pages)", () => (read.book = true));
-    add("Read & Focus", "Zen mode", toggleZen, "Ctrl+.");
-    add("Read & Focus", "Full screen", toggleFullscreen, "F11");
-    for (const [key, t] of Object.entries(TINTS)) add("Read & Focus", `Page tint: ${t.label}`, () => setTint(key as Tint));
-    add("Read & Focus", pomodoro.running ? "Pause pomodoro" : "Start pomodoro", () => (pomodoro.running ? pausePomodoro() : startPomodoro()));
-    add("Read & Focus", "Park a thought", () => (parking = true), "Ctrl+Shift+Space");
-    add("AI", term.open ? "Hide terminal" : "Open terminal", toggleTerminal, "Ctrl+`");
-    add("AI", "New terminal tab", async () => {
-      if (!term.tabs.length) return openTerminal(docFolder, ws.focused.id);
-      await newTerminalTab(docFolder);
-      await openTerminal(docFolder, ws.focused.id);
-    });
-    add("AI", "How to set up an AI agent (Claude Code, Codex, Gemini…)", () => (term.guideOpen = true));
-    if (pdf) add("AI", "Ask the AI about this document…", () => toolbar?.openAiMenu());
-    if (pdf) add("AI", "Equation → LaTeX (AI)", () => startSnip());
-    add("App", "Open…", () => pickAndOpen(), "Ctrl+O");
-    add("App", "New note…", () => newNote());
-    add("App", "PhDF Tools: rotate, reorder, merge, split, extract pages…", () => (ui.tools = { path: active?.path ?? null }));
-    add("App", "New tab", () => newTab(), "Ctrl+T");
-    add("App", "Settings", () => (ui.settingsOpen = true));
-    add("App", "How to use PhDF", () => (ui.helpOpen = true));
-    for (const r of recents) add("Recent", r.title ?? r.path, () => openPath(r.path));
-    return c;
-  });
-
-  function dynamicCommands(q: string): Command[] {
-    const out: Command[] = [];
-    const pdf = active;
-    if (pdf && /^\d+$/.test(q)) {
-      const n = Math.min(Math.max(Number(q), 1), pdf.pageCount);
-      out.push({ id: "goto", group: "Go to", title: `Go to page ${n}`, run: () => pdf.navigate({ page: n - 1 }) });
-    }
-    if (pdf && q.length >= 2 && !/^\d+$/.test(q)) {
-      out.push({
-        id: "search",
-        group: "Search",
-        title: `Search “${q}” in this document`,
-        run: () => {
-          pdf.search(q);
-        },
-      });
-    }
-    return out;
-  }
+  const commands = $derived(
+    appCommands({
+      active, invert, recents, docFolder, paneId: ws.focused.id, viewer,
+      saveCurrent, undo, redo, toggleBookmark, exportHighlights, exportMarkdown, copyNoteToVault, recognizeAll,
+      setFit, toggleInvert, toggleSidebar, stopGrading, toggleZen, toggleFullscreen, toggleTerminal, startSnip, openPath,
+      showBookmarks: () => ((sidebarOpen = true), (sidebarMode = "bookmarks")),
+      startGrading: () => startGrading(),
+      park: () => (parking = true),
+      openAiMenu: () => toolbar?.openAiMenu(),
+      pickAndOpen: () => pickAndOpen(),
+      newNote: () => newNote(),
+      newTab: () => newTab(),
+    }),
+  ); // prettier-ignore
 
   async function saveCurrent() {
+    if (active === grading.session?.tab) grading.session?.commit(); // typed grade / name
     if (active) await active.save();
     else if (note) await note.md.flush();
   }
@@ -525,8 +433,7 @@
       await tab.save();
       return "save";
     }
-    const choice = await new Promise<CloseChoice>((resolve) => (confirmClose = { tab, resolve }));
-    confirmClose = null;
+    const choice = await askCloseChoice(tab);
     if (choice === "save") await tab.save();
     return choice;
   }
@@ -681,61 +588,20 @@
 
   // --- keyboard -------------------------------------------------------------------------------
 
-  function inTextField(e: KeyboardEvent) {
-    const el = e.target as HTMLElement;
-    return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
-  }
-
   function onKeydown(e: KeyboardEvent) {
-    const mod = e.ctrlKey || e.metaKey;
-    const key = e.key.toLowerCase();
-    let handled = true;
-
-    // Terminal toggle works everywhere; other shortcuts stay out of the terminal's way.
-    if (mod && (e.code === "Backquote" || key === "`")) {
-      e.preventDefault();
-      return toggleTerminal();
-    }
-    if ((e.target as HTMLElement).closest?.(".xterm")) return;
-    if (e.defaultPrevented) return; // handled by the note editor (Ctrl+= zoom, Ctrl+E code…)
-    // A dialog is open: it handles its own keys (Escape, Enter); nothing reaches the page.
-    if (passwordAsk || confirmClose || ui.print || ui.settingsOpen) return;
-    const typing = inTextField(e);
-
-    if (mod && e.shiftKey && (key === " " || e.code === "Space")) parking = !parking;
-    else if (mod && key === ".") toggleZen();
-    else if (key === "f11" || (e.metaKey && e.ctrlKey && key === "f")) toggleFullscreen(); // ⌃⌘F on a Mac
-    else if (key === "escape" && read.zen && !peek && !parking) toggleZen();
-    else if (mod && key === "o") pickAndOpen();
-    else if (mod && key === "s") saveCurrent();
-    else if (mod && key === "k") palette = !palette;
-    else if (mod && !e.shiftKey && key === "z" && active && !inTextField(e)) undo();
-    else if (mod && (key === "y" || (e.shiftKey && key === "z")) && active && !inTextField(e)) redo();
-    else if (mod && key === "b" && active && !inTextField(e)) toggleBookmark();
-    else if (mod && e.shiftKey && key === "c" && active && !typing && getSelection()?.toString()) copyWithCitation();
-    else if (mod && key === "p" && active) ui.print = true;
-    else if (mod && key === "t") newTab();
-    else if (mod && key === "w") current && closeTab(current);
-    else if (key === "escape" && active && active.tool !== "select") active.tool = "select";
-    else if (mod && key === "tab") cycleTab(e.shiftKey ? -1 : 1);
-    else if (mod && key === "f" && active && !typing) toolbar?.focusSearch();
-    else if (mod && key === "g" && active && !typing) toolbar?.startGoto();
-    else if (mod && (key === "=" || key === "+") && active && !typing) viewer()?.zoomBy(1.2);
-    else if (mod && key === "-" && active && !typing) viewer()?.zoomBy(1 / 1.2);
-    else if (mod && key === "0" && active && !typing) viewer()?.setZoom(1);
-    else if (mod && key === "\\") toggleSidebar();
-    else if (!typing && ((e.altKey && key === "arrowleft") || (e.metaKey && key === "["))) active?.goBack(); // ⌘[ ⌘] on a Mac
-    else if (!typing && e.metaKey && key === "]") active?.goForward();
-    else if (!typing && e.altKey && key === "arrowright") active?.goForward();
-    else if (active && !mod && !e.altKey && !inTextField(e) && !peek) {
-      if (key === "arrowright") active.pendingJump = { page: stepRow(active.page, 1, active.pageCount) };
-      else if (key === "arrowleft") active.pendingJump = { page: stepRow(active.page, -1, active.pageCount) };
-      else if (key === "home") active.navigate({ page: 0 });
-      else if (key === "end") active.navigate({ page: active.pageCount - 1 });
-      else handled = false;
-    } else handled = false;
-
-    if (handled) e.preventDefault();
+    handleShortcut(e, {
+      active, current, viewer, toggleTerminal, toggleZen, toggleFullscreen, saveCurrent, undo, redo, toggleBookmark,
+      copyWithCitation, closeTab, cycleTab, toggleSidebar,
+      dialogOpen: !!(asking.password || asking.close || ui.print || ui.settingsOpen),
+      peekOpen: !!peek,
+      parkingOpen: parking,
+      toggleParking: () => (parking = !parking),
+      pickAndOpen: () => pickAndOpen(),
+      togglePalette: () => (palette = !palette),
+      newTab: () => newTab(),
+      focusSearch: () => toolbar?.focusSearch(),
+      startGoto: () => toolbar?.startGoto(),
+    }); // prettier-ignore
   }
 
   // --- session --------------------------------------------------------------------------------
@@ -815,6 +681,16 @@
         for (const tab of ws.allTabs()) if (tab.kind === "pdf" && tab.doc.docId === change.docId) tab.reflow(change);
       }
     });
+    // The same document changed in another tab or window: marks, save state, layout.
+    type DocChange = { docId: string; dirty: boolean; revs: Record<number, number>; source?: Tab };
+    window.addEventListener("phdf:doc-changed", (e) => {
+      const c = (e as CustomEvent<DocChange>).detail;
+      for (const tab of ws.allTabs()) if (tab.kind === "pdf" && tab !== c.source && tab.doc.docId === c.docId) tab.sync(c);
+    });
+    window.addEventListener("phdf:doc-reflowed", (e) => {
+      const c = (e as CustomEvent<{ docId: string; pageSizes: [number, number][]; revs: Record<number, number> }>).detail;
+      for (const tab of ws.allTabs()) if (tab.kind === "pdf" && tab.doc.docId === c.docId) tab.reflow(c);
+    });
     // First start: show the tour once.
     if (!(await (await api()).get_setting("help.seen", false))) {
       ui.helpOpen = true;
@@ -832,13 +708,22 @@
       window.addEventListener(type, () => noteActivity(), { passive: true, capture: true });
     }
     // Closing the window with unsaved annotations: the backend held the close and asks us.
+    // The window's close button: the backend always asks here first (notes being typed,
+    // grades, PDF Tools work and unsaved marks are only known to the page).
     window.addEventListener("phdf:close-request", async () => {
+      const py = await api();
+      py.close_ack();
+      if (pdfTools && !(await pdfTools.settle())) return;
       for (const t of ws.allTabs()) {
         if (t.kind === "pdf" && t.dirty && (await askSave(t)) === "cancel") return;
       }
-      for (const t of ws.allTabs()) await t.md?.flush();
+      grading.session?.commit();
+      for (const t of ws.allTabs()) {
+        await t.md?.flush();
+        if (t.kind === "pdf") await t.parking?.flush();
+      }
       flushReading();
-      (await api()).close_window();
+      py.close_window();
     });
     // A tab dragged here from another PhDF window.
     window.addEventListener("phdf:open-path", (e) => openPath((e as CustomEvent<string>).detail));
@@ -905,6 +790,7 @@
         onexporthighlights={exportHighlights}
         onexportmarkdown={exportMarkdown}
         oncopynote={copyNoteToVault}
+        onsave={saveCurrent}
         onrecognize={recognizeAll}
         onopen={() => pickAndOpen()}
         ondock={info?.detached ? dock : undefined}
@@ -1003,7 +889,7 @@
   {/if}
 
   {#if palette}
-    <CommandPalette commands={commands} dynamic={dynamicCommands} onclose={() => (palette = false)} />
+    <CommandPalette commands={commands} dynamic={(q) => typedCommands(q, active)} onclose={() => (palette = false)} />
   {/if}
 
   {#if term.guideOpen}
@@ -1014,7 +900,7 @@
     <BookView tab={active} {invert} top={read.zen ? 0 : toolbarHeight} onclose={() => (read.book = false)} />
   {/if}
   {#if ui.tools}
-    <PdfTools path={ui.tools.path} onopenpath={(p) => openPath(p)} onclose={() => (ui.tools = null)} />
+    <PdfTools bind:this={pdfTools} path={ui.tools.path} onopenpath={(p) => openPath(p)} onclose={() => (ui.tools = null)} />
   {/if}
   {#if ui.helpOpen}
     <Help onclose={() => (ui.helpOpen = false)} />
@@ -1028,40 +914,7 @@
     <PrintSheet tab={active} onclose={() => (ui.print = false)} />
   {/if}
 
-  {#if passwordAsk}
-    {@const p = passwordAsk}
-    <div class="sheet-backdrop">
-      <form class="sheet" aria-labelledby="pw-title" onsubmit={(e) => (e.preventDefault(), p.resolve(passwordValue))}>
-        <img class="sheet-icon logo" src={logo} alt="" />
-        <h2 id="pw-title">“{p.name}” is protected by a password</h2>
-        <p>{p.wrong ? "That password is not right. Try again." : "Enter its password to open it. PhDF keeps it only until you quit."}</p>
-        <!-- svelte-ignore a11y_autofocus -->
-        <input class="pw" type="password" bind:value={passwordValue} autofocus onkeydown={(e) => e.key === "Escape" && p.resolve(null)} aria-label="Password" />
-        <div class="sheet-actions">
-          <span class="grow"></span>
-          <button type="button" class="plain" onclick={() => p.resolve(null)}>Cancel</button>
-          <button type="submit" class="default" disabled={!passwordValue}>Open</button>
-        </div>
-      </form>
-    </div>
-  {/if}
-
-  {#if confirmClose}
-    {@const c = confirmClose}
-    <div class="sheet-backdrop">
-      <div class="sheet" role="alertdialog" aria-labelledby="save-title">
-        <img class="sheet-icon logo" src={logo} alt="" />
-        <h2 id="save-title">Do you want to save the changes made to “{c.tab.title}”?</h2>
-        <p>Your annotations will be lost if you don’t save them.</p>
-        <div class="sheet-actions">
-          <button class="plain" onclick={() => c.resolve("discard")}>Don’t Save</button>
-          <span class="grow"></span>
-          <button class="plain" onclick={() => c.resolve("cancel")}>Cancel</button>
-          <button class="default" onclick={() => c.resolve("save")}>Save</button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <AskSheets />
 </div>
 
 <style>
@@ -1220,100 +1073,6 @@
   .zen-exit:hover,
   .zen-exit:focus-visible {
     opacity: 1;
-  }
-
-  .sheet-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 60;
-    display: grid;
-    place-items: start center;
-    padding-top: 90px;
-    background: rgb(0 0 0 / 0.18);
-  }
-
-  .sheet {
-    width: 340px;
-    padding: 20px 20px 16px;
-    border-radius: 18px;
-    background: var(--popover);
-    backdrop-filter: saturate(180%) blur(30px);
-    box-shadow:
-      0 0 0 0.5px var(--separator),
-      0 20px 50px rgb(0 0 0 / 0.3);
-    text-align: center;
-    animation: sheet-in 0.16s ease-out;
-  }
-
-  @keyframes sheet-in {
-    from {
-      opacity: 0;
-      transform: translateY(-8px) scale(0.98);
-    }
-  }
-
-  .sheet-icon {
-    width: 52px;
-    height: 52px;
-    margin: 0 auto 10px;
-    border-radius: 17px;
-    display: grid;
-    place-items: center;
-    font: 700 22px/1 var(--font);
-    color: white;
-    background: linear-gradient(160deg, #5e9bff, #3a55e8 55%, #6a3fd8);
-  }
-
-  .sheet h2 {
-    margin: 0;
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  .sheet p {
-    margin: 6px 0 16px;
-    font-size: 12px;
-    color: var(--secondary);
-  }
-
-  .sheet-icon.logo {
-    background: none;
-    box-shadow: none;
-  }
-
-  .pw {
-    width: 100%;
-    margin-top: 12px;
-    padding: 6px 10px;
-    border: 1px solid var(--separator);
-    border-radius: 8px;
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
-  }
-
-  .sheet-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .sheet-actions .grow {
-    flex: 1;
-  }
-
-  .sheet-actions button {
-    padding: 4px 12px;
-    border-radius: 8px;
-    font-weight: 500;
-  }
-
-  .sheet-actions .plain {
-    background: var(--hover);
-  }
-
-  .sheet-actions .default {
-    background: var(--accent);
-    color: var(--accent-text);
   }
 
   .toast button.action {

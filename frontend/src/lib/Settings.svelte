@@ -4,13 +4,13 @@
   import { api } from "./api";
   import Icon from "./Icon.svelte";
   import { notify, ui as appUi } from "./notify.svelte";
-  import { copyText } from "./platform";
+  import { copyText, kbd } from "./platform";
   import type { AboutInfo } from "./api";
   import licenses from "../assets/licenses.json";
   import { setAutoDarkPages, setThemeMode, theme, type ThemeMode } from "./theme.svelte";
   import { prefs, setPref, setRestore, UI_SIZES, type ScrollSpeed } from "./prefs.svelte";
   import { chime, pomodoro, setFocusLength, setPomodoro } from "./reading.svelte";
-  import { checkForUpdate } from "./updates";
+  import { BETA_NOTE, checkForUpdate, GITHUB_URL } from "./updates";
   import { isMac } from "./platform";
 
   let checkUpdates = $state(false);
@@ -87,7 +87,7 @@
     ];
     return lines.join(String.fromCharCode(10));
   }
-  const SOURCE = "https://github.com/barjs-havingfun/PhDF";
+  const SOURCE = GITHUB_URL;
   let showLicenses = $state(false);
   const openLink = (url: string) => api().then((py) => py.open_external(url));
 
@@ -371,6 +371,7 @@
     <section>
       <h3>About</h3>
       {#if about}
+        <p class="hint"><b>Beta version.</b> {BETA_NOTE.replace("Ctrl+S", kbd("Ctrl+S"))}</p>
         <pre class="about">{aboutText(about)}</pre>
         <div class="row">
           <button class="btn" onclick={copyAbout}>Copy for a Bug Report</button>
@@ -381,7 +382,8 @@
           changed version, share its source code too.
         </p>
         <div class="row">
-          <button class="btn" onclick={() => openLink(SOURCE)}>Source Code</button>
+          <button class="btn" onclick={() => openLink(SOURCE)}>GitHub Page</button>
+          <button class="btn" onclick={() => openLink(`${SOURCE}/issues`)}>Report a Bug</button>
           <button class="btn" onclick={() => openLink(`${SOURCE}/blob/main/LICENSE`)}>License</button>
           <button class="btn" onclick={() => openLink(`${SOURCE}/blob/main/PRIVACY.md`)}>Privacy</button>
           <button class="btn" onclick={() => (showLicenses = !showLicenses)} aria-expanded={showLicenses}>

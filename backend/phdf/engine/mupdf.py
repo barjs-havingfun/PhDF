@@ -48,6 +48,20 @@ def _rect(r: pymupdf.Rect | tuple) -> Rect:
     return (round(r.x0, 2), round(r.y0, 2), round(r.x1, 2), round(r.y1, 2))
 
 
+def _rotation(doc: pymupdf.Document, page: int) -> int:
+    """A page's /Rotate, which it may inherit from its parents in the page tree."""
+    xref = doc.page_xref(page)
+    for _ in range(64):  # a broken file could loop
+        kind, value = doc.xref_get_key(xref, "Rotate")
+        if kind != "null":
+            return int(float(value)) % 360
+        kind, value = doc.xref_get_key(xref, "Parent")
+        if kind != "xref":
+            break
+        xref = int(value.split()[0])
+    return 0
+
+
 def _hex(rgb: list[float] | tuple[float, ...] | None) -> str:
     if not rgb or len(rgb) < 3:
         return "#ffd60a"
@@ -141,21 +155,35 @@ class MuPdfDocument(PdfDocument):
         return result
 
     def search(self, query: str, max_hits: int = 1000) -> list[SearchHit]:
-        query = query.strip()
         hits: list[SearchHit] = []
-        if not query:
-            return hits
         total = 0
-        for page in self._doc:
-            rects = page.search_for(query)
-            if not rects:
-                continue
-            rects = rects[: max_hits - total]
-            hits.append(SearchHit(page=page.number, rects=[_rect(r) for r in rects]))
-            total += len(rects)
+        for page in range(self._doc.page_count):
             if total >= max_hits:
                 break
+            if hit := self.search_page(page, query, max_hits - total):
+                hits.append(hit)
+                total += len(hit.rects)
         return hits
+
+    def search_page(self, page: int, query: str, max_hits: int = 1000) -> SearchHit | None:
+        query = query.strip()
+        rects = self._doc[page].search_for(query)[:max_hits] if query else []
+        return SearchHit(page=page, rects=[_rect(r) for r in rects]) if rects else None
+
+    def page_sizes(self) -> list[tuple[float, float]]:
+        """Read from the page tree without loading each page: a big book opens much faster."""
+        doc = self._doc
+        if not doc.is_pdf:
+            return super().page_sizes()
+        sizes = []
+        for i in range(doc.page_count):
+            try:
+                box = doc.page_cropbox(i)
+                w, h = box.width, box.height
+                sizes.append((h, w) if _rotation(doc, i) in (90, 270) else (w, h))
+            except Exception:
+                sizes.append(self.page_size(i))
+        return sizes
 
     def outline(self) -> list[OutlineItem]:
         # get_toc() is a flat list of [level, title, page(1-based)]; rebuild the tree.

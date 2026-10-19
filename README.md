@@ -5,9 +5,41 @@
 A lightweight, reader-first PDF app for heavy readers - with position memory, a built-in
 Markdown editor, Obsidian integration, OCR, and a terminal-based AI side panel.
 
-> **Status:** v0.7.1, in active development: book view and EPUB, PhDF Tools, printing,
+> **Status:** v0.8.0, in active development: book view and EPUB, PhDF Tools, printing,
 > password-protected PDFs, themes and more settings. Windows is the main platform; macOS and
 > Linux builds come from CI.
+
+> **Beta:** PhDF may still crash now and then. Save your work regularly (Ctrl+S).
+
+## What's new in 0.8.0
+
+**New**
+- **Image → AI**: drag a rectangle around a figure, table or passage and send it to the AI in
+  the terminal with your question (AI tools menu next to ✦). The image file is deleted
+  afterwards.
+- **Save button** (floppy disk) in the toolbar, with a dot while something is unsaved. It saves
+  the PDF's annotations, its note and its parking lot.
+- **Select in several places**: hold Ctrl (⌘ on a Mac) and drag to add more parts to a
+  selection; highlighting gives each part its own highlight.
+- A beta notice in the ⋯ menu and Settings → About, with links to the GitHub page and to
+  report a bug.
+
+**Fixes**
+- Two identical copies of a PDF no longer share one document (saving one could change the other).
+- Closing a window always saves notes, typed grades and PhDF Tools work first (or asks).
+- The same PDF open in several tabs or windows stays in sync.
+- Grading: Ctrl+S saves the grade you typed; an exam is marked done only after it is saved.
+- PhDF Tools: asks before switching files with unsaved changes, never overwrites the original,
+  and undo works more reliably.
+- A note changed in another app no longer overwrites what you typed meanwhile.
+- The scrollbar starts below the toolbar, and a new version never shows the old interface.
+- Updating with the installer removes the old version's files.
+
+**Faster**
+- Big PDFs open much faster (a 650-page book: 0.35 s → 0.02 s).
+- Searching a long book no longer freezes page drawing.
+- Splitting and extracting pages is many times faster; long thumbnail lists scroll smoother.
+- A smaller app (only the font files that are used).
 
 ## Keyboard shortcuts
 
@@ -84,8 +116,6 @@ Not scheduled yet - ideas waiting for their turn:
 - Send quotes to the note that is open in Obsidian right now
 - Double-click a word to have the AI explain it
 - Turkish interface
-- PDF tools: rotate, extract, delete and reorder pages, merge and split PDFs
-- An app icon
 
 ## Stack
 

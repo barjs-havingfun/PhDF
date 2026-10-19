@@ -160,10 +160,15 @@ export class GradingSession {
   async next() {
     const exam = this.exam;
     if (!exam || this.busy) return;
+    // Done only once its marks are saved.
+    try {
+      await this.leave();
+    } catch (e) {
+      return notify.error(`Could not save the marks: ${e}`);
+    }
     if (!this.done.includes(exam.rel)) this.done = [...this.done, exam.rel];
     if (this.index < this.exams.length - 1) return this.show(this.index + 1);
     // The last one: stay here.
-    await this.leave();
     this.saveProgress();
     const left = this.exams.filter((e) => !this.isDone(e));
     notify.show(

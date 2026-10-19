@@ -6,6 +6,7 @@ Variables can also come from a `.env` file in the project root (see `.env.exampl
 
 import mimetypes
 import os
+import shutil
 import sys
 import threading
 from pathlib import Path
@@ -29,6 +30,22 @@ def fix_mimetypes() -> None:
     mimetypes.add_type("text/javascript", ".js")
     mimetypes.add_type("text/javascript", ".mjs")
     mimetypes.add_type("text/css", ".css")
+
+
+def drop_stale_page_cache(index: Path, storage: Path) -> None:
+    """pywebview serves the page from a fixed local address without cache headers, so WebView2
+    may keep showing an old build's index.html. Empty its HTTP cache when the build changes."""
+    stamp = storage / "build.txt"
+    build = str(index.stat().st_mtime_ns)
+    try:
+        if stamp.read_text() == build:
+            return
+    except OSError:
+        pass
+    for name in ("Cache", "Code Cache"):
+        shutil.rmtree(storage / "EBWebView" / "Default" / name, ignore_errors=True)
+    storage.mkdir(parents=True, exist_ok=True)
+    stamp.write_text(build)
 
 
 def on_screen(x: int, y: int, width: int) -> bool:
@@ -200,6 +217,7 @@ def main() -> None:
         if not index.exists():
             sys.exit(f"Frontend not built ({index} missing). Run: npm --prefix frontend run build")
         url = str(index)
+        drop_stale_page_cache(index, data_dir() / "webview")
 
     store = Store(data_dir() / "phdf.db")
     if store.get_setting("window.perMonitorDpi", True):  # Settings → Appearance

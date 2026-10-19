@@ -5,6 +5,7 @@
     text: string;
     byPage: Map<number, PdfRect[]>; // PDF-space rects per page, one per line
     box: DOMRect; // on screen, for placing the menu
+    parts?: Map<number, PdfRect[]>[]; // Ctrl / ⌘-drag: each part's rects, one highlight each
   }
 
   /** What was right-clicked: an annotation or a spot on a page (PDF points). */
@@ -22,8 +23,9 @@
   import { ink, type Jump, type Tab } from "../tab.svelte";
   import type { Point } from "../api";
   import PageView from "./PageView.svelte";
-  import { mergeLines } from "./rects";
+  import { joinParts, mergeLines } from "./rects";
   import { noteScroll, read, rowStart, RULER_SIZES } from "../reading.svelte";
+  import { isMac } from "../platform";
 
   interface Props {
     tab: Tab;
@@ -224,6 +226,17 @@
     });
   }
 
+  // The scrollbar track starts below the header (`--top-inset`), but Chromium keeps a styled
+  // scrollbar as it was when only a CSS variable changes, and the header's height is measured
+  // after the first render (and changes with the find bar etc.). Rebuild the scrollbar then.
+  $effect(() => {
+    void topInset;
+    if (!scroller) return;
+    scroller.style.overflowY = "hidden";
+    void scroller.offsetWidth;
+    scroller.style.overflowY = "";
+  });
+
   // --- selection, annotation clicks, placing notes ------------------------------------------
 
   /** PDF-space point under a screen point, with its page. */
@@ -269,6 +282,15 @@
     for (const [page, rects] of byPage) byPage.set(page, mergeLines(rects));
     if (!byPage.size) return null;
     return { text: sel.toString(), byPage, box: range.getBoundingClientRect() };
+  }
+
+  // Ctrl / ⌘-drag adds a part to the selection: the earlier parts wait in `tab.keptSel` and the
+  // menu gets all of them as one selection. (Ctrl+click is the right click on a Mac.)
+  const addsPart = (e: MouseEvent) => (isMac ? e.metaKey : e.ctrlKey);
+
+  /** The kept parts plus the browser's selection, in reading order. */
+  function withKept(sel: TextSelection | null, at: DOMRect): TextSelection | null {
+    return joinParts(sel ? [...tab.keptSel, sel] : tab.keptSel, sel?.box ?? at);
   }
 
 
@@ -409,7 +431,13 @@
     downAt = { x: e.clientX, y: e.clientY };
     if (e.button !== 0) return;
     if (tab.tool === "draw") startStroke(e);
-    else startMove(e);
+    else if (tab.tool === "select" && addsPart(e) && !(e.target as HTMLElement).closest(".link")) {
+      const sel = readSelection();
+      if (sel) tab.keptSel = [...tab.keptSel, sel];
+    } else {
+      if (tab.keptSel.length) tab.keptSel = [];
+      startMove(e);
+    }
   }
 
   function onPointerUp(e: PointerEvent) {
@@ -421,7 +449,7 @@
     if (dragging && endMove()) return;
     const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 3;
     requestAnimationFrame(() => {
-      const sel = readSelection();
+      const sel = withKept(readSelection(), new DOMRect(e.clientX - 1, e.clientY - 1, 2, 2));
       onselection(sel);
       if (sel || moved) return;
       if ((e.target as HTMLElement).closest(".link")) return;
@@ -448,7 +476,7 @@
     const onSel = [...(range?.getClientRects() ?? [])].some(
       (r) => e.clientX >= r.left - pad && e.clientX <= r.right + pad && e.clientY >= r.top - pad && e.clientY <= r.bottom + pad,
     );
-    if (sel && onSel) return onselection({ ...sel, box: new DOMRect(e.clientX - 1, e.clientY - 1, 2, 2) });
+    if (sel && onSel) return onselection(withKept(sel, new DOMRect(e.clientX - 1, e.clientY - 1, 2, 2)));
     const hit = annotationAt(pt.page, pt.x, pt.y);
     if (hit) tab.selectedAnnot = hit.id;
     oncontext(hit ? { kind: "annot", annot: hit } : { kind: "page", ...pt }, e);
@@ -534,6 +562,8 @@
   });
 </script>
 
+<svelte:window onkeydown={(e) => e.key === "Escape" && tab.keptSel.length && (tab.keptSel = [])} />
+
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="scroller"
@@ -565,6 +595,19 @@
         stroke={liveStroke?.page === i ? liveStroke.points : null}
         {onlink}
       />
+    {/each}
+    {#each tab.keptSel as part}
+      {#each [...part.byPage] as [page, rects]}
+        {#if tops[page] != null}
+          {#each rects as [x0, y0, x1, y1]}
+            <div
+              class="kept"
+              style="left:{layout.lefts[page] + x0 * cssScale}px;top:{tops[page] + y0 * cssScale}px;width:{(x1 - x0) *
+                cssScale}px;height:{(y1 - y0) * cssScale}px"
+            ></div>
+          {/each}
+        {/if}
+      {/each}
     {/each}
   </div>
 </div>
@@ -613,6 +656,13 @@
 
   .content {
     position: relative;
+  }
+
+  /* Kept parts of a Ctrl / ⌘-drag selection: the same colour as the live selection. */
+  .kept {
+    position: absolute;
+    background: rgb(0 122 255 / 0.3);
+    pointer-events: none;
   }
 
   .movable :global(.page),

@@ -108,7 +108,7 @@ def test_check_update_compares_versions(tmp_path, monkeypatch):
         body = json.dumps({"tag_name": tag, "html_url": "https://example.org/r"}).encode()
         return lambda request, timeout: io.BytesIO(body)
 
-    monkeypatch.setattr("phdf.api.__version__", "0.7.0")
+    monkeypatch.setattr("phdf.api.windows.__version__", "0.7.0")
     monkeypatch.setattr(urllib.request, "urlopen", fake("v0.10.0"))
     assert api.check_update()["newer"] is True  # 10 > 7, not text order
     monkeypatch.setattr(urllib.request, "urlopen", fake("v0.7.0"))

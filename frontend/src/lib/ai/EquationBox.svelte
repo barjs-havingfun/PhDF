@@ -4,16 +4,17 @@
   import "katex/dist/katex.min.css";
   import Icon from "../Icon.svelte";
   import { notify } from "../notify.svelte";
-  import { copyText } from "../platform";
+  import { copyText, kbd } from "../platform";
   import type { Tab } from "../tab.svelte";
   import { pageImageUrl } from "../api";
-  import { cancelEquation, confirmEquation, insertEquation } from "./equation.svelte";
+  import { cancelEquation, confirmEquation, insertEquation, sendImage } from "./equation.svelte";
   import { agentLabel, term } from "./terminal.svelte";
 
   let { tab }: { tab: Tab } = $props();
 
   const job = $derived(tab.equation!);
   let latex = $state("");
+  let question = $state(""); // Image → AI
   let katex = $state<typeof import("katex").default | null>(null);
   import("katex").then((m) => (katex = m.default));
 
@@ -42,12 +43,29 @@
 <div class="box" role="dialog" aria-label="Equation to LaTeX">
   <div class="head">
     <Icon name="sparkle" size={14} />
-    <span class="title">Equation → LaTeX</span>
+    <span class="title">{job.kind === "image" ? "Image → AI" : "Equation → LaTeX"}</span>
     <span class="page">p. {job.page + 1}</span>
     <button class="x" onclick={() => cancelEquation(tab)} aria-label="Close"><Icon name="close" size={12} /></button>
   </div>
 
-  {#if job.status === "confirm"}
+  {#if job.kind === "image" && job.status === "confirm"}
+    <img class="clip" src={pageImageUrl(tab.doc.docId, job.page, 2, job.rect, tab.revs[job.page] ?? 0)} alt="The selected area" />
+    <!-- svelte-ignore a11y_autofocus -->
+    <textarea
+      bind:value={question}
+      rows="2"
+      autofocus
+      placeholder="Your question (empty: “Explain what this shows.”)"
+      aria-label="Question for the AI"
+      onkeydown={(e) => e.key === "Enter" && (e.ctrlKey || e.metaKey) && sendImage(tab, question)}
+    ></textarea>
+    <p class="hint">The image file is deleted 15 minutes after sending, or when PhDF closes.</p>
+    <div class="actions">
+      <span class="grow"></span>
+      <button onclick={() => cancelEquation(tab)}>Cancel</button>
+      <button class="primary" onclick={() => sendImage(tab, question)} title={kbd("Ctrl+Enter")}>Send to AI</button>
+    </div>
+  {:else if job.status === "confirm"}
     <img class="clip" src={pageImageUrl(tab.doc.docId, job.page, 3, job.rect, tab.revs[job.page] ?? 0)} alt="The selected area" />
     <p class="ask">Send this area to the AI in the terminal?</p>
     <div class="actions">
@@ -58,7 +76,7 @@
   {:else if job.status === "preparing" || job.status === "waiting"}
     <div class="wait">
       <span class="spinner"></span>
-      {job.status === "preparing" ? "Preparing the image…" : `Waiting for ${term.ai ? agentLabel(term.ai) : "the AI"} in the terminal…`}
+      {job.status === "preparing" ? (job.kind === "image" ? "Sending the image…" : "Preparing the image…") :`Waiting for ${term.ai ? agentLabel(term.ai) : "the AI"} in the terminal…`}
     </div>
     <p class="hint">If it asks for permission to write the file, allow it in the terminal.</p>
     <div class="actions"><span class="grow"></span><button onclick={() => cancelEquation(tab)}>Cancel</button></div>

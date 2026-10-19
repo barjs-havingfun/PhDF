@@ -1,6 +1,6 @@
 <script lang="ts">
-  // Equation → LaTeX, step 1: like a screenshot tool — the page dims and a rectangle is dragged
-  // over the equation. The rectangle is turned into PDF coordinates of the page under it.
+  // Equation → LaTeX / Image → AI, step 1: like a screenshot tool — the page dims and a rectangle
+  // is dragged over the area. The rectangle is turned into PDF coordinates of the page under it.
   import type { Rect } from "../api";
   import type { Tab } from "../tab.svelte";
 
@@ -75,7 +75,7 @@
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      tab.snipping = false;
+      tab.snipping = null;
     }
   }
 </script>
@@ -88,7 +88,7 @@
   style="top:{topInset}px"
   bind:this={layer}
   role="application"
-  aria-label="Draw a rectangle around an equation"
+  aria-label={tab.snipping === "image" ? "Draw a rectangle around the area for the AI" : "Draw a rectangle around an equation"}
   onpointerdown={down}
   onpointermove={move}
   onpointerup={up}
@@ -98,8 +98,8 @@
     <div class="sel" style="left:{box.left}px;top:{box.top}px;width:{box.width}px;height:{box.height}px"></div>
   {/if}
   <div class="hint">
-    Drag a rectangle around an equation · <b>Esc</b> to cancel
-    <button onpointerdown={(e) => e.stopPropagation()} onclick={() => (tab.snipping = false)}>Cancel</button>
+    Drag a rectangle around {tab.snipping === "image" ? "a figure, table or passage" : "an equation"} · <b>Esc</b> to cancel
+    <button onpointerdown={(e) => e.stopPropagation()} onclick={() => (tab.snipping = null)}>Cancel</button>
   </div>
 </div>
 

@@ -281,8 +281,9 @@
               tab={pdf}
               {topInset}
               onpick={(page, rect, at) => {
-                pdf.snipping = false;
-                startEquation(pdf, page, rect, at, pane.id);
+                const kind = pdf.snipping ?? "equation";
+                pdf.snipping = null;
+                startEquation(pdf, page, rect, at, pane.id, kind);
               }}
             />
           {/if}

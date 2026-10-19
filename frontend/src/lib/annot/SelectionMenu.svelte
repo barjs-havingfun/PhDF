@@ -22,10 +22,14 @@
 
   async function annotate(kind: AnnotKind, color: string) {
     const created = [];
-    for (const [page, rects] of [...sel.byPage].sort((a, b) => a[0] - b[0])) {
-      created.push(await tab.addAnnotation(page, kind, rects, color));
+    // A Ctrl / ⌘-drag selection: one annotation per part, so each can be changed on its own.
+    for (const part of sel.parts ?? [sel.byPage]) {
+      for (const [page, rects] of [...part].sort((a, b) => a[0] - b[0])) {
+        created.push(await tab.addAnnotation(page, kind, rects, color));
+      }
     }
     getSelection()?.removeAllRanges();
+    tab.keptSel = [];
     onclose();
     return created;
   }
@@ -73,6 +77,7 @@
     const folder = tab.path.replace(/[\\/][^\\/]*$/, "");
     const text = context() + (prompt ?? "");
     getSelection()?.removeAllRanges();
+    tab.keptSel = [];
     onclose();
     askAi(text, prompt !== null, folder, null);
   }

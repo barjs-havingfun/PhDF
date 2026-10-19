@@ -73,3 +73,37 @@ def test_thumbnails_are_served_like_documents(tmp_path, monkeypatch, sample_pdf)
     s = api.tools_open(str(sample_pdf))
     assert _PATH.match(f"/tok/page/{s['id']}/0.png")
     assert api._core.render(s["id"], 0, 0.5, None)[:4] in (b"\x89PNG", b"\xff\xd8\xff\xe0")
+
+
+def test_rejected_operation_keeps_rendering(tmp_path, monkeypatch, sample_pdf):
+    api = make_api(tmp_path, monkeypatch)
+    s = api.tools_open(str(sample_pdf))
+    with pytest.raises(ValueError):
+        api.tools_apply(s["id"], {"kind": "delete", "pages": list(range(100))})
+    assert api._core.render(s["id"], 0, 0.5, None)[:4] in (b"\x89PNG", b"\xff\xd8\xff\xe0")
+
+
+def test_merge_undo_does_not_need_the_inserted_file(tmp_path, monkeypatch, sample_pdf):
+    import shutil
+
+    other = tmp_path / "other.pdf"
+    shutil.copy(sample_pdf, other)
+    api = make_api(tmp_path, monkeypatch)
+    s = api.tools_open(str(sample_pdf))
+    api.tools_apply(s["id"], {"kind": "insert_pdf", "path": str(other), "at": 0})
+    api.tools_apply(s["id"], {"kind": "rotate", "pages": [0], "by": 90})
+    other.unlink()
+    assert len(api.tools_undo(s["id"])["pages"]) == 6
+
+
+def test_extract_never_overwrites_the_original(tmp_path, monkeypatch, sample_pdf):
+    api = make_api(tmp_path, monkeypatch)
+    s = api.tools_open(str(sample_pdf))
+
+    class Dialog:
+        def create_file_dialog(self, *args, **kwargs):
+            return str(sample_pdf)
+
+    api._window = Dialog()
+    with pytest.raises(ValueError):
+        api.tools_extract(s["id"], [0])

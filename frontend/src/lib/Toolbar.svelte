@@ -13,6 +13,7 @@
   import ReadMenu from "./focus/ReadMenu.svelte";
   import { grading } from "./grading/grading.svelte";
   import { clock, pomodoro, read } from "./reading.svelte";
+  import MoreMenu from "./MoreMenu.svelte";
   import type { MdTab, Tab } from "./tab.svelte";
   import type Viewer from "./viewer/Viewer.svelte";
 
@@ -32,7 +33,7 @@
     onpark: () => void;
     onsetfit: (mode: FitMode) => void;
     oninvert: () => void;
-    onsnip: () => void;
+    onsnip: (kind: "equation" | "image") => void;
     onterminal: () => void;
     ongrading: () => void;
     onstopgrading: () => void;
@@ -41,6 +42,8 @@
     oncopynote: () => void;
     onrecognize: () => void;
     onopen: () => void;
+    /** Save the PDF's annotations and write its notes (or the focused note) now. */
+    onsave: () => void;
     /** Only in a detached window: put its tabs back into the main window. */
     ondock?: () => void;
   }
@@ -48,7 +51,7 @@
   let {
     active, note, ready, invert, parking, paneId, viewer, cansidebar,
     ontogglesidebar, onzen, onfullscreen, onpark, onsetfit, oninvert, onsnip, onterminal, ongrading,
-    onstopgrading, onexporthighlights, onexportmarkdown, oncopynote, onrecognize, onopen, ondock,
+    onstopgrading, onexporthighlights, onexportmarkdown, oncopynote, onrecognize, onopen, onsave, ondock,
   }: Props = $props(); // prettier-ignore
 
   let zoomMenu = $state(false);
@@ -90,12 +93,6 @@
     document.addEventListener("pointerdown", down, true);
     return () => document.removeEventListener("pointerdown", down, true);
   });
-
-  /** A ⋯ menu item: close the menu, then act. */
-  const more = (run: () => void) => () => {
-    moreMenu = false;
-    run();
-  };
 
   /** A zoom typed in the zoom menu (10-800 %). */
   function setPercent(value: string) {
@@ -256,6 +253,13 @@
   </div>
 
   <div class="group end">
+    {#if (active || note) && shown("save")}
+      {@const unsaved = active ? active.dirty || !!active.md?.dirty || !!active.parking?.dirty : !!note?.md.dirty}
+      <button class="tool save" title={`Save the document and its notes (${kbd("Ctrl+S")})`} onclick={onsave}>
+        <Icon name="save" />
+        {#if unsaved}<span class="dot" aria-label="Unsaved changes"></span>{/if}
+      </button>
+    {/if}
     {#if active}
       {@const pdf = active}
       <div class="tools" class:book={pdf.isBook}>
@@ -407,7 +411,11 @@
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <div class="menu-backdrop" onclick={() => (aiTools = false)}></div>
           <div class="menu right ai-tools" role="menu">
-            <button role="menuitem" onclick={() => ((aiTools = false), onsnip())}>
+            <button role="menuitem" onclick={() => ((aiTools = false), onsnip("image"))}>
+              Image → AI
+              <span class="sub">Draw a rectangle around a figure, table or passage; the AI gets it as an image with your question.</span>
+            </button>
+            <button role="menuitem" onclick={() => ((aiTools = false), onsnip("equation"))}>
               Equation → LaTeX (AI)
               <span class="sub">Draw a rectangle around an equation; the AI writes its LaTeX into your note.</span>
             </button>
@@ -451,45 +459,20 @@
         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div class="menu-backdrop" onclick={() => (moreMenu = false)}></div>
         <div class="menu right" role="menu">
-          {#if active}
-            {@const pdf = active}
-            <div class="narrow-tools" class:book={pdf.isBook}>
-              <button role="menuitemcheckbox" aria-checked={pdf.tool === "note"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "note" ? "select" : "note"))}>Add Note</button>
-              <button role="menuitemcheckbox" aria-checked={pdf.tool === "text"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "text" ? "select" : "text"))}>Add Text</button>
-              <button role="menuitemcheckbox" aria-checked={pdf.tool === "draw"} onclick={() => ((moreMenu = false), (pdf.tool = pdf.tool === "draw" ? "select" : "draw"))}>Draw</button>
-              <button role="menuitemcheckbox" aria-checked={pdf.panelOpen} onclick={() => ((moreMenu = false), (pdf.panelOpen = !pdf.panelOpen))}>Annotations</button>
-              <button role="menuitemcheckbox" aria-checked={pdf.mdOpen} onclick={() => ((moreMenu = false), pdf.toggleMd())}>Integrated .md Note</button>
-              <div class="menu-sep"></div>
-            </div>
-            <div class="narrow-zoom">
-              <button role="menuitem" onclick={() => viewer()?.zoomBy(1.2)}>Zoom In <span class="shortcut">{kbd("Ctrl++")}</span></button>
-              <button role="menuitem" onclick={() => viewer()?.zoomBy(1 / 1.2)}>Zoom Out <span class="shortcut">{kbd("Ctrl+-")}</span></button>
-              <button role="menuitemradio" aria-checked={pdf.fit === "width"} onclick={() => ((moreMenu = false), setFit("width"))}>Fit Width</button>
-              <button role="menuitemradio" aria-checked={pdf.fit === "page"} onclick={() => ((moreMenu = false), setFit("page"))}>Fit Page</button>
-              <button role="menuitemcheckbox" aria-checked={invert} onclick={() => ((moreMenu = false), oninvert())}>Dark Pages</button>
-              <div class="menu-sep"></div>
-            </div>
-            {#if grading.session}
-              {@const g = grading.session}
-              <button role="menuitem" onclick={() => ((moreMenu = false), g.exportCsv())}>Export Grades as CSV…</button>
-              <button role="menuitem" onclick={() => ((moreMenu = false), onstopgrading())}>Stop Grading</button>
-              <div class="menu-sep"></div>
-            {/if}
-            <button role="menuitem" onclick={more(() => (ui.print = true))}>Print… <span class="shortcut">{kbd("Ctrl+P")}</span></button>
-            <button role="menuitem" onclick={more(() => (ui.tools = { path: pdf.path }))}>PDF Tools… (rotate, reorder, split…)</button>
-            <div class="menu-sep"></div>
-            <button role="menuitem" onclick={more(onexporthighlights)}>Export Highlights to Note</button>
-            <button role="menuitem" onclick={more(() => onexportmarkdown("file"))}>Export as Markdown…</button>
-            <button role="menuitem" onclick={more(() => onexportmarkdown("vault"))}>Export to Obsidian Vault</button>
-            <button role="menuitem" onclick={more(oncopynote)}>Copy Note to Obsidian</button>
-            <div class="menu-sep"></div>
-            <button role="menuitem" onclick={more(onrecognize)} disabled={!!active.ocrProgress}>Recognize Text (OCR)</button>
-            <div class="menu-sep"></div>
-          {:else if note}
-            <button role="menuitem" onclick={more(oncopynote)}>Copy Note to Obsidian</button>
-            <div class="menu-sep"></div>
-          {/if}
-          <button role="menuitem" onclick={() => ((moreMenu = false), (ui.settingsOpen = true))}>Settings…</button>
+          <MoreMenu
+            {active}
+            {note}
+            {invert}
+            {viewer}
+            {setFit}
+            {oninvert}
+            {onstopgrading}
+            {onexporthighlights}
+            {onexportmarkdown}
+            {oncopynote}
+            {onrecognize}
+            onclose={() => (moreMenu = false)}
+          />
         </div>
       {/if}
     </div>
@@ -633,9 +616,23 @@
   }
 
   /* E-books: no annotation tools (only the note button stays). */
-  .tools.book .tool:not(:last-child),
-  .narrow-tools.book button:not(:nth-child(5)) {
+  .tools.book .tool:not(:last-child) {
     display: none;
+  }
+
+  .save {
+    position: relative;
+  }
+
+  .save .dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    pointer-events: none;
   }
 
   .tools {
@@ -668,18 +665,6 @@
     container: toolbar / inline-size;
   }
 
-  .narrow-tools,
-  .narrow-zoom {
-    display: none;
-  }
-
-  .menu .narrow-tools button[aria-checked="true"]::before,
-  .menu .narrow-zoom button[aria-checked="true"]::before {
-    content: "✓";
-    position: absolute;
-    left: 7px;
-  }
-
   @container toolbar (max-width: 1280px) {
     .pill-label {
       display: none;
@@ -696,18 +681,12 @@
     .tools {
       display: none;
     }
-    .narrow-tools {
-      display: block;
-    }
   }
 
   @container toolbar (max-width: 860px) {
     .zoom,
     .dark {
       display: none !important;
-    }
-    .narrow-zoom {
-      display: block;
     }
   }
 
@@ -933,7 +912,7 @@
       0 8px 28px rgb(0 0 0 / 0.22);
   }
 
-  .menu button {
+  .menu :global(button) {
     display: flex;
     justify-content: space-between;
     width: 100%;
@@ -943,18 +922,18 @@
     position: relative;
   }
 
-  .menu button[aria-checked="true"]::before {
+  .menu :global(button[aria-checked="true"])::before {
     content: "✓";
     position: absolute;
     left: 7px;
   }
 
-  .menu button:hover:not(:disabled) {
+  .menu :global(button:hover:not(:disabled)) {
     background: var(--accent);
     color: var(--accent-text);
   }
 
-  .menu button:disabled {
+  .menu :global(button:disabled) {
     opacity: 0.4;
   }
 
@@ -969,17 +948,17 @@
     min-width: 220px;
   }
 
-  .menu-sep {
+  .menu :global(.menu-sep) {
     height: 0.5px;
     margin: 4px 6px;
     background: var(--separator);
   }
 
-  .shortcut {
+  .menu :global(.shortcut) {
     color: var(--tertiary);
   }
 
-  .menu button:hover .shortcut {
+  .menu :global(button:hover .shortcut) {
     color: inherit;
   }
 

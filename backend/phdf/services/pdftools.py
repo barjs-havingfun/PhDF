@@ -6,6 +6,7 @@ original bytes and the list of operations, so undo simply rebuilds without the l
 are always new files: "<name>_phdfE.pdf", extracts / splits "<name>_p_3-7_phdf.pdf".
 """
 
+import contextlib
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,7 @@ def apply(doc: pymupdf.Document, op: Op) -> None:
         doc.new_page(pno=at if at < n else -1, width=ref.width, height=ref.height)
     elif kind == "insert_pdf":
         at = min(max(int(op["at"]), 0), n)
-        with pymupdf.open(op["path"]) as other:
+        with pymupdf.open("pdf", op["data"]) if "data" in op else pymupdf.open(op["path"]) as other:
             doc.insert_pdf(other, start_at=at if at < n else -1)
     else:
         raise ValueError(f"unknown operation {kind!r}")
@@ -62,6 +63,10 @@ class ToolsSession:
         return doc
 
     def apply(self, op: Op) -> None:
+        if op["kind"] == "insert_pdf" and "data" not in op:
+            # Keep the inserted file's bytes: undo replays the operations, and the file may have
+            # changed or gone by then.
+            op = {**op, "data": Path(op["path"]).read_bytes()}
         try:
             apply(self.doc, op)
         except Exception:
@@ -82,15 +87,32 @@ class ToolsSession:
 
     def write(self, dest: Path, pages: list[int] | None, keep_annotations: bool) -> Path:
         """Save the current state (or some of its pages) as a new PDF."""
-        with pymupdf.open("pdf", self.doc.tobytes()) as out:
-            if pages is not None:
-                out.select(pages)
+        with pymupdf.open("pdf", self.doc.tobytes()) if pages is None else self._part(pages) as out:
             if not keep_annotations:
                 for page in out:
                     while (annot := page.first_annot) is not None:
                         page.delete_annot(annot)
             out.save(dest, garbage=3, deflate=True)
         return dest
+
+    def _part(self, pages: list[int]) -> pymupdf.Document:
+        """Only these pages (with their links and annotations): copying the whole document for
+        each part made splitting a big book slow. Its outline entries come along."""
+        out = pymupdf.open()
+        start = 0
+        for i in range(1, len(pages) + 1):  # runs of consecutive pages: links inside them stay
+            if i == len(pages) or pages[i] != pages[i - 1] + 1:
+                out.insert_pdf(self.doc, from_page=pages[start], to_page=pages[i - 1])
+                start = i
+        where = {p: i + 1 for i, p in enumerate(pages)}
+        toc, level = [], 0
+        for lvl, title, page, *_ in self.doc.get_toc(simple=True):
+            if page - 1 in where:
+                level = min(lvl, level + 1)  # entries left out may break the nesting
+                toc.append([level, title, where[page - 1]])
+        with contextlib.suppress(Exception):
+            out.set_toc(toc)
+        return out
 
     def close(self) -> None:
         self.doc.close()

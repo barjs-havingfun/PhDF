@@ -13,23 +13,26 @@ const escape = (s: string) =>
 const tex = (src: string, display: boolean) =>
   katex.renderToString(src, { displayMode: display, throwOnError: false, output: "html" });
 
+/** `fn` applied to the text outside code (fenced blocks, inline spans); code stays as written. */
+const outsideCode = (text: string, fn: (part: string) => string) =>
+  text
+    .split(/(^```[\s\S]*?^```|`[^`\n]*`)/m)
+    .map((part, i) => (i % 2 ? part : fn(part)))
+    .join("");
+
 /** Typeset math outside code: $$…$$ blocks (may span lines) and $…$ inline (not "$5 and $6"). */
 function withMath(text: string, slots: string[]): string {
   const slot = (html: string, block: boolean) => {
     slots.push(html);
     return block ? `\n\nPHDFMATH${slots.length - 1}\n\n` : `PHDFMATH${slots.length - 1}`;
   };
-  return text
-    .split(/(^```[\s\S]*?^```|`[^`\n]*`)/m)
-    .map((part, i) => {
-      if (i % 2) return part; // code: leave alone
-      return part
-        .replace(/%%[\s\S]*?%%/g, "") // Obsidian comments: not shown
-        .replace(/==(?=\S)([^=\n]+?)(?<=\S)==/g, (_, s) => slot(`<mark>${escape(s)}</mark>`, false))
-        .replace(/\$\$([\s\S]+?)\$\$/g, (_, src) => slot(tex(src.trim(), true), true))
-        .replace(/(^|[^\\$\w])\$(?=\S)([^$\n]+?)(?<=\S)\$(?!\d)/g, (_, pre, src) => pre + slot(tex(src, false), false));
-    })
-    .join("");
+  return outsideCode(text, (part) =>
+    part
+      .replace(/%%[\s\S]*?%%/g, "") // Obsidian comments: not shown
+      .replace(/==(?=\S)([^=\n]+?)(?<=\S)==/g, (_, s) => slot(`<mark>${escape(s)}</mark>`, false))
+      .replace(/\$\$([\s\S]+?)\$\$/g, (_, src) => slot(tex(src.trim(), true), true))
+      .replace(/(^|[^\\$\w])\$(?=\S)([^$\n]+?)(?<=\S)\$(?!\d)/g, (_, pre, src) => pre + slot(tex(src, false), false)),
+  );
 }
 
 const CALLOUT_ICONS: Record<string, string> = {
@@ -37,17 +40,19 @@ const CALLOUT_ICONS: Record<string, string> = {
   danger: "⛔", error: "⛔", example: "📋", quote: "❝", abstract: "📄", todo: "☑️",
 }; // prettier-ignore
 
-/** Footnotes: `[^1]` marks become superscripts, `[^1]: text` lines a list at the end. */
+/** Footnotes: `[^1]` marks become superscripts, `[^1]: text` lines a list at the end. Code that
+ *  shows this syntax is left alone. */
 function withFootnotes(text: string, slots: string[], blocks: string[]): string {
   const notes: { id: string; body: string }[] = [];
-  text = text.replace(/^\[\^([^\]\s]+)\]:[ \t]?(.*)$/gm, (_, id, body) => (notes.push({ id, body }), ""));
+  text = outsideCode(text, (part) => part.replace(/^\[\^([^\]\s]+)\]:[ \t]?(.*)$/gm, (_, id, body) => (notes.push({ id, body }), "")));
   if (!notes.length) return text;
-  text = text.replace(/\[\^([^\]\s]+)\]/g, (m, id) => {
+  const ref = (m: string, id: string) => {
     const n = notes.findIndex((x) => x.id === id) + 1;
     if (!n) return m;
     slots.push(`<sup class="fn"><a href="#fn-${n}" id="fnref-${n}">${n}</a></sup>`);
     return `PHDFMATH${slots.length - 1}`;
-  });
+  };
+  text = outsideCode(text, (part) => part.replace(/\[\^([^\]\s]+)\]/g, ref));
   const items = notes.map((x, i) => `<li id="fn-${i + 1}">${md.renderInline(x.body)} <a href="#fnref-${i + 1}">↩</a></li>`);
   blocks.push(`<section class="footnotes"><ol>${items.join("")}</ol></section>`);
   return `${text}\n\nPHDFHTML${blocks.length - 1}\n`;

@@ -1,5 +1,5 @@
 // A Markdown file being edited: loaded from disk, autosaved, reloaded when changed elsewhere.
-import { api } from "./api";
+import { api, type TextFile } from "./api";
 
 const AUTOSAVE_MS = 800;
 
@@ -39,7 +39,10 @@ export class MdDoc {
   }
 
   async load() {
-    const file = await (await api()).read_text(this.path);
+    this.take(await (await api()).read_text(this.path));
+  }
+
+  private take(file: TextFile) {
     this.exists = file.exists;
     this.mtime = file.mtime;
     this.savedText = file.exists ? file.text : "";
@@ -134,6 +137,9 @@ export class MdDoc {
   async checkExternal() {
     if (!this.loaded || this.dirty) return;
     const mtime = await (await api()).file_mtime(this.path);
-    if (mtime !== null && mtime !== this.mtime) await this.load();
+    if (mtime === null || mtime === this.mtime) return;
+    const file = await (await api()).read_text(this.path);
+    // Typed into meanwhile: keep those edits (autosave writes them over the file).
+    if (!this.dirty) this.take(file);
   }
 }

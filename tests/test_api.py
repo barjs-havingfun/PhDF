@@ -41,6 +41,7 @@ def test_closing_a_window_releases_its_documents(tmp_path, sample_pdf):
 def test_closing_never_waits_for_a_busy_engine(tmp_path, sample_pdf):
     core = make_core(tmp_path)
     a = Api(core, "a")
+    a._window = FakeWindow()
     a.open_document(str(sample_pdf))
     busy = threading.Event()
     done = threading.Event()
@@ -53,7 +54,7 @@ def test_closing_never_waits_for_a_busy_engine(tmp_path, sample_pdf):
     threading.Thread(target=hold_lock, daemon=True).start()
     busy.wait(2)
     start = time.monotonic()
-    assert a._on_closing() is False  # can't tell: the page is asked instead
+    assert a._on_closing() is False  # the page is asked; the lock isn't needed
     assert time.monotonic() - start < 2
     done.set()
 
@@ -146,8 +147,101 @@ def test_file_dialog_filters_are_valid_for_pywebview():
 
     from webview.util import parse_file_type
 
-    source = (Path(__file__).parents[1] / "backend" / "phdf" / "api.py").read_text("utf-8")
+    package = Path(__file__).parents[1] / "backend" / "phdf" / "api"
+    source = "\n".join(f.read_text("utf-8") for f in package.glob("*.py"))
     filters = re.findall(r'"([^"()]+ \(\*[^"]*\))"', source)
     assert len(filters) >= 5
     for f in filters:
         parse_file_type(f)  # raises ValueError for an invalid filter
+
+
+def test_new_build_empties_the_page_cache(tmp_path):
+    from phdf.app import drop_stale_page_cache
+
+    index = tmp_path / "index.html"
+    index.write_text("v1")
+    cache = tmp_path / "webview" / "EBWebView" / "Default" / "Cache"
+    cache.mkdir(parents=True)
+    drop_stale_page_cache(index, tmp_path / "webview")
+    assert not cache.exists()
+    cache.mkdir()
+    drop_stale_page_cache(index, tmp_path / "webview")  # same build: cache kept
+    assert cache.exists()
+
+
+class FakeWindow:
+    def __init__(self):
+        self.scripts = []
+        self.destroyed = threading.Event()
+
+    def evaluate_js(self, script):
+        self.scripts.append(script)
+
+    def destroy(self):
+        self.destroyed.set()
+
+
+def test_identical_copies_are_separate_documents(tmp_path, sample_pdf):
+    import shutil
+
+    import pymupdf
+
+    copy = tmp_path / "copy.pdf"
+    shutil.copy(sample_pdf, copy)
+    original = sample_pdf.read_bytes()
+    core = make_core(tmp_path)
+    api = Api(core, "main")
+    a = api.open_document(str(sample_pdf))["docId"]
+    b = api.open_document(str(copy))["docId"]
+    assert a != b
+    api.add_annotation(b, 0, "note", [[300, 300, 320, 320]], "#34c759", "only in the copy")
+    api.save_document(b)
+    assert sample_pdf.read_bytes() == original
+    with pymupdf.open(copy) as doc:
+        assert doc[0].first_annot is not None
+
+
+def test_changes_reach_other_windows_showing_the_document(tmp_path, sample_pdf):
+    core = make_core(tmp_path)
+    a, b = Api(core, "a"), Api(core, "b")
+    for api in (a, b):
+        api._window = FakeWindow()
+        core.windows[api._window_id] = api
+    doc_id = a.open_document(str(sample_pdf))["docId"]
+    b.open_document(str(sample_pdf))
+    a.add_annotation(doc_id, 0, "note", [[300, 300, 320, 320]], "#34c759", "hi")
+    time.sleep(0.2)  # dispatched on threads
+    assert any("phdf:doc-changed" in s and doc_id in s for s in b._window.scripts)
+    assert not a._window.scripts
+
+
+def test_closing_asks_the_page_and_closes_a_silent_one(tmp_path, monkeypatch):
+    import phdf.api.windows
+
+    monkeypatch.setattr(phdf.api.windows, "CLOSE_WAIT", 0.1)
+    api = Api(make_core(tmp_path), "main")
+    api._window = FakeWindow()
+    assert api._on_closing() is False  # the page decides
+    time.sleep(0.05)
+    assert "phdf:close-request" in api._window.scripts[0]
+    assert api._window.destroyed.wait(2)  # no answer: closed anyway
+    assert api._on_closing() is True
+
+    api = Api(make_core(tmp_path), "main")
+    api._window = FakeWindow()
+    api._on_closing()
+    api.close_ack()  # the page answered and may ask the user: keep the window
+    assert not api._window.destroyed.wait(0.4)
+
+
+def test_image_snips_are_cleaned_up_when_the_window_closes(tmp_path, sample_pdf):
+    from pathlib import Path
+
+    api = Api(make_core(tmp_path), "main")
+    doc_id = api.open_document(str(sample_pdf))["docId"]
+    files = api.equation_snip(doc_id, 0, [0, 0, 200, 200], str(tmp_path), "image")
+    png = Path(files["png"])
+    assert png.name.startswith("img-") and png.read_bytes()[:4] == b"\x89PNG"
+    api._clean_up()
+    assert not png.exists()
+    assert not png.parent.exists()  # the temp folder goes when empty

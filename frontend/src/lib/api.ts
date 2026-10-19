@@ -213,6 +213,7 @@ interface PyApi {
   dock(paths: string[]): Promise<void>;
   md_files(folder: string): Promise<MdFile[]>;
   close_window(): Promise<void>;
+  close_ack(): Promise<void>;
   toggle_fullscreen(): Promise<void>;
   window_theme(dark: boolean): Promise<void>;
   epub_text_size(size: number): Promise<{ docId: string; pageSizes: [number, number][]; revs: Revs }[]>;
@@ -291,7 +292,7 @@ interface PyApi {
     bold?: boolean | null,
     rect?: Rect | null,
   ): Promise<AnnotChange>;
-  equation_snip(docId: string, page: number, rect: Rect, folder?: string | null): Promise<{ png: string; tex: string }>;
+  equation_snip(docId: string, page: number, rect: Rect, folder?: string | null, kind?: "equation" | "image"): Promise<{ png: string; tex: string }>;
   equation_result(texPath: string): Promise<string | null>;
   equation_cleanup(pngPath: string): Promise<void>;
   delete_annotation(docId: string, id: string): Promise<AnnotChange>;

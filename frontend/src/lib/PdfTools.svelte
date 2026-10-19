@@ -51,9 +51,12 @@
   }
 
   async function openFile(p: string) {
+    if (!(await settle())) return;
     await run(async () => {
+      // Open the new file first: if that fails, the current one stays as it was.
+      const next = await (await api()).tools_open(p);
       if (s) (await api()).tools_close(s.id);
-      s = await (await api()).tools_open(p);
+      s = next;
       selected = [];
       saved = true;
     });
@@ -78,7 +81,7 @@
     if (!s?.canUndo) return;
     const id = s.id;
     const next = await run(async () => (await api()).tools_undo(id));
-    if (next) s = next;
+    if (next) (s = next), (saved = false); // differs from the saved copy again
   }
 
   // --- selection -----------------------------------------------------------------------------------
@@ -197,19 +200,22 @@
     if (out) done(out, `Split into ${out.length} files next to the original.`);
   }
 
+  /** Unsaved changes: offer to save a copy first. False when the user cancels. Also used when
+   *  the window closes. */
+  export async function settle(): Promise<boolean> {
+    if (!s || saved) return true;
+    const k = await ask("Close without saving? Your changes are only in PhDF Tools until you save a copy.", [
+      { key: "cancel", label: "Cancel" },
+      { key: "close", label: "Close Without Saving" },
+      { key: "save", label: "Save Copy", primary: true },
+    ]);
+    if (k === "cancel") return false;
+    if (k === "save") await save();
+    return k === "close" || saved;
+  }
+
   async function close() {
-    if (s && !saved) {
-      const k = await ask("Close without saving? Your changes are only in PhDF Tools until you save a copy.", [
-        { key: "cancel", label: "Cancel" },
-        { key: "close", label: "Close Without Saving" },
-        { key: "save", label: "Save Copy", primary: true },
-      ]);
-      if (k === "cancel") return;
-      if (k === "save") {
-        await save();
-        if (!saved) return;
-      }
-    }
+    if (!(await settle())) return;
     if (s) (await api()).tools_close(s.id);
     onclose();
   }
@@ -559,6 +565,9 @@
     padding: 8px;
     border-radius: 13px;
     cursor: pointer;
+    /* Skip layout and painting of thumbnails out of view (big books). */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 150px auto 210px;
   }
 
   .thumb:hover {
@@ -568,6 +577,11 @@
   .thumb.sel {
     background: color-mix(in srgb, var(--accent) 18%, transparent);
     box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  .thumb.drop-before,
+  .thumb.drop-after {
+    content-visibility: visible; /* else the marker outside the box is clipped */
   }
 
   .thumb.drop-before::before,
