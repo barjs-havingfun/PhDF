@@ -1,5 +1,6 @@
 """OCR and export (Markdown, CSV)."""
 
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ from phdf.api.base import ApiBase
 from phdf.services import (
     ai_markdown,
     ocr,
+    workers,
 )
 
 
@@ -43,26 +45,23 @@ class OcrExportApi(ApiBase):
         scale = ocr.OCR_DPI / 72
         with self._core.lock:
             png = self._core.doc(doc_id).render_page(page, scale)
-        words = ocr.recognize(png, scale, languages)  # slow part, without the lock
+        # The slow part, in a worker process: MuPDF isn't thread-safe and the lock is free.
+        words = workers.run(ocr.recognize, png, scale, languages)
         with self._core.lock:
             doc = self._core.doc(doc_id)
             if words:
                 doc.add_invisible_text(page, [(w.text, w.bbox) for w in words], ocr.unicode_font())
-                self._core.text_revs[self._core.resolve(doc_id)] += 1
+                self._core.text_revs[self._core.resolve(doc_id)] = uuid.uuid4().hex[:8]
             return self._changed(doc_id, page, {"words": len(words)})
 
     # --- export -------------------------------------------------------------------------------
 
     def export_markdown(self, doc_id: str) -> str:
         """The document's text as Markdown (headings, lists, tables), including unsaved OCR."""
-        import pymupdf
-
-        pymupdf4llm = ai_markdown.converter()
-
         with self._core.lock:
             data = self._core.doc(doc_id).to_bytes()
-        with pymupdf.open("pdf", data) as copy:
-            return pymupdf4llm.to_markdown(copy, show_progress=False)
+        with workers.snapshot(data) as path:  # converted in a worker: MuPDF isn't thread-safe
+            return workers.run(ai_markdown.whole, path)
 
     def save_csv(self, name: str, text: str) -> str | None:
         """Ask where to save a CSV and write it (with a BOM, so Excel reads accents right)."""

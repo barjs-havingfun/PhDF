@@ -73,8 +73,19 @@ def _rgb(color: str) -> tuple[float, float, float]:
     return (int(c[0:2], 16) / 255, int(c[2:4], 16) / 255, int(c[4:6], 16) / 255)
 
 
+# Comics with more pages than this open with guessed page sizes (MuPdfDocument._sizes); a
+# few pages are measured at once, so their sizes are right before the window shows them.
+QUICK_SIZES_FROM = 30
+
+
+# Annotations without a name of their own get "x" + their xref as id (_annot_id). Only that
+# exact form is replaced when an annotation is recreated; ids PhDF made never start with "x".
+_FALLBACK_ID = re.compile(r"x\d+")
+
+
 def new_annotation_id() -> str:
-    return "".join(secrets.choice(_ID_CHARS) for _ in range(5))
+    first = secrets.choice(_ID_CHARS.replace("x", ""))
+    return first + "".join(secrets.choice(_ID_CHARS) for _ in range(4))
 
 
 class MuPdfDocument(PdfDocument):
@@ -83,9 +94,16 @@ class MuPdfDocument(PdfDocument):
     ) -> None:
         self._doc = doc
         self._path = Path(path) if path else None
-        self._password = password  # kept in memory only, to reopen after a full save
+        # Kept in memory only, to reopen after a full save. Also tells whether the file is
+        # encrypted: PyMuPDF's needs_pass, asked again after authenticate(), breaks reading the
+        # page's annotations afterwards (UnicodeDecodeError, PyMuPDF 1.28).
+        self._password = password
         # Tracked ourselves: PyMuPDF's is_dirty stays set after an incremental save.
         self._dirty = False
+        # Comics: each page's size means reading its whole picture from the archive (seconds
+        # for a big volume), so they open with every page like the first one; the real sizes
+        # are measured in the background (Api) and kept here.
+        self._sizes: list[tuple[float, float]] | None = None
 
     def info(self) -> DocumentInfo:
         meta = self._doc.metadata or {}
@@ -93,8 +111,9 @@ class MuPdfDocument(PdfDocument):
             page_count=self._doc.page_count,
             title=meta.get("title") or None,
             author=meta.get("author") or None,
-            is_encrypted=self._doc.needs_pass,
+            is_encrypted=self._password is not None,
             reflowable=bool(self._doc.is_reflowable),
+            kind="pdf" if self._doc.is_pdf else "ebook" if self._doc.is_reflowable else "comic",
         )
 
     def page_size(self, page: int) -> tuple[float, float]:
@@ -107,10 +126,28 @@ class MuPdfDocument(PdfDocument):
 
     def render_page(self, page: int, scale: float = 1.0, clip: Rect | None = None) -> bytes:
         p = self._doc[page]
+        if clip is None and (picture := self._original_picture(p, scale)):
+            return picture
         pix = p.get_pixmap(matrix=pymupdf.Matrix(scale, scale), clip=clip, alpha=False)
         if self._photo_heavy(p, pymupdf.Rect(clip) if clip else p.rect):
             return pix.tobytes("jpg", jpg_quality=88)
         return pix.tobytes("png")
+
+    def _original_picture(self, page: pymupdf.Page, scale: float) -> bytes | None:
+        """Comics: a page that is one JPEG / PNG goes out as it is, and the web view scales it.
+        Decoding, scaling and encoding it again took ~0.15 s a page (a 2 MB scan). Only when
+        about that sharp is asked for: thumbnails stay small."""
+        if self._doc.is_pdf or self._doc.is_reflowable:
+            return None
+        blocks = page.get_text("dict", flags=pymupdf.TEXT_PRESERVE_IMAGES)["blocks"]
+        if len(blocks) != 1 or blocks[0]["type"] != 1 or blocks[0]["ext"] not in ("jpeg", "png"):
+            return None
+        picture = blocks[0]
+        if abs(pymupdf.Rect(picture["bbox"]) & page.rect) < 0.98 * abs(page.rect):
+            return None
+        if page.rect.width * scale < 0.5 * picture["width"]:
+            return None
+        return bytes(picture["image"])
 
     @staticmethod
     def _photo_heavy(page: pymupdf.Page, area: pymupdf.Rect) -> bool:
@@ -170,11 +207,17 @@ class MuPdfDocument(PdfDocument):
         rects = self._doc[page].search_for(query)[:max_hits] if query else []
         return SearchHit(page=page, rects=[_rect(r) for r in rects]) if rects else None
 
-    def page_sizes(self) -> list[tuple[float, float]]:
+    def page_sizes(self, quick: bool = False) -> list[tuple[float, float]]:
         """Read from the page tree without loading each page: a big book opens much faster."""
         doc = self._doc
         if not doc.is_pdf:
-            return super().page_sizes()
+            if doc.is_reflowable:
+                return super().page_sizes()
+            if self._sizes is None:
+                if quick and doc.page_count > QUICK_SIZES_FROM:
+                    return [self.page_size(0)] * doc.page_count
+                self._sizes = super().page_sizes()
+            return list(self._sizes)
         sizes = []
         for i in range(doc.page_count):
             try:
@@ -184,6 +227,13 @@ class MuPdfDocument(PdfDocument):
             except Exception:
                 sizes.append(self.page_size(i))
         return sizes
+
+    def sizes_known(self) -> bool:
+        return self._doc.is_pdf or self._doc.is_reflowable or self._sizes is not None
+
+    def remember_sizes(self, sizes: list[tuple[float, float]]) -> None:
+        if len(sizes) == self._doc.page_count:
+            self._sizes = list(sizes)
 
     def outline(self) -> list[OutlineItem]:
         # get_toc() is a flat list of [level, title, page(1-based)]; rebuild the tree.
@@ -365,7 +415,7 @@ class MuPdfDocument(PdfDocument):
             annot.set_colors(stroke=rgb)
         annot.set_info(content=contents)
         annot.update()
-        nm = annot_id if annot_id and not annot_id.startswith("x") else new_annotation_id()
+        nm = annot_id if annot_id and not _FALLBACK_ID.fullmatch(annot_id) else new_annotation_id()
         self._doc.xref_set_key(annot.xref, "NM", pymupdf.get_pdf_str(nm))
         self._dirty = True
         return self._to_model(p, annot)
@@ -509,7 +559,9 @@ class MuPdfEngine(PdfEngine):
 
     def open(self, path: str | Path, password: str | None = None) -> PdfDocument:
         doc = pymupdf.open(path)
-        if doc.needs_pass and not (password and doc.authenticate(password)):
+        if not doc.needs_pass:
+            password = None  # not encrypted: info().is_encrypted is False
+        elif not (password and doc.authenticate(password)):
             doc.close()
             raise PasswordRequired(str(path))
         if doc.is_reflowable:

@@ -196,6 +196,13 @@ class Store:
         with self._lock, self._conn:
             self._conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
 
+    def document_path(self, doc_id: str) -> str | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT path FROM documents WHERE doc_id = ?", (doc_id,)
+            ).fetchone()
+        return row[0] if row else None
+
     def set_document_path(self, doc_id: str, path: str) -> None:
         with self._lock, self._conn:
             self._conn.execute("UPDATE documents SET path = ? WHERE doc_id = ?", (path, doc_id))

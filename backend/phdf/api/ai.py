@@ -108,7 +108,9 @@ class AiApi(ApiBase):
     def _ai_file(self, doc_id: str, part: str) -> Path:
         """Cache file of the AI's Markdown copy (`part`: "all" or "p<a>-<b>"). Caller holds lock."""
         current = self._core.resolve(doc_id)
-        rev = self._core.text_revs[current]
+        rev = self._core.text_revs.get(current, "0")
+        if self._core.doc(doc_id).info().reflowable:  # e-book pages depend on the text size
+            part += f"-t{getattr(self._core.engine, 'reflow', {}).get('fontsize', '')}"
         return ai_cache.folder(data_dir()) / f"{current[:12]}-{part}-r{rev}.md"
 
     def ai_context(self, doc_id: str, first_page: int, last_page: int) -> dict[str, Any]:

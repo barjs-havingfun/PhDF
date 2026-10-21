@@ -63,15 +63,20 @@
     <button role="menuitem" onclick={more(() => (ui.print = true))}>Print… <span class="shortcut">{kbd("Ctrl+P")}</span></button>
     <button role="menuitem" onclick={more(() => (ui.tools = { path: pdf.path }))}>PDF Tools… (rotate, reorder, split…)</button>
     <div class="menu-sep"></div>
+    {#if !pdf.isComic}<!-- comic pages are pictures: no text to export or recognize -->
     <button role="menuitem" onclick={more(onexporthighlights)}>Export Highlights to Note</button>
     <button role="menuitem" onclick={more(() => onexportmarkdown("file"))}>Export as Markdown…</button>
-    <button role="menuitem" onclick={more(() => onexportmarkdown("vault"))}>Export to Obsidian Vault</button>
-    <button role="menuitem" onclick={more(oncopynote)}>Copy Note to Obsidian</button>
+    <button role="menuitem" onclick={more(() => onexportmarkdown("vault"))}>Export to Vault</button>
+    <button role="menuitem" onclick={more(oncopynote)}>Copy Note to Vault</button>
     <div class="menu-sep"></div>
     <button role="menuitem" onclick={more(onrecognize)} disabled={!!active.ocrProgress}>Recognize Text (OCR)</button>
     <div class="menu-sep"></div>
+    {:else}
+    <button role="menuitem" onclick={more(oncopynote)}>Copy Note to Vault</button>
+    <div class="menu-sep"></div>
+    {/if}
   {:else if note}
-    <button role="menuitem" onclick={more(oncopynote)}>Copy Note to Obsidian</button>
+    <button role="menuitem" onclick={more(oncopynote)}>Copy Note to Vault</button>
     <div class="menu-sep"></div>
   {/if}
   <button role="menuitem" onclick={() => (onclose(), (ui.settingsOpen = true))}>Settings…</button>

@@ -30,8 +30,10 @@ Backend `backend/phdf/`
 - `db/store.py`: SQLite; append-only `MIGRATIONS`; settings are JSON key/values.
 - `services/`: small path-based modules used by `Api`: `terminal` (PTY sessions, AI process
   detection), `ai_cache`, `equations`, `grading`, `ocr`, `parking`, `render_server`,
-  `webview_memory`, `pdftools` (PhDF Tools sessions), `ai_markdown`.
+  `webview_memory`, `pdftools` (PhDF Tools sessions), `ai_markdown`, `workers` (OCR and Markdown
+  conversion in worker processes: MuPDF is not thread-safe).
 - `docid.py` (content hash), `paths.py` (data dir, `PHDF_DATA_DIR`), `env.py` (`.env`).
+- `selftest.py`: `PhDF --self-test`, a no-window check of a built app (release CI runs it).
 
 Frontend `frontend/src/`
 - `App.svelte`: shell: windows / panes / tabs, opening files, sidebar, session restore,
@@ -50,7 +52,7 @@ Frontend `frontend/src/`
   (CodeMirror `MdEditor`, `format.ts` commands, `FormatBar`, right-click `EditorMenu` with Ask
   AI, `MdSidebar` (a standalone note's Contents / Files), `live.ts` Live mode, markdown-it `render.ts`, typography), `lib/ai/` (`terminal.svelte.ts`: terminal tabs, default agent,
   `askAi`, terminal font, go to folder; `AiPanel`, `AgentPicker`, `TerminalGuide`, `DocAiMenu`, equation flow),
-  `lib/focus/`, `lib/grading/`, `lib/library/`, `PaneView`, `Sidebar`, `LinkPeek`, `Help`,
+  `lib/focus/`, `lib/grading/`, `lib/library/` (Library, `kinds.ts` tags / filter), `PaneView`, `Sidebar`, `LinkPeek`, `Help`,
   `Settings` (incl. About), `PrintSheet`, `PdfTools` (PhDF Tools view), `CommandPalette`, `platform.ts` (`kbd()`, `copyText()`), `updates.ts` (opt-in update check), `outside.ts` (close menus on outside press), `pin.ts`, `cite.ts`.
 
 ## Patterns
@@ -58,6 +60,21 @@ Frontend `frontend/src/`
 - Annotation edits return `{dirty, revs}`; the frontend applies them and page images reload
   through `&r=<rev>`. Undo: raw `_add/_update/_delete` + public wrappers that `record()` a step.
 - New feature state that should persist: a settings key (`get_setting` / `set_setting`).
+- Document identity (read before touching ids, saves, copies or caches):
+  - *Content id* `document_id(path)`: SHA-256 of size + first 1 MB. Positions, bookmarks and
+    the Library follow it across renames and moves.
+  - *Copy id* `copy_id(content, path)`: an identical copy of a file that is already open (or
+    whose content matches an old id) gets an id of its own, so edits never land in the other
+    file. It depends on the path, so a moved copy is recognised by content + its old path
+    (`library_relink`).
+  - *Session id*: the id a window opened a document under. A save changes the content, so the
+    document gets a new id and the old one becomes an alias (`Core.resolve`). Windows keep the
+    old id; compare `resolve(a) == resolve(b)`, never the raw ids. Each window holds one
+    reference per document (`_open`).
+  - *Text generation* (`Core.text_revs`): "0" is the text on disk, and each unsaved OCR change
+    gets a new random label. AI Markdown copies are named `<id>-<part>[-t<size>]-r<label>`
+    (`-t`: an e-book's text size), so text that was discarded or laid out again never matches.
+  - Passwords (`Core.passwords`) live in memory under the current id and follow saves.
 - Comments are short and explain why. Platform-specific code goes in `lib/platform.ts`.
 - Frontend tests: Vitest, `frontend/src/test/*.test.ts` (pure modules; `api` mocked with `vi.mock`).
 - Tests: `tests/test_<area>.py`, `Api(Core(default_engine(), Store(tmp)), "main")` with

@@ -10,6 +10,8 @@ cached (see `Api.ai_markdown_prepare`); page ranges are then cut from it.
 import re
 from collections.abc import Callable
 
+from phdf.services import workers
+
 MARK = "<!-- PDF page {} -->"
 _MARK = re.compile(r"^<!-- PDF page (\d+) -->$", re.M)
 CHUNK = 8  # pages per conversion call (progress steps)
@@ -26,20 +28,35 @@ def converter():
 
 
 def convert(data: bytes, pages: list[int], progress: Callable[[int], object] | None = None) -> str:
-    """Pages (0-based) of a PDF given as bytes, as Markdown with page markers."""
-    import pymupdf
-
-    pymupdf4llm = converter()
+    """Pages (0-based) of a PDF given as bytes, as Markdown with page markers. Converted in a
+    worker process (MuPDF isn't thread-safe), CHUNK pages at a time for the progress."""
     out: list[str] = []
-    with pymupdf.open("pdf", data) as doc:
+    with workers.snapshot(data) as path:
         for i in range(0, len(pages), CHUNK):
-            part = pages[i : i + CHUNK]
-            chunks = pymupdf4llm.to_markdown(doc, pages=part, page_chunks=True, show_progress=False)
-            for page, chunk in zip(part, chunks, strict=False):
-                out.append(f"{MARK.format(page + 1)}\n\n{chunk['text'].strip()}\n")
+            out.append(workers.run(convert_part, path, pages[i : i + CHUNK]))
             if progress:
                 progress(min(i + CHUNK, len(pages)))
     return "\n".join(out)
+
+
+def convert_part(path: str, part: list[int]) -> str:
+    """In a worker: some pages of the PDF file at `path`."""
+    import pymupdf
+
+    with pymupdf.open(path) as doc:
+        chunks = converter().to_markdown(doc, pages=part, page_chunks=True, show_progress=False)
+    return "\n".join(
+        f"{MARK.format(page + 1)}\n\n{chunk['text'].strip()}\n"
+        for page, chunk in zip(part, chunks, strict=False)
+    )
+
+
+def whole(path: str) -> str:
+    """In a worker: the whole PDF file at `path` as Markdown (Export as Markdown)."""
+    import pymupdf
+
+    with pymupdf.open(path) as doc:
+        return converter().to_markdown(doc, show_progress=False)
 
 
 def cut(text: str, first: int, last: int) -> str:

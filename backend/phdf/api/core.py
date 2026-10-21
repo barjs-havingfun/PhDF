@@ -50,14 +50,17 @@ class Core:
         self.windows: dict[str, Api] = {}
         self.startup_paths: list[str] = []  # files from the command line, opened once
         self.startup_taken = False  # a page has asked for them: later files go to a window
+        self.smoke = False  # `PhDF --smoke-ui <file>` (release CI): quit once the page reports
         self._docs: dict[str, PdfDocument] = {}
         self._paths: dict[str, str] = {}
         self._refs: Counter[str] = Counter()
         self._aliases: dict[str, str] = {}  # old id -> current id, after saves
         self._revs: defaultdict[str, Counter[int]] = defaultdict(Counter)  # page render revisions
         # Text revision per document: only OCR changes the text (annotations don't), so the AI's
-        # Markdown copies are keyed by this, not by the render revisions.
-        self.text_revs: Counter[str] = Counter()
+        # Markdown copies are keyed by this, not by the render revisions. "0" (absent) is the
+        # text on disk; each unsaved change gets a new random label, so copies made from text
+        # that was later discarded (closed unsaved, reverted) never match again.
+        self.text_revs: dict[str, str] = {}
         self.md_jobs: dict[str, dict[str, Any]] = {}  # whole-document conversions, by cache file
         # Passwords of encrypted PDFs opened this session (memory only, never stored).
         self.passwords: dict[str, str] = {}
@@ -100,6 +103,8 @@ class Core:
         if self._refs[doc_id] <= 0:
             del self._refs[doc_id]
             self._paths.pop(doc_id, None)
+            self.passwords.pop(doc_id, None)
+            self.text_revs.pop(doc_id, None)  # unsaved OCR text goes with the document
             if doc := self._docs.pop(doc_id, None):
                 doc.close()  # unsaved changes are discarded with the last reference
             if self.on_closed_document:
@@ -137,6 +142,8 @@ class Core:
                 table[new] = table.pop(old)
             self._refs[new] = self._refs.pop(old)
             self._revs[new] = self._revs.pop(old)
+            if old in self.passwords:  # Revert reopens it with this
+                self.passwords[new] = self.passwords.pop(old)
             self._aliases[old] = new
             self.store.rename_document(old, new)
         return new
@@ -144,8 +151,11 @@ class Core:
     def revert(self, doc_id: str) -> None:
         """Throw away unsaved changes by reopening the file."""
         current = self.resolve(doc_id)
+        # Opened first (with its password, if it has one): if that fails, the document stays
+        # open as it was instead of closed.
+        fresh = self.engine.open(self._paths[current], self.passwords.get(current))
         self._docs[current].close()
-        self._docs[current] = self.engine.open(self._paths[current])
+        self._docs[current] = fresh
         self.text_revs.pop(current, None)
         self.bump(current)
 
@@ -164,7 +174,9 @@ class Core:
         if self.windows:
             self.store.delete_setting(SESSION_PREFIX + window_id)
 
-    def tell_windows(self, doc_id: str, event: str, detail: dict[str, Any], skip: "Api") -> None:
+    def tell_windows(
+        self, doc_id: str, event: str, detail: dict[str, Any], skip: "Api | None"
+    ) -> None:
         """Send `phdf:<event>` to the other windows showing this document, each with the id it
         knows the document by, so their views don't go stale. Never waits for a window."""
         current = self.resolve(doc_id)

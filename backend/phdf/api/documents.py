@@ -2,6 +2,8 @@
 
 import os
 import sys
+import threading
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,9 @@ from phdf.services import (
     webview_memory,
 )
 
+# Comics opened with guessed page sizes are measured this many seconds later (_measure_pages).
+MEASURE_AFTER = 1.0
+
 
 class DocumentsApi(ApiBase):
     # --- documents --------------------------------------------------------------------------
@@ -26,6 +31,9 @@ class DocumentsApi(ApiBase):
         core = self._core
         with core.lock:
             doc_id = core.open_id(document_id(path), path)
+            # Already open here, maybe under the id it had before a save: no second reference.
+            current = core.resolve(doc_id)
+            doc_id = next((held for held in self._open if core.resolve(held) == current), doc_id)
             if doc_id in self._open:
                 doc = core.doc(doc_id)
             else:
@@ -39,9 +47,12 @@ class DocumentsApi(ApiBase):
                     return {"needsPassword": True, "wrong": bool(password)}
                 self._open.add(doc_id)
             info = doc.info()
-            sizes = doc.page_sizes()
+            sizes = doc.page_sizes(quick=True)
+            measure = not doc.sizes_known()
             dirty = doc.dirty
             revs = core.revs(doc_id)
+        if measure:
+            threading.Thread(target=self._measure_pages, args=(doc_id, sizes), daemon=True).start()
         title = info.title or Path(path).stem
         previous = core.store.last_opened(doc_id)
         record = core.store.touch_document(doc_id, str(path), title, info.page_count)
@@ -56,6 +67,28 @@ class DocumentsApi(ApiBase):
             "revs": revs,
             "lastOpened": previous,  # unix time of the previous visit, or None
         }
+
+    def _measure_pages(self, doc_id: str, guess: list[tuple[float, float]]) -> None:
+        """A comic opened with guessed page sizes: measure them one page at a time, the lock
+        released in between so pages keep rendering, then tell the windows if they differ."""
+        core = self._core
+        sizes: list[tuple[float, float]] = []
+        time.sleep(MEASURE_AFTER)  # the first pages are drawn first
+        for page in range(len(guess)):
+            time.sleep(0.001)  # a waiting render gets the lock (Python's lock isn't fair)
+            with core.lock:
+                try:
+                    doc = core.doc(doc_id)
+                except KeyError:
+                    return  # closed meanwhile
+                if doc.sizes_known():
+                    return  # another window measured it
+                sizes.append(doc.page_size(page))
+        with core.lock:
+            doc.remember_sizes(sizes)
+        rounded = [[round(w, 2), round(h, 2)] for w, h in sizes]
+        if rounded != [[round(w, 2), round(h, 2)] for w, h in guess]:
+            core.tell_windows(doc_id, "doc-sizes", {"pageSizes": rounded}, skip=None)
 
     def close_document(self, doc_id: str) -> None:
         with self._core.lock:
@@ -144,6 +177,14 @@ class DocumentsApi(ApiBase):
             import subprocess
 
             subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])  # noqa: S603
+
+    def open_in_preview(self, path: str) -> None:
+        """macOS: open a file in Preview itself (with PhDF as the default PDF app, `open` would
+        hand it back to PhDF)."""
+        if sys.platform == "darwin" and Path(path).is_file():
+            import subprocess
+
+            subprocess.Popen(["open", "-a", "Preview", path])  # noqa: S603, S607
 
     # --- bookmarks ------------------------------------------------------------------------------
 

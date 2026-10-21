@@ -27,6 +27,7 @@ interface ReadSettings {
   tint: Tint;
   pages: PageLayout;
   epubSize: number;
+  spoiler: boolean;
 }
 
 export const read = $state({
@@ -35,6 +36,7 @@ export const read = $state({
   tint: "none" as Tint,
   pages: "single" as PageLayout,
   epubSize: 11, // e-book text size (pt); the backend lays EPUBs out with it
+  spoiler: false, // book view: the page read second stays blurred until revealed
   zen: false, // not remembered: always start with the normal UI
   book: false, // book view (two pages, turn with buttons); not remembered
   fullscreen: false,
@@ -46,8 +48,8 @@ export async function loadReadSettings() {
 }
 
 export async function saveReadSettings() {
-  const { ruler, rulerSize, tint, pages, epubSize } = read;
-  await (await api()).set_setting("readmode", { ruler, rulerSize, tint, pages, epubSize });
+  const { ruler, rulerSize, tint, pages, epubSize, spoiler } = read;
+  await (await api()).set_setting("readmode", { ruler, rulerSize, tint, pages, epubSize, spoiler });
 }
 
 /** First page of the row (spread) a page is in. */
@@ -64,6 +66,17 @@ export function stepRow(page: number, delta: 1 | -1, count: number): number {
   if (delta > 0) return Math.min(read.pages === "cover" && start === 0 ? 1 : start + 2, count - 1);
   if (read.pages === "cover" && start <= 1) return 0;
   return Math.max(start - 2, 0);
+}
+
+/** Which way an arrow key turns: → forward, or ← when the pages run right to left (comics). */
+export function arrowStep(key: string, rtl: boolean): 1 | -1 | 0 {
+  const step = key === "arrowright" ? 1 : key === "arrowleft" ? -1 : 0;
+  return (rtl && step ? -step : step) as 1 | -1 | 0;
+}
+
+/** A row's pages from left to right on the screen: right to left puts the first one on the right. */
+export function onScreen(row: number[], rtl: boolean): number[] {
+  return rtl ? [...row].reverse() : row;
 }
 
 // --- Focus: pomodoro -----------------------------------------------------------------------------

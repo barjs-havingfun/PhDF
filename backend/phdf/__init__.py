@@ -1,3 +1,3 @@
 """PhDF — a lightweight, reader-first PDF app."""
 
-__version__ = "0.8.1"
+__version__ = "0.9.1"

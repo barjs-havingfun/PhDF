@@ -16,6 +16,7 @@ import webview
 from phdf import __version__
 from phdf.api.base import ApiBase
 from phdf.api.core import CLOSE_WAIT, RELEASES_API, RELEASES_PAGE, SESSION_PREFIX
+from phdf.paths import data_dir
 from phdf.services import (
     titlebar,
     uizoom,
@@ -33,7 +34,18 @@ class WindowsApi(ApiBase):
             "windowId": self._window_id,
             "detached": self._window_id.startswith("d"),
             "platform": {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux"),
+            "smoke": self._core.smoke,
         }
+
+    def ui_ready(self, report: dict[str, Any]) -> None:
+        """`--smoke-ui` only: the page started, opened the file and shows a page image (the
+        report says what it saw). Written to `<data dir>/ui-ready.json`, then PhDF quits."""
+        if not self._core.smoke:
+            return
+        ok = bool(report.get("pageImage")) and int(report.get("tabs", 0)) >= 1
+        (data_dir() / "ui-ready.json").write_text(json.dumps({**report, "ok": ok}), "utf-8")
+        for api in list(self._core.windows.values()):
+            api.close_window()
 
     def startup_paths(self) -> list[str]:
         """Files PhDF was started with; handed to the first window that asks."""
@@ -48,9 +60,10 @@ class WindowsApi(ApiBase):
             return None
         types = {
             "document": (
-                "Documents (*.pdf;*.epub;*.md)",
+                "Documents (*.pdf;*.epub;*.cbz;*.md)",
                 "PDF files (*.pdf)",
                 "EPUB books (*.epub)",
+                "Comics (*.cbz)",
                 "Markdown (*.md)",
             ),
             "pdf": ("PDF files (*.pdf)",),

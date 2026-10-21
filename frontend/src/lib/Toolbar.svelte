@@ -42,6 +42,8 @@
     oncopynote: () => void;
     onrecognize: () => void;
     onopen: () => void;
+    /** Show the start screen (Library, Recents) in the focused pane. */
+    onhome: () => void;
     /** Save the PDF's annotations and write its notes (or the focused note) now. */
     onsave: () => void;
     /** Only in a detached window: put its tabs back into the main window. */
@@ -51,7 +53,7 @@
   let {
     active, note, ready, invert, parking, paneId, viewer, cansidebar,
     ontogglesidebar, onzen, onfullscreen, onpark, onsetfit, oninvert, onsnip, onterminal, ongrading,
-    onstopgrading, onexporthighlights, onexportmarkdown, oncopynote, onrecognize, onopen, onsave, ondock,
+    onstopgrading, onexporthighlights, onexportmarkdown, oncopynote, onrecognize, onopen, onhome, onsave, ondock,
   }: Props = $props(); // prettier-ignore
 
   let zoomMenu = $state(false);
@@ -183,13 +185,18 @@
       <Icon name="right" />
     </button>
     {/if}
+    {#if shown("home")}
+    <button class="tool" class:on={!active && !note} title="Home: Library and Recents" onclick={onhome} aria-label="Home">
+      <Icon name="home" />
+    </button>
+    {/if}
     {#if shown("read")}
     <div class="drop" data-menu="read">
       <button class="pill" class:on={readMenu || read.ruler || read.tint !== "none"} onclick={() => (readMenu = !readMenu)}>
         <Icon name="book" size={15} /> <span class="pill-label">Read</span> <Icon name="chevron" size={12} />
       </button>
       {#if readMenu}
-        <ReadMenu onclose={() => (readMenu = false)} onzen={() => ((readMenu = false), onzen())} onfullscreen={() => ((readMenu = false), onfullscreen())} />
+        <ReadMenu {active} {onsetfit} onclose={() => (readMenu = false)} onzen={() => ((readMenu = false), onzen())} onfullscreen={() => ((readMenu = false), onfullscreen())} />
       {/if}
     </div>
     {/if}

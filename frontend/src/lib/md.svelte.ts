@@ -1,5 +1,6 @@
 // A Markdown file being edited: loaded from disk, autosaved, reloaded when changed elsewhere.
 import { api, type TextFile } from "./api";
+import { notify } from "./notify.svelte";
 
 const AUTOSAVE_MS = 800;
 
@@ -9,6 +10,9 @@ export class MdDoc {
   exists = $state(false);
   loaded = $state(false);
   saving = $state(false);
+  /** The file changed elsewhere (another window or app) while this one had edits: nothing is
+   *  written until the user picks Keep Mine or Load Theirs. */
+  conflict = $state(false);
   /** Bumped when the text changes from outside the editor (load, reload, inserted pins). */
   revision = $state(0);
   /** Last cursor position in the editor (null until the user has clicked into it). */
@@ -43,6 +47,7 @@ export class MdDoc {
   }
 
   private take(file: TextFile) {
+    this.conflict = false;
     this.exists = file.exists;
     this.mtime = file.mtime;
     this.savedText = file.exists ? file.text : "";
@@ -119,18 +124,46 @@ export class MdDoc {
     return run;
   }
 
-  private async write() {
+  private async write(force = false) {
+    if (this.conflict && !force) return; // waiting for the user's choice
     if (!this.dirty && this.exists) return;
     if (!this.exists && this.text === this.template) return; // nothing worth creating a file
     const text = this.text;
     this.saving = true;
     try {
-      this.mtime = await (await api()).write_text(this.path, text);
+      // The time this editor last saw: a newer file on disk is not overwritten unasked.
+      const expected = this.exists && !force ? this.mtime : null;
+      this.mtime = await (await api()).write_text(this.path, text, expected);
       this.savedText = text;
       this.exists = true;
+      this.conflict = false;
+    } catch (e) {
+      if (!String(e).includes("PHDF_CHANGED_ELSEWHERE")) throw e;
+      this.conflict = true;
+      this.askConflict();
     } finally {
       this.saving = false;
     }
+  }
+
+  /** Changed elsewhere: keep this editor's text (overwrite the file) or take the file's. */
+  askConflict() {
+    notify.show(
+      {
+        text: `“${this.name}” was changed in another window or app. Your edits here are not saved yet.`,
+        error: true,
+        action: { label: "Keep Mine", run: () => void this.overwrite() },
+        action2: { label: "Load Theirs", run: () => void this.load() },
+      },
+      10 * 60_000,
+    );
+  }
+
+  private overwrite(): Promise<void> {
+    clearTimeout(this.timer);
+    const run = this.writing.catch(() => {}).then(() => this.write(true));
+    this.writing = run;
+    return run;
   }
 
   /** Reload if the file changed on disk and there are no local edits. */

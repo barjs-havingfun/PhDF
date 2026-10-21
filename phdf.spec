@@ -98,6 +98,8 @@ if sys.platform == "darwin":
                  "LSHandlerRank": "Alternate", "LSItemContentTypes": ["com.adobe.pdf"]},
                 {"CFBundleTypeName": "EPUB book", "CFBundleTypeRole": "Viewer",
                  "LSHandlerRank": "Alternate", "LSItemContentTypes": ["org.idpf.epub-container"]},
+                {"CFBundleTypeName": "Comic book", "CFBundleTypeRole": "Viewer",
+                 "LSHandlerRank": "Alternate", "CFBundleTypeExtensions": ["cbz"]},
                 {"CFBundleTypeName": "Markdown note", "CFBundleTypeRole": "Editor",
                  "LSHandlerRank": "Alternate",
                  "LSItemContentTypes": ["net.daringfireball.markdown"]},

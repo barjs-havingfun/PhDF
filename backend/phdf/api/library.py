@@ -10,6 +10,7 @@ import webview
 
 from phdf import __version__
 from phdf.api.base import ApiBase
+from phdf.api.core import copy_id
 from phdf.docid import document_id
 from phdf.paths import data_dir
 from phdf.services import (
@@ -82,7 +83,11 @@ class LibraryApi(ApiBase):
         path = self.pick_file("document")
         if not path:
             return {"ok": False, "reason": "cancelled"}
-        if document_id(path) != doc_id:
+        content = document_id(path)
+        # An identical copy of another file has an id made from its content and its old path
+        # (core.copy_id): the same content is accepted for it too.
+        old = self._core.store.document_path(doc_id)
+        if content != doc_id and not (old and copy_id(content, old) == doc_id):
             return {"ok": False, "reason": "different"}
         self._core.store.set_document_path(doc_id, str(Path(path)))
         return {"ok": True, "path": str(Path(path))}
@@ -122,21 +127,25 @@ class LibraryApi(ApiBase):
         }
 
     def library_cover(self, doc_id: str, path: str) -> str | None:
-        """A small PNG of page 1 (data URL), cached in PhDF's data folder."""
+        """A small JPEG of page 1 (data URL), cached in PhDF's data folder. JPEG: a fifth of a
+        PNG's size, and every cover crosses the bridge to the page as text."""
         import pymupdf
 
-        cache = data_dir() / "covers" / f"{doc_id[:16]}.png"
+        cache = data_dir() / "covers" / f"{doc_id[:16]}.jpg"
         if not cache.exists():
             if not Path(path).is_file():
                 return None
             try:
-                with pymupdf.open(path) as doc:
+                with self._core.lock, pymupdf.open(path) as doc:  # MuPDF isn't thread-safe
                     page = doc[0]
                     pix = page.get_pixmap(
-                        matrix=pymupdf.Matrix(220 / page.rect.width, 220 / page.rect.width)
+                        matrix=pymupdf.Matrix(220 / page.rect.width, 220 / page.rect.width),
+                        alpha=False,
                     )
-                    cache.parent.mkdir(parents=True, exist_ok=True)
-                    cache.write_bytes(pix.tobytes("png"))
+                    picture = pix.tobytes("jpg", jpg_quality=82)
             except Exception:  # noqa: BLE001 — unreadable / encrypted: no cover
                 return None
-        return "data:image/png;base64," + base64.b64encode(cache.read_bytes()).decode()
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_bytes(picture)
+            cache.with_suffix(".png").unlink(missing_ok=True)  # made by older versions
+        return "data:image/jpeg;base64," + base64.b64encode(cache.read_bytes()).decode()

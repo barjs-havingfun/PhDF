@@ -30,6 +30,8 @@ desktop.ini
 
 # Test documents (large / copyrighted) — never commit
 *.pdf
+*.epub
+*.cbz
 
 # Owner's local working notes and planning (kept on this computer, not on GitHub)
 notes.md

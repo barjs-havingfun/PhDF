@@ -42,7 +42,7 @@
   async function toObsidian() {
     if (!(await (await api()).get_setting("obsidian.vault", null))) {
       onclose();
-      notify.show({ text: "Choose your Obsidian vault first.", action: { label: "Settings", run: () => (ui.settingsOpen = true) } });
+      notify.show({ text: "Choose your vault first (Settings → Vault).", action: { label: "Settings", run: () => (ui.settingsOpen = true) } });
       return;
     }
     const [first] = await annotate("highlight", DEFAULT_COLOR);
@@ -50,11 +50,11 @@
     try {
       const path = await tab.sendToObsidian(first);
       notify.show({
-        text: `Sent to Obsidian · ${path.split(/[\\/]/).pop()}`,
-        action: { label: "Open", run: async () => (await api()).open_in_obsidian(path) },
+        text: `Sent to vault · ${path.split(/[\\/]/).pop()}`,
+        action: { label: "Open", run: async () => (await api()).open_in_vault(path) },
       });
     } catch (e) {
-      notify.error(`Could not send to Obsidian: ${e}`);
+      notify.error(`Could not send to the vault: ${e}`);
     }
   }
 
@@ -110,7 +110,7 @@
     </button>
     <span class="sep"></span>
     <button class="icon" title="Note in MD" onclick={noteInMd}><Icon name="mdnote" size={16} /></button>
-    <button class="icon" title="Send to Obsidian" onclick={toObsidian}><Icon name="obsidian" size={16} /></button>
+    <button class="icon" title="Send to Vault" onclick={toObsidian}><Icon name="vault" size={16} /></button>
     {/if}
     <button class="icon" title="Copy" onclick={copy}><Icon name="copy" size={16} /></button>
     <button class="icon" title={kbd("Copy with citation (Ctrl+Shift+C)")} onclick={copyCited}><Icon name="quote" size={16} /></button>

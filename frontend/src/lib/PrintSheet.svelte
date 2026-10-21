@@ -1,7 +1,7 @@
 <script lang="ts">
   // Print: choose pages, then the system print dialog. Pages are printed as they look in PhDF
-  // (with unsaved annotations), rendered at 150 DPI into a print-only layer (`#phdf-print`).
-  // macOS's web view has no print dialog, so there the PDF opens in Preview instead.
+  // (with unsaved annotations), rendered into a print-only layer (`#phdf-print`). On macOS
+  // pywebview turns window.print() into the native print panel; Preview stays a fallback.
   import { untrack } from "svelte";
   import { api, pageImageUrl } from "./api";
   import { notify } from "./notify.svelte";
@@ -17,6 +17,9 @@
   let preparing = $state<{ done: number; total: number } | null>(null);
 
   const MAX_PAGES = 500; // all of them are decoded into memory before the dialog opens
+  const AT_ONCE = 4; // pages requested and decoded at the same time
+  // ~8 MB decoded per A4 page at 150 DPI: long print jobs use less.
+  const dpi = (count: number) => (count > 100 ? 110 : 150);
 
   function pages(): number[] {
     if (which === "current") return [tab.page];
@@ -26,13 +29,13 @@
     return Array.from({ length: last - first + 1 }, (_, i) => first - 1 + i);
   }
 
+  async function openInPreview() {
+    if (tab.dirty) notify.show({ text: "Save first (⌘S): Preview prints the file as it is on disk." });
+    (await api()).open_in_preview(tab.path);
+    onclose();
+  }
+
   async function print() {
-    if (isMac) {
-      if (tab.dirty) notify.show({ text: "Save first (⌘S): Preview prints the file as it is on disk." });
-      (await api()).open_in_default_app(tab.path);
-      onclose();
-      return;
-    }
     const list = pages();
     if (list.length > MAX_PAGES) {
       notify.error(`Print at most ${MAX_PAGES} pages at a time (choose a page range).`);
@@ -42,17 +45,30 @@
     layer.id = "phdf-print";
     document.body.appendChild(layer);
     preparing = { done: 0, total: list.length };
+    const scale = dpi(list.length) / 72;
+    const failed: number[] = [];
     try {
-      await Promise.all(
-        list.map(async (page) => {
-          const img = new Image();
-          img.src = pageImageUrl(tab.doc.docId, page, 150 / 72, undefined, tab.revs[page] ?? 0);
-          layer.appendChild(img);
-          await img.decode().catch(() => {});
+      // In order in the layer; a few at a time, so a long job doesn't request them all at once.
+      const images = list.map((page) => {
+        const img = new Image();
+        layer.appendChild(img);
+        return { page, img };
+      });
+      const queue = [...images];
+      const worker = async () => {
+        for (let next = queue.shift(); next; next = queue.shift()) {
+          next.img.src = pageImageUrl(tab.doc.docId, next.page, scale, undefined, tab.revs[next.page] ?? 0);
+          await next.img.decode().catch(() => failed.push(next.page + 1));
           preparing!.done++;
-        }),
-      );
-      // Pages are appended as they were requested, so they stay in order.
+        }
+      };
+      await Promise.all(Array.from({ length: AT_ONCE }, worker));
+      if (failed.length) {
+        layer.remove();
+        preparing = null;
+        notify.error(`Could not prepare page${failed.length > 1 ? "s" : ""} ${failed.sort((a, b) => a - b).join(", ")} for printing. Try again or print fewer pages.`);
+        return;
+      }
       const cleanup = () => layer.remove();
       addEventListener("afterprint", cleanup, { once: true });
       preparing = null;
@@ -82,12 +98,11 @@
         to
         <input type="number" min="1" max={tab.pageCount} bind:value={to} onfocus={() => (which = "range")} />
       </label>
-      {#if isMac}
-        <p class="hint">The PDF opens in Preview; print it from there.</p>
-      {:else}
-        <p class="hint">Annotations print as you see them, saved or not.</p>
-      {/if}
+      <p class="hint">Annotations print as you see them, saved or not.</p>
       <div class="actions">
+        {#if isMac}
+          <button class="plain" onclick={openInPreview} title="If the print panel doesn't open: print the saved file from Preview">Open in Preview</button>
+        {/if}
         <button class="plain" onclick={onclose}>Cancel</button>
         <button class="default" onclick={print}>Print…</button>
       </div>

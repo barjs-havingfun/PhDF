@@ -1,7 +1,10 @@
-"""Notes: grading folders, Obsidian, parking lot, Markdown files next to PDFs."""
+"""Notes: grading folders, the vault (Obsidian or any folder of notes), parking lot, Markdown
+files next to PDFs."""
 
 import os
 import re
+import threading
+import uuid
 import webbrowser
 from dataclasses import asdict
 from pathlib import Path
@@ -16,6 +19,16 @@ from phdf.services import (
     grading,
     parking,
 )
+
+CHANGED_ELSEWHERE = "PHDF_CHANGED_ELSEWHERE: the note was changed elsewhere"
+_write_locks: dict[str, threading.Lock] = {}
+_write_locks_guard = threading.Lock()
+
+
+def _write_lock(path: Path) -> threading.Lock:
+    key = os.path.normcase(os.path.realpath(path))
+    with _write_locks_guard:
+        return _write_locks.setdefault(key, threading.Lock())
 
 
 class NotesApi(ApiBase):
@@ -36,7 +49,7 @@ class NotesApi(ApiBase):
         """Path of the marked copy of one exam (created from the original on first use)."""
         return str(grading.graded_copy(folder, rel))
 
-    # --- Obsidian -------------------------------------------------------------------------------
+    # --- vault: a folder of Markdown notes (Obsidian, Logseq, any folder) -----------------------
 
     def pick_folder(self) -> str | None:
         window = self._window or webview.active_window()
@@ -49,7 +62,7 @@ class NotesApi(ApiBase):
         store = self._core.store
         vault = store.get_setting("obsidian.vault")
         if not vault:
-            raise ValueError("No Obsidian vault chosen")
+            raise ValueError("No vault chosen (Settings → Vault)")
         folder = (store.get_setting("obsidian.folder") or "PhDF").strip(" /\\")
         name = re.sub(r'[<>:"/\\|?*\x00-\x1f#^\[\]]', "-", title).strip(" .") or "Untitled"
         return Path(vault, folder, f"{name}.md") if folder else Path(vault, f"{name}.md")
@@ -95,8 +108,14 @@ class NotesApi(ApiBase):
     ) -> bool:
         return parking.set_done(Path(self.parking_path(document)), line, text, done)
 
-    def open_in_obsidian(self, path: str) -> None:
-        webbrowser.open("obsidian://open?path=" + quote(path, safe=""))
+    def open_in_vault(self, path: str) -> None:
+        """Open a note written to the vault: in Obsidian when the vault is one (it has an
+        .obsidian folder), else with the system's app for Markdown files."""
+        vault = self._core.store.get_setting("obsidian.vault")
+        if vault and Path(vault, ".obsidian").is_dir():
+            webbrowser.open("obsidian://open?path=" + quote(path, safe=""))
+        else:
+            self.open_in_default_app(path)
 
     # --- markdown files ---------------------------------------------------------------------
 
@@ -135,13 +154,22 @@ class NotesApi(ApiBase):
             return {"exists": False, "text": "", "mtime": None}
         return {"exists": True, "text": p.read_text(encoding="utf-8"), "mtime": p.stat().st_mtime}
 
-    def write_text(self, path: str, text: str) -> float:
+    def write_text(self, path: str, text: str, expected: float | None = None) -> float:
+        """Write a note; returns its new modification time. `expected`: the time this editor
+        last read or wrote it. If the file changed since (another window, another app),
+        nothing is written and CHANGED_ELSEWHERE is raised, so newer text isn't overwritten."""
         p = Path(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_name(p.name + ".phdf-tmp")
-        tmp.write_text(text, encoding="utf-8", newline="\n")
-        tmp.replace(p)  # atomic: a crash never leaves a half-written note
-        return p.stat().st_mtime
+        with _write_lock(p):  # every window's writes to one file, one at a time
+            if expected is not None and p.exists() and abs(p.stat().st_mtime - expected) > 1e-6:
+                raise ValueError(CHANGED_ELSEWHERE)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            tmp = p.with_name(f".{p.name}.{uuid.uuid4().hex[:8]}.phdf-tmp")
+            try:
+                tmp.write_text(text, encoding="utf-8", newline="\n")
+                tmp.replace(p)  # atomic: a crash never leaves a half-written note
+            finally:
+                tmp.unlink(missing_ok=True)
+            return p.stat().st_mtime
 
     def rename_file(self, path: str, name: str) -> str:
         """Rename a note in its folder (".md" added if missing); returns the new path. A note

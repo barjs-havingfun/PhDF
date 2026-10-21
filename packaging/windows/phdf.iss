@@ -1,7 +1,7 @@
 ; PhDF Windows installer (Inno Setup 6). Built by .github/workflows/release.yml:
 ;   iscc /DAppVersion=0.7.0 /DSourceDir=<folder with PhDF.exe> packaging\windows\phdf.iss
 ; Installs for the current user (no admin needed), adds a Start Menu entry, "Open with PhDF" for
-; PDF / EPUB / Markdown and registers PhDF so it can be chosen as the default PDF app.
+; PDF / EPUB / CBZ / Markdown and registers PhDF so it can be chosen as the default PDF app.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -52,23 +52,26 @@ Name: "{group}\PhDF"; Filename: "{app}\PhDF.exe"
 Name: "{autodesktop}\PhDF"; Filename: "{app}\PhDF.exe"; Tasks: desktopicon
 
 [Registry]
-; One document type for PDF, EPUB and Markdown, opened with PhDF.
+; One document type for PDF, EPUB, CBZ and Markdown, opened with PhDF.
 Root: HKA; Subkey: "Software\Classes\PhDF.Document"; ValueType: string; ValueData: "PhDF document"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\PhDF.Document\DefaultIcon"; ValueType: string; ValueData: "{app}\PhDF.exe,0"
 Root: HKA; Subkey: "Software\Classes\PhDF.Document\shell\open\command"; ValueType: string; ValueData: """{app}\PhDF.exe"" ""%1"""
 ; "Open with PhDF" (doesn't take over existing defaults).
 Root: HKA; Subkey: "Software\Classes\.pdf\OpenWithProgids"; ValueType: string; ValueName: "PhDF.Document"; ValueData: ""; Flags: uninsdeletevalue
 Root: HKA; Subkey: "Software\Classes\.epub\OpenWithProgids"; ValueType: string; ValueName: "PhDF.Document"; ValueData: ""; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.cbz\OpenWithProgids"; ValueType: string; ValueName: "PhDF.Document"; ValueData: ""; Flags: uninsdeletevalue
 Root: HKA; Subkey: "Software\Classes\.md\OpenWithProgids"; ValueType: string; ValueName: "PhDF.Document"; ValueData: ""; Flags: uninsdeletevalue
 Root: HKA; Subkey: "Software\Classes\Applications\PhDF.exe\SupportedTypes"; ValueType: string; ValueName: ".pdf"; ValueData: ""; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\Applications\PhDF.exe\SupportedTypes"; ValueType: string; ValueName: ".epub"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\Applications\PhDF.exe\SupportedTypes"; ValueType: string; ValueName: ".cbz"; ValueData: ""
 Root: HKA; Subkey: "Software\Classes\Applications\PhDF.exe\SupportedTypes"; ValueType: string; ValueName: ".md"; ValueData: ""
 ; Registered application: lets Windows Settings → Default apps list PhDF (Settings → General →
 ; "Make PhDF the default PDF app" opens that page).
 Root: HKA; Subkey: "Software\PhDF\Capabilities"; ValueType: string; ValueName: "ApplicationName"; ValueData: "PhDF"; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\PhDF\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "Reader-first PDF and EPUB app with Markdown notes"
+Root: HKA; Subkey: "Software\PhDF\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "Reader-first PDF, EPUB and comic app with Markdown notes"
 Root: HKA; Subkey: "Software\PhDF\Capabilities\FileAssociations"; ValueType: string; ValueName: ".pdf"; ValueData: "PhDF.Document"
 Root: HKA; Subkey: "Software\PhDF\Capabilities\FileAssociations"; ValueType: string; ValueName: ".epub"; ValueData: "PhDF.Document"
+Root: HKA; Subkey: "Software\PhDF\Capabilities\FileAssociations"; ValueType: string; ValueName: ".cbz"; ValueData: "PhDF.Document"
 Root: HKA; Subkey: "Software\PhDF\Capabilities\FileAssociations"; ValueType: string; ValueName: ".md"; ValueData: "PhDF.Document"
 Root: HKA; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "PhDF"; ValueData: "Software\PhDF\Capabilities"; Flags: uninsdeletevalue
 

@@ -5,6 +5,6 @@ Comment=Reader-first PDF app with Markdown notes
 Exec=phdf %F
 Terminal=false
 Icon=phdf
-MimeType=application/pdf;application/epub+zip;text/markdown;
+MimeType=application/pdf;application/epub+zip;application/vnd.comicbook+zip;text/markdown;
 Categories=Office;Viewer;Education;
 StartupWMClass=PhDF

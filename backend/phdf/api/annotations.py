@@ -46,6 +46,8 @@ class AnnotationsApi(ApiBase):
         rects = [tuple(r) for r in rects]  # type: ignore[misc]
         with self._core.lock:
             doc = self._core.doc(doc_id)
+            if doc.info().kind != "pdf":  # e-books and comics keep no annotations in the file
+                raise ValueError("only PDFs can hold annotations")
             annot = doc.add_annotation(
                 page,
                 kind,
@@ -92,7 +94,7 @@ class AnnotationsApi(ApiBase):
         with self._core.lock:
             core = self._core
             old = core.resolve(doc_id)
-            text_rev = core.text_revs.pop(old, 0)
+            text_rev = core.text_revs.pop(old, "0")
             new = core.save(doc_id)
             result = {"dirty": False, "revs": core.revs(doc_id)}
             core.tell_windows(doc_id, "doc-changed", result, skip=self)

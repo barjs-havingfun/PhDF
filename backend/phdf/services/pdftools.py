@@ -100,11 +100,26 @@ class ToolsSession:
         each part made splitting a big book slow. Its outline entries come along."""
         out = pymupdf.open()
         start = 0
+        run = {}  # source page -> its run of consecutive pages
         for i in range(1, len(pages) + 1):  # runs of consecutive pages: links inside them stay
             if i == len(pages) or pages[i] != pages[i - 1] + 1:
                 out.insert_pdf(self.doc, from_page=pages[start], to_page=pages[i - 1])
+                run.update((p, start) for p in pages[start:i])
                 start = i
         where = {p: i + 1 for i, p in enumerate(pages)}
+        # Links from one run to a page in another run are dropped by insert_pdf: add them again.
+        for p in dict.fromkeys(pages):
+            for link in self.doc[p].get_links():
+                target = link.get("page", -1)
+                if link["kind"] == pymupdf.LINK_GOTO and target in where and run[target] != run[p]:
+                    out[where[p] - 1].insert_link(
+                        {
+                            "kind": pymupdf.LINK_GOTO,
+                            "from": link["from"],
+                            "page": where[target] - 1,
+                            "to": link.get("to", pymupdf.Point(0, 0)),
+                        }
+                    )
         toc, level = [], 0
         for lvl, title, page, *_ in self.doc.get_toc(simple=True):
             if page - 1 in where:

@@ -65,8 +65,8 @@ export function appCommands(x: CommandContext): Command[] {
     }
     add("Document", "Export highlights to note", x.exportHighlights);
     add("Document", "Export as Markdown…", () => x.exportMarkdown("file"));
-    add("Document", "Export to Obsidian vault", () => x.exportMarkdown("vault"));
-    add("Document", "Copy note to Obsidian", x.copyNoteToVault);
+    add("Document", "Export to vault", () => x.exportMarkdown("vault"));
+    add("Document", "Copy note to vault", x.copyNoteToVault);
     add("Document", "Recognize text (OCR)", x.recognizeAll);
     add("Document", "Go to first page", () => pdf.navigate({ page: 0 }), "Home");
     add("Document", "Go to last page", () => pdf.navigate({ page: pdf.pageCount - 1 }), "End");

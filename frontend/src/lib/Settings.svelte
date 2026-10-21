@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Settings sheet: Obsidian vault, OCR languages and the AI (cache).
+  // Settings sheet: the vault (a folder of notes), OCR languages and the AI (cache).
   import { onMount } from "svelte";
   import { api } from "./api";
   import Icon from "./Icon.svelte";
@@ -291,7 +291,7 @@
     </section>
 
     <section>
-      <h3>Obsidian</h3>
+      <h3>Vault</h3>
       <div class="row">
         <span class="label">Vault</span>
         <span class="value" title={vault ?? ""}>{vault ?? "Not set"}</span>
@@ -303,7 +303,8 @@
         <input bind:value={folder} onchange={saveFolder} placeholder="PhDF" spellcheck="false" />
       </div>
       <p class="hint">
-        “Send to Obsidian” adds quotes to one note per book in this folder, e.g.
+        A folder of Markdown notes: an Obsidian vault, a Logseq graph, or any folder. “Send to Vault”
+        adds quotes to one note per book in this folder, e.g.
         <code>{folder || "PhDF"}/Attention Is All You Need.md</code>.
       </p>
     </section>

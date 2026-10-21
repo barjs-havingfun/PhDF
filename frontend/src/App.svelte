@@ -184,18 +184,18 @@
     if (tab?.kind === "pdf") tab.reveal(pin.id, pin.page);
   }
 
-  // --- export & Obsidian ------------------------------------------------------------------------
+  // --- export & the vault -------------------------------------------------------------------------
 
   /** Write a note into the vault; if it exists, offer to replace it. */
   async function toVault(title: string, text: string) {
     const py = await api();
     if (!(await py.get_setting("obsidian.vault", null))) {
-      notify.show({ text: "Choose your Obsidian vault first.", action: { label: "Settings", run: () => (ui.settingsOpen = true) } });
+      notify.show({ text: "Choose your vault first (Settings → Vault).", action: { label: "Settings", run: () => (ui.settingsOpen = true) } });
       return;
     }
-    const open = (path: string) => ({ label: "Open", run: () => py.open_in_obsidian(path) });
+    const open = (path: string) => ({ label: "Open", run: () => py.open_in_vault(path) });
     const result = await py.obsidian_write(title, text);
-    if (result.written) notify.show({ text: `Saved to Obsidian · ${title}.md`, action: open(result.path) });
+    if (result.written) notify.show({ text: `Saved to vault · ${title}.md`, action: open(result.path) });
     else
       notify.show({
         text: `“${title}.md” already exists in the vault.`,
@@ -203,7 +203,7 @@
           label: "Replace",
           run: async () => {
             const r = await py.obsidian_write(title, text, true);
-            notify.show({ text: `Replaced in Obsidian · ${title}.md`, action: open(r.path) });
+            notify.show({ text: `Replaced in vault · ${title}.md`, action: open(r.path) });
           },
         },
       });
@@ -665,16 +665,18 @@
     const py = await api();
     const appInfo = await py.app_info();
     setRenderBaseUrl(appInfo.renderBaseUrl);
-    invert = await py.get_setting("invertPages", false);
-    ui.reduceMotion = await py.get_setting("ui.reduceMotion", matchMedia("(prefers-reduced-motion: reduce)").matches);
-    await Promise.all([loadReadSettings(), loadPomodoroSettings(), loadPace(), loadLayout(), loadInk(), loadTextStyle(), loadGradingSettings(), loadAppFont()]);
+    // Each call is a round trip to the backend: ask for all the settings at once.
+    await Promise.all([
+      py.get_setting("invertPages", false).then((v) => (invert = v)),
+      py.get_setting("ui.reduceMotion", matchMedia("(prefers-reduced-motion: reduce)").matches).then((v) => (ui.reduceMotion = v)),
+      loadReadSettings(), loadPomodoroSettings(), loadPace(), loadLayout(), loadInk(), loadTextStyle(), loadGradingSettings(), loadAppFont(),
+    ]); // prettier-ignore
     // Light / dark theme (also colors the Windows title bar); dark pages follow it if asked.
     addEventListener("phdf:theme", (e) => {
       const dark = (e as CustomEvent<boolean>).detail;
       if (theme.autoDarkPages && invert !== dark) invert = dark;
     });
-    await loadTheme();
-    await loadPrefs();
+    await Promise.all([loadTheme(), loadPrefs()]);
     // E-books laid out again (Read menu → text size): update their tabs.
     window.addEventListener("phdf:reflow", (e) => {
       for (const change of (e as CustomEvent<{ docId: string; pageSizes: [number, number][]; revs: Record<number, number> }[]>).detail) {
@@ -690,6 +692,10 @@
     window.addEventListener("phdf:doc-reflowed", (e) => {
       const c = (e as CustomEvent<{ docId: string; pageSizes: [number, number][]; revs: Record<number, number> }>).detail;
       for (const tab of ws.allTabs()) if (tab.kind === "pdf" && tab.doc.docId === c.docId) tab.reflow(c);
+    });
+    window.addEventListener("phdf:doc-sizes", (e) => {
+      const c = (e as CustomEvent<{ docId: string; pageSizes: [number, number][] }>).detail;
+      for (const tab of ws.allTabs()) if (tab.kind === "pdf" && tab.doc.docId === c.docId) tab.resize(c.pageSizes);
     });
     // First start: show the tour once.
     if (!(await (await api()).get_setting("help.seen", false))) {
@@ -737,7 +743,7 @@
       else if (/^mailto:/i.test(a.href)) api().then((py) => py.open_external(a.href));
     });
     window.addEventListener("beforeunload", () => flushReading());
-    // Notes may be edited in Obsidian or elsewhere meanwhile: reload them when we come back.
+    // Notes may be edited in another app meanwhile: reload them when we come back.
     window.addEventListener("focus", () => {
       for (const t of ws.allTabs()) t.md?.checkExternal();
     });
@@ -749,7 +755,21 @@
     if (gradingFolder) await startGrading(gradingFolder);
     // Files PhDF was started with ("Open with", command line).
     for (const path of await py.startup_paths()) await openPath(path);
+    if (appInfo.smoke) reportReady();
   });
+
+  /** Release CI (`PhDF --smoke-ui <file>`): tell the backend once a page image is really on
+   *  screen, so a blank window or a broken bridge fails the check instead of passing it. */
+  async function reportReady() {
+    const end = Date.now() + 40_000;
+    let shown = false;
+    while (!shown && Date.now() < end) {
+      const img = document.querySelector<HTMLImageElement>("img[src*='/page/']");
+      shown = !!img?.complete && img.naturalWidth > 0;
+      if (!shown) await new Promise((r) => setTimeout(r, 250));
+    }
+    (await api()).ui_ready({ tabs: ws.allTabs().length, pageImage: shown, pages: active?.pageCount ?? 0 });
+  }
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -793,6 +813,7 @@
         onsave={saveCurrent}
         onrecognize={recognizeAll}
         onopen={() => pickAndOpen()}
+        onhome={() => newTab()}
         ondock={info?.detached ? dock : undefined}
       />
     </header>

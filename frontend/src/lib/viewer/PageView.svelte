@@ -70,6 +70,7 @@
 <script lang="ts">
   // One page: rendered image + search highlights + selectable text layer + link hotspots.
   // Layers are laid out in PDF points and scaled as a whole with a CSS transform.
+  import { preloaded } from "./preload";
   import { pageImageUrl, type PdfLink, type Point, type Rect, type TextLine } from "../api";
   import { read, TINTS } from "../reading.svelte";
   import { ink, type Tab } from "../tab.svelte";
@@ -110,8 +111,7 @@
     if (!src) return;
     const target = src;
     const rev = tab.revs[index] ?? 0;
-    const img = new Image();
-    img.onload = () => {
+    const done = () => {
       if (target !== src) return;
       shownSrc = target;
       // Strokes drawn on this page are now part of the image: stop drawing them on top.
@@ -119,6 +119,10 @@
         tab.pendingInk = tab.pendingInk.filter((s) => !(s.page === index && s.rev !== null && s.rev <= rev));
       }
     };
+    const ahead = preloaded.get(target);
+    if (ahead?.complete && ahead.naturalWidth) return done(); // decoded already (book view)
+    const img = new Image();
+    img.onload = done;
     img.src = target;
   });
 

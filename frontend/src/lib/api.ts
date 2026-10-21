@@ -16,6 +16,8 @@ export interface AppInfo {
   /** A window made by dragging a tab out: it docks back instead of being restored. */
   detached: boolean;
   platform: "windows" | "macos" | "linux";
+  /** Started with --smoke-ui (release CI): report with ui_ready once a page is shown. */
+  smoke: boolean;
 }
 
 export interface Position {
@@ -29,7 +31,7 @@ export interface OpenedDocument {
   docId: string;
   path: string;
   title: string;
-  info: { page_count: number; title: string | null; author: string | null; is_encrypted: boolean; reflowable: boolean };
+  info: { page_count: number; title: string | null; author: string | null; is_encrypted: boolean; reflowable: boolean; kind: "pdf" | "ebook" | "comic" };
   pageSizes: [number, number][];
   position: Position;
   dirty: boolean;
@@ -205,6 +207,7 @@ export interface SearchHit {
 
 interface PyApi {
   app_info(): Promise<AppInfo>;
+  ui_ready(report: { tabs: number; pageImage: boolean; pages: number }): Promise<void>;
   pick_pdf(): Promise<string | null>;
   startup_paths(): Promise<string[]>;
   pick_file(kind: "document" | "pdf" | "md"): Promise<string | null>;
@@ -315,12 +318,14 @@ interface PyApi {
     text: string,
     overwrite?: boolean,
   ): Promise<{ path: string; written: boolean; exists: boolean }>;
-  open_in_obsidian(path: string): Promise<void>;
+  /** A note in the vault: in Obsidian if the vault is one, else the default Markdown app. */
+  open_in_vault(path: string): Promise<void>;
   md_for_pdf(pdfPath: string): Promise<{ path: string; exists: boolean; linked: boolean }>;
   pdf_for_md(mdPath: string): Promise<string | null>;
   link_md(pdfPath: string, mdPath: string): Promise<void>;
   read_text(path: string): Promise<TextFile>;
-  write_text(path: string, text: string): Promise<number>;
+  /** `expected`: the file's mtime when last read / written; a newer file is not overwritten. */
+  write_text(path: string, text: string, expected?: number | null): Promise<number>;
   file_mtime(path: string): Promise<number | null>;
   rename_file(path: string, name: string): Promise<string>;
   tools_open(path: string): Promise<ToolsState>;
@@ -333,6 +338,8 @@ interface PyApi {
   tools_split(id: string, parts: number[][], keepAnnotations?: boolean): Promise<string[]>;
   tools_close(id: string): Promise<void>;
   open_external(url: string): Promise<void>;
+  /** macOS only: open a file in Preview (not the default app, which may be PhDF). */
+  open_in_preview(path: string): Promise<void>;
   peek_url(url: string, large?: boolean): Promise<boolean>;
   peek_expand(): Promise<void>;
   peek_close(): Promise<void>;

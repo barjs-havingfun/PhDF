@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { version } from "./package.json";
 
 /** Font CSS (Fontsource, KaTeX) lists WOFF / TTF fallbacks after WOFF2. Every web view PhDF
  *  runs in reads WOFF2, so drop the fallbacks and their files stay out of the build (~2 MB). */
@@ -20,6 +21,7 @@ function woff2Only(): Plugin {
 
 export default defineConfig({
   plugins: [woff2Only(), svelte()],
+  define: { __PHDF_VERSION__: JSON.stringify(version) },
   // Relative asset paths so the built app also loads from the local filesystem.
   base: "./",
   server: { port: 5173, strictPort: true },

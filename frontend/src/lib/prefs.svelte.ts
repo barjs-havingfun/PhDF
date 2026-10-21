@@ -9,6 +9,7 @@ export const UI_SIZES = [0.9, 1, 1.1, 1.25];
 /** Toolbar buttons the user can hide; the sidebar and ⋯ buttons always stay. */
 export const TOOLBAR_ITEMS = [
   ["nav", "Back and Forward"],
+  ["home", "Home (Library)"],
   ["read", "Read"],
   ["focus", "Focus"],
   ["park", "Park"],
@@ -41,9 +42,12 @@ type Saved = Partial<Pick<typeof prefs, "uiSize" | "scroll" | "unsaved" | "toolb
 
 export async function loadPrefs() {
   const py = await api();
-  const saved = (await py.get_setting<Saved | null>("prefs", null)) ?? {};
-  Object.assign(prefs, saved);
-  prefs.restore = (await py.get_setting<boolean>("session.restore", true)) ?? true;
+  const [saved, restore] = await Promise.all([
+    py.get_setting<Saved | null>("prefs", null),
+    py.get_setting<boolean>("session.restore", true),
+  ]);
+  Object.assign(prefs, saved ?? {});
+  prefs.restore = restore ?? true;
   if (prefs.uiSize !== 1) py.ui_zoom(prefs.uiSize);
 }
 

@@ -88,6 +88,7 @@ const HL_END = "<!-- /phdf:highlights -->";
 
 let nextId = 1;
 
+const RTL_KEY = "comics.rtl"; // ids of the books read right to left
 const PAGE_CACHE = 80; // pages whose text layer / links are kept per tab
 
 /** Small LRU: a Map keeps insertion order, so re-inserting marks an entry as recent. */
@@ -163,6 +164,9 @@ export class Tab {
   redoStack = $state<Op[]>([]);
 
   bookmarks = $state<Bookmark[]>([]);
+  /** Pages run right to left (Read menu, for comics): the first page of a spread is on the
+   *  right, and ← goes forward. Remembered per book. */
+  rtl = $state(false);
   /** "Where was I?" card: shown once when a document is reopened. */
   welcomeBack = $state(false);
 
@@ -190,11 +194,28 @@ export class Tab {
     this.revs = doc.revs;
     this.welcomeBack = !!doc.lastOpened && (page > 0 || scroll > 0.05);
     this.pendingJump = { page: this.page, scroll: this.scroll };
+    if (this.isComic) {
+      api()
+        .then((py) => py.get_setting<string[]>(RTL_KEY, []))
+        .then((ids) => (this.rtl = !!ids?.includes(doc.docId)));
+    }
   }
 
-  /** An e-book (EPUB…): laid out into pages by PhDF, no annotations in the file. */
+  /** An e-book (EPUB…) or a comic (CBZ): no annotations in the file. */
   get isBook() {
-    return this.doc.info.reflowable;
+    return this.doc.info.kind !== "pdf";
+  }
+
+  /** A comic (CBZ): one picture per page, no text. */
+  get isComic() {
+    return this.doc.info.kind === "comic";
+  }
+
+  async setRtl(on: boolean) {
+    this.rtl = on;
+    const py = await api();
+    const ids = ((await py.get_setting<string[]>(RTL_KEY, [])) ?? []).filter((id) => id !== this.doc.docId);
+    await py.set_setting(RTL_KEY, on ? [...ids, this.doc.docId] : ids);
   }
 
   /** The e-book was laid out again (new text size): new pages, about the same place. */
@@ -209,6 +230,13 @@ export class Tab {
     this.linkCache.clear();
     this.searchHits = [];
     this.pendingJump = { page: at };
+  }
+
+  /** A comic's real page sizes, measured after it opened with guessed ones: same place. */
+  resize(pageSizes: [number, number][]) {
+    if (pageSizes.length !== this.doc.pageSizes.length) return;
+    this.doc.pageSizes = pageSizes;
+    this.pendingJump = { page: this.page, scroll: this.scroll };
   }
 
   /** Shown instead of the document title (grading: the student). */
@@ -615,7 +643,7 @@ export class Tab {
     return !!this.md?.text.includes(`· #${id}`);
   }
 
-  /** Send a pin + quote for an annotation to this book's note in the Obsidian vault. */
+  /** Send a pin + quote for an annotation to this book's note in the vault. */
   async sendToObsidian(annot: Annotation): Promise<string> {
     await this.loadOutline();
     return (await api()).obsidian_append(this.title, pinBlock(annot, sectionFor(this.outline, annot.page)));

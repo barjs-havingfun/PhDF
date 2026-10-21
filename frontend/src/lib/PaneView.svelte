@@ -377,7 +377,7 @@
       Recognizing text… {pdf.ocrProgress.done}/{pdf.ocrProgress.total}
       <button onclick={() => pdf.stopOcr()}>Stop</button>
     </div>
-  {:else if pdf && pageHasNoText && !ocrDismissed}
+  {:else if pdf && pageHasNoText && !ocrDismissed && !pdf.isComic}<!-- comic pages are pictures -->
     <div class="ocr-bar" style="top:{topInset + 10}px">
       <Icon name="scan" size={16} />
       This page has no text.

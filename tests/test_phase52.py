@@ -56,7 +56,7 @@ def test_reading_stats_and_library(tmp_path, monkeypatch, sample_pdf):
     [item] = api.library()
     assert item["seconds"] == 480 and item["exists"] and item["pageCount"] == 3
     cover = api.library_cover(doc_id, str(sample_pdf))
-    assert cover.startswith("data:image/png;base64,")
+    assert cover.startswith("data:image/jpeg;base64,")
     assert api.library_cover("nope", str(tmp_path / "missing.pdf")) is None
 
 

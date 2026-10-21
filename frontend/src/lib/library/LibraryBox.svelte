@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { api, type LibraryItem } from "../api";
   import { notify } from "../notify.svelte";
+  import { docKind, KINDS, type DocKind } from "./kinds";
 
   let { onopenpath }: { onopenpath: (path: string) => void } = $props();
 
@@ -10,23 +11,37 @@
   let covers = $state<Record<string, string | null>>({});
   let filter = $state("");
   let showAll = $state(false);
+  let kind = $state<DocKind | "all">("all"); // the type buttons; remembered
 
   const LIMIT = 12;
 
   onMount(async () => {
     const py = await api();
     items = await py.library();
-    // Covers come one by one (cached after the first time).
-    for (const item of items.slice(0, 40)) {
-      covers[item.docId] = await py.library_cover(item.docId, item.path);
-    }
+    const saved = await py.get_setting<string>(KIND_KEY, "all");
+    if (saved && (saved === "all" || saved in KINDS)) kind = saved as DocKind | "all";
+    // Covers come a few at a time, first ones first (cached after the first time).
+    const queue = items.slice(0, 40);
+    const worker = async () => {
+      for (let item = queue.shift(); item; item = queue.shift()) {
+        covers[item.docId] = await py.library_cover(item.docId, item.path);
+      }
+    };
+    await Promise.all(Array.from({ length: 4 }, worker));
   });
 
+  const KIND_KEY = "library.kind";
+  const ofKind = $derived(kind === "all" ? items : items.filter((i) => docKind(i.path) === kind));
   const shown = $derived.by(() => {
     const q = filter.trim().toLowerCase();
-    const list = q ? items.filter((i) => i.title.toLowerCase().includes(q) || i.path.toLowerCase().includes(q)) : items;
+    const list = q ? ofKind.filter((i) => i.title.toLowerCase().includes(q) || i.path.toLowerCase().includes(q)) : ofKind;
     return showAll || q ? list : list.slice(0, LIMIT);
   });
+
+  async function setKind(k: DocKind | "all") {
+    kind = k;
+    await (await api()).set_setting(KIND_KEY, k);
+  }
 
   async function remove(item: LibraryItem) {
     await (await api()).library_remove(item.docId);
@@ -59,6 +74,11 @@
   <section class="box">
     <header>
       <h2>Library <span class="count">{items.length}</span></h2>
+      <div class="kinds" role="group" aria-label="Show">
+        {#each [["all", "All"], ...Object.entries(KINDS)] as [k, label]}
+          <button class:on={kind === k} aria-pressed={kind === k} onclick={() => setKind(k as DocKind | "all")}>{label}</button>
+        {/each}
+      </div>
       <input bind:value={filter} placeholder="Filter" spellcheck="false" />
     </header>
     <div class="grid">
@@ -72,6 +92,7 @@ Missing: click to find the file`}>
             {:else}
               <span class="ph">{item.title.slice(0, 1)}</span>
             {/if}
+            <span class="tag">{KINDS[docKind(item.path)]}</span>
             <span class="progress" style="width:{progress(item)}%"></span>
           </span>
           <span class="title">{item.title}</span>
@@ -81,8 +102,11 @@ Missing: click to find the file`}>
         </div>
       {/each}
     </div>
-    {#if !filter && items.length > LIMIT}
-      <button class="more" onclick={() => (showAll = !showAll)}>{showAll ? "Show fewer" : `Show all ${items.length}`}</button>
+    {#if !filter && ofKind.length > LIMIT}
+      <button class="more" onclick={() => (showAll = !showAll)}>{showAll ? "Show fewer" : `Show all ${ofKind.length}`}</button>
+    {/if}
+    {#if !shown.length}
+      <p class="none">No {kind === "all" ? "documents" : `${KINDS[kind]} files`} here.</p>
     {/if}
   </section>
 {/if}
@@ -100,6 +124,7 @@ Missing: click to find the file`}>
   header {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     justify-content: space-between;
     gap: 10px;
     margin-bottom: 10px;
@@ -210,6 +235,46 @@ Missing: click to find the file`}>
     font: 700 28px var(--font);
     color: #3a55e8;
     background: linear-gradient(160deg, #e8eeff, #d5dcff);
+  }
+
+  .kinds {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+    padding: 2px;
+    border-radius: 8px;
+    background: var(--hover);
+  }
+
+  .kinds button {
+    padding: 1px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--secondary);
+  }
+
+  .kinds button.on {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 0 0 0.5px var(--separator);
+  }
+
+  .tag {
+    position: absolute;
+    right: 4px;
+    bottom: 8px;
+    padding: 0 4px;
+    border-radius: 4px;
+    background: rgb(0 0 0 / 0.62);
+    color: white;
+    font: 600 9px/14px var(--font);
+    letter-spacing: 0.3px;
+  }
+
+  .none {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--secondary);
   }
 
   .progress {

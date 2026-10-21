@@ -104,7 +104,7 @@ def download_language(lang: str) -> None:
 
 
 def recognize(png: bytes, scale: float, languages: list[str]) -> list[OcrWord]:
-    """OCR a page image rendered at `scale` (pixels per point). Thread-safe: no shared doc."""
+    """OCR a page image rendered at `scale` (pixels per point). Runs in a worker process."""
     tessdata = tessdata_for(languages)
     pix = pymupdf.Pixmap(png)
     pix.set_dpi(OCR_DPI, OCR_DPI)

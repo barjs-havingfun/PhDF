@@ -4,6 +4,15 @@ import pymupdf
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def inline_workers(monkeypatch):
+    """OCR / conversion run in this process in tests (stand-ins can't go to a worker);
+    test_selftest.py checks the real worker processes."""
+    from phdf.services import workers
+
+    monkeypatch.setattr(workers, "inline", True)
+
+
 @pytest.fixture
 def sample_pdf(tmp_path: Path) -> Path:
     """A 3-page PDF with metadata, a two-level outline and two links on page 1."""

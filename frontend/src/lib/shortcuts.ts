@@ -1,6 +1,6 @@
 // Window-wide keyboard shortcuts. App hands over what they act on; this file only maps keys.
 import { ui } from "./notify.svelte";
-import { read, stepRow } from "./reading.svelte";
+import { arrowStep, read, stepRow } from "./reading.svelte";
 import type { AnyTab, Tab } from "./tab.svelte";
 import type Viewer from "./viewer/Viewer.svelte";
 
@@ -30,7 +30,7 @@ export interface ShortcutContext {
   toggleSidebar: () => void;
 }
 
-function inTextField(e: KeyboardEvent) {
+export function inTextField(e: KeyboardEvent) {
   const el = e.target as HTMLElement;
   return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
 }
@@ -77,8 +77,8 @@ export function handleShortcut(e: KeyboardEvent, x: ShortcutContext) {
   else if (!typing && e.metaKey && key === "]") active?.goForward();
   else if (!typing && e.altKey && key === "arrowright") active?.goForward();
   else if (active && !mod && !e.altKey && !typing && !x.peekOpen) {
-    if (key === "arrowright") active.pendingJump = { page: stepRow(active.page, 1, active.pageCount) };
-    else if (key === "arrowleft") active.pendingJump = { page: stepRow(active.page, -1, active.pageCount) };
+    const step = arrowStep(key, active.rtl);
+    if (step) active.pendingJump = { page: stepRow(active.page, step, active.pageCount) };
     else if (key === "home") active.navigate({ page: 0 });
     else if (key === "end") active.navigate({ page: active.pageCount - 1 });
     else handled = false;

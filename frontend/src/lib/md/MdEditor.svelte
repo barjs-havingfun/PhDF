@@ -451,6 +451,7 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
   <footer class="status">
     <span>{words} {words === 1 ? "word" : "words"} · {Math.max(1, Math.round(words / 220))} min read</span>
     <span class="grow"></span>
+    <span class="version">PhDF {__PHDF_VERSION__}</span>
     <div class="zoom-wrap" bind:this={zoomWrap}>
       <button class="zoom" class:on={zoomMenu} title={kbd("Text size and width (size also Ctrl+wheel, Ctrl+= / Ctrl+-, Ctrl+0)")} onclick={() => (zoomMenu = !zoomMenu)}>
         {Math.round((typo.size / DEFAULT_SIZE) * 100)}%
@@ -489,7 +490,11 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
         </div>
       {/if}
     </div>
-    <span class="saved" class:busy={md.saving || md.dirty}>{md.saving || md.dirty ? "Saving…" : md.exists ? "Saved ✓" : "Not saved yet"}</span>
+    {#if md.conflict}
+      <button class="saved conflict" onclick={() => md.askConflict()} title="Keep your text or load the other one">Not saved: changed elsewhere</button>
+    {:else}
+      <span class="saved" class:busy={md.saving || md.dirty}>{md.saving || md.dirty ? "Saving…" : md.exists ? "Saved ✓" : "Not saved yet"}</span>
+    {/if}
   </footer>
 </div>
 
@@ -630,8 +635,28 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
     color: var(--tertiary);
   }
 
+  .status {
+    position: relative;
+    container-type: inline-size; /* narrow notes hide the version */
+  }
+
   .status .grow {
     flex: 1;
+  }
+
+  /* In the middle of the bar, whatever the sides hold. */
+  .version {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  @container (max-width: 380px) {
+    .version {
+      display: none;
+    }
   }
 
   .zoom {
@@ -711,6 +736,12 @@ Click to rename`} onclick={startRename} disabled={fixedName}>
 
   .saved {
     color: #34c759;
+  }
+
+  .saved.conflict {
+    color: #ff3b30;
+    font-size: 11px;
+    text-decoration: underline;
   }
 
   .saved.busy {

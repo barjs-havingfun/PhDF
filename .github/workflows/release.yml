@@ -51,6 +51,7 @@ jobs:
           uv sync --locked
           npm --prefix frontend ci
           uv run pytest
+          npm --prefix frontend test
           npm --prefix frontend run build
           uv run pyinstaller phdf.spec --noconfirm
 
@@ -83,6 +84,29 @@ jobs:
           New-Item -ItemType Directory -Force out | Out-Null
           Move-Item "dist/PhDF-$env:VERSION-setup.exe" out/
           Compress-Archive -Path $app -DestinationPath "out/PhDF-$env:VERSION-windows-portable.zip"
+
+      # Install it the way users do, then check the installed app: the self-test (documents,
+      # rendering, saving, the terminal), then --smoke-ui: the real window opens a PDF and only
+      # passes once a page image is on screen (a blank window or a broken bridge fails).
+      - name: Test the installed app
+        shell: pwsh
+        env:
+          PHDF_DATA_DIR: ${{ runner.temp }}/phdf-data
+        run: |
+          $dir = "$env:RUNNER_TEMP\PhDF-installed"
+          $setup = (Resolve-Path "out/PhDF-$env:VERSION-setup.exe").Path
+          $install = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=`"$dir`"" -Wait -PassThru
+          if ($install.ExitCode) { throw "The installer failed (exit $($install.ExitCode))" }
+          $test = Start-Process "$dir\PhDF.exe" -ArgumentList "--self-test" -Wait -PassThru
+          Get-Content "$env:PHDF_DATA_DIR\self-test.txt"
+          if ($test.ExitCode) { throw "The self-test failed" }
+          $pdf = "$env:PHDF_DATA_DIR\smoke.pdf"
+          $app = Start-Process "$dir\PhDF.exe" -ArgumentList "--smoke-ui", "`"$pdf`"" -PassThru
+          $null = $app.Handle # else ExitCode stays empty
+          if (-not $app.WaitForExit(120000)) { Stop-Process -Id $app.Id -Force; throw "PhDF never showed the PDF (2 min)" }
+          Get-Content "$env:PHDF_DATA_DIR\ui-ready.json" -ErrorAction SilentlyContinue
+          if ($app.ExitCode) { throw "PhDF started but did not show the PDF (exit $($app.ExitCode))" }
+          "PhDF opened and showed a PDF"
 
       - name: Upload the unsigned installer (input for signing)
         id: setup
@@ -124,12 +148,26 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Build
+      - name: Test and build
         run: |
           uv sync --locked
           npm --prefix frontend ci
+          uv run pytest
+          npm --prefix frontend test
           npm --prefix frontend run build
           uv run pyinstaller phdf.spec --noconfirm
+
+      - name: Test the app (self-test, then the window opens and shows a PDF)
+        env:
+          PHDF_DATA_DIR: ${{ runner.temp }}/phdf-data
+        run: |
+          dist/PhDF.app/Contents/MacOS/PhDF --self-test
+          # No `timeout` on macOS runners: perl's alarm stops a hung start after 2 minutes.
+          perl -e 'alarm shift; exec @ARGV' 120 dist/PhDF.app/Contents/MacOS/PhDF --smoke-ui "$PHDF_DATA_DIR/smoke.pdf"
+          echo "PhDF opened and showed a PDF"
+          # Which CPUs the app runs on, and the oldest macOS it allows (both shown in the log).
+          lipo -archs dist/PhDF.app/Contents/MacOS/PhDF
+          /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" dist/PhDF.app/Contents/Info.plist
 
       # Unsigned for now: users open it once with right-click → Open (see the release notes).
       - name: Disk image (.dmg) with an Applications shortcut
@@ -163,10 +201,12 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Build
+      - name: Test and build
         run: |
           uv sync --locked
           npm --prefix frontend ci
+          uv run pytest
+          npm --prefix frontend test
           npm --prefix frontend run build
           uv run pyinstaller phdf.spec --noconfirm
           bash packaging/linux/build_appimage.sh "$VERSION"
@@ -177,9 +217,9 @@ jobs:
           name: release-linux
           path: out/
 
-  # Does the AppImage start on other distributions? Runs it on a virtual screen with only the
-  # packages the release notes ask for; still running after 20 s counts as started. Doesn't
-  # block the release: check this job's results before publishing the draft.
+  # Does the AppImage work on other distributions? With only the packages the release notes ask
+  # for: the self-test, then --smoke-ui on a virtual screen (the window must show a PDF page).
+  # A failure here stops the release.
   linux-test:
     needs: linux
     strategy:
@@ -203,7 +243,7 @@ jobs:
         with:
           name: release-linux
       - run: ${{ matrix.setup }}
-      - name: Start PhDF
+      - name: Self-test, then open a PDF in the window
         shell: bash
         env:
           PHDF_DATA_DIR: /tmp/phdf
@@ -211,18 +251,17 @@ jobs:
         run: |
           chmod +x PhDF-*.AppImage
           Xvfb :99 & export DISPLAY=:99; sleep 2
+          ./PhDF-*.AppImage --appimage-extract-and-run --self-test || { echo "The self-test failed"; exit 1; }
           set +e
-          timeout 20 ./PhDF-*.AppImage --appimage-extract-and-run > log.txt 2>&1
+          timeout 120 ./PhDF-*.AppImage --appimage-extract-and-run --smoke-ui "$PHDF_DATA_DIR/smoke.pdf" > log.txt 2>&1
           code=$?
           cat log.txt
-          if [ $code -ne 124 ]; then echo "PhDF stopped by itself (exit $code)"; exit 1; fi
-          if grep -q Traceback log.txt; then echo "PhDF started with an error"; exit 1; fi
-          echo "PhDF started"
+          if [ $code -ne 0 ]; then echo "PhDF did not open and show the PDF (exit $code)"; exit 1; fi
+          echo "PhDF opened and showed a PDF"
 
+  # Drafted only when every build and every test above passed.
   release:
-    needs: [version, windows, macos, linux]
-    # macOS and Linux are experimental: release whatever was built.
-    if: ${{ !cancelled() && needs.windows.result == 'success' }}
+    needs: [version, windows, macos, linux, linux-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v7

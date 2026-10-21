@@ -68,3 +68,33 @@ describe("MdDoc", () => {
     expect(reads).toBe(2);
   });
 });
+
+describe("changed elsewhere", () => {
+  it("does not overwrite a newer file, then keeps mine when asked", async () => {
+    const real = py.write_text;
+    // The backend refuses when the file's time differs from the editor's.
+    py.write_text = async (path: string, text: string, expected?: number | null) => {
+      const f = disk.get(path);
+      if (expected != null && f && f.mtime !== expected) throw new Error("PHDF_CHANGED_ELSEWHERE: the note was changed elsewhere");
+      return real(path, text);
+    };
+    try {
+      disk.set("/c.md", { text: "a", mtime: 1 });
+      const doc = new MdDoc("/c.md");
+      await doc.load();
+      disk.set("/c.md", { text: "from the other window", mtime: 7 });
+      doc.edit("mine");
+      await doc.flush();
+      expect(doc.conflict).toBe(true);
+      expect(disk.get("/c.md")!.text).toBe("from the other window");
+      doc.edit("mine, more");
+      await doc.flush(); // still waiting for the choice: nothing written
+      expect(disk.get("/c.md")!.text).toBe("from the other window");
+      await (doc as unknown as { overwrite: () => Promise<void> }).overwrite();
+      expect(disk.get("/c.md")!.text).toBe("mine, more");
+      expect(doc.conflict).toBe(false);
+    } finally {
+      py.write_text = real;
+    }
+  });
+});

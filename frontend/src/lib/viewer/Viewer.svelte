@@ -24,7 +24,7 @@
   import type { Point } from "../api";
   import PageView from "./PageView.svelte";
   import { joinParts, mergeLines } from "./rects";
-  import { noteScroll, read, rowStart, RULER_SIZES } from "../reading.svelte";
+  import { noteScroll, onScreen, read, rowStart, RULER_SIZES } from "../reading.svelte";
   import { isMac } from "../platform";
 
   interface Props {
@@ -85,7 +85,7 @@
     for (const r of rows) {
       let x = (width - rowPx(r)) / 2;
       let h = 0;
-      for (const p of r) {
+      for (const p of onScreen(r, tab.rtl)) {
         tops[p] = y;
         lefts[p] = x;
         x += sizes[p][0] * cssScale + SPREAD_GAP;
@@ -112,7 +112,10 @@
   const liveRange = $derived.by(() => {
     const lo = scrollTop - viewHeight * 0.5;
     const hi = scrollTop + viewHeight * 1.5;
-    return [pageAt(lo), pageAt(hi)] as const;
+    // Whole rows: pageAt gives a row's first page, and the page beside it must be live too.
+    const last = pageAt(hi);
+    const row = rows.find((r) => r.includes(last));
+    return [rowStart(pageAt(lo), read.pages), row ? row[row.length - 1] : last] as const;
   });
 
   // Only pages around the viewport exist in the DOM at all (a book can have thousands).

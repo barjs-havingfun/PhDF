@@ -2,16 +2,20 @@
   // Read Mode pull-down: reading ruler, zen, full screen, page tint — each on its own.
   import { kbd } from "../platform";
   import Icon from "../Icon.svelte";
-  import { api } from "../api";
+  import { api, type FitMode } from "../api";
+  import type { Tab } from "../tab.svelte";
   import { read, RULER_SIZES, saveReadSettings, TINTS, type PageLayout, type RulerSize, type Tint } from "../reading.svelte";
 
   interface Props {
+    /** The focused PDF tab: a comic shows its page order and fit here. */
+    active: Tab | null;
+    onsetfit: (mode: FitMode) => void;
     onclose: () => void;
     onzen: () => void;
     onfullscreen: () => void;
   }
 
-  let { onclose, onzen, onfullscreen }: Props = $props();
+  let { active, onsetfit, onclose, onzen, onfullscreen }: Props = $props();
 
   function toggleRuler() {
     read.ruler = !read.ruler;
@@ -26,6 +30,11 @@
 
   function setTint(tint: Tint) {
     read.tint = tint;
+    saveReadSettings();
+  }
+
+  function toggleSpoiler() {
+    read.spoiler = !read.spoiler;
     saveReadSettings();
   }
 
@@ -86,6 +95,14 @@
     </span>
   </button>
 
+  <button class="item" role="menuitemcheckbox" aria-checked={read.spoiler} onclick={toggleSpoiler}>
+    <span class="check">{read.spoiler ? "✓" : ""}</span>
+    <span class="text">
+      Hide the next page
+      <small>In book view, the page you read second stays blurred until you click it or press next</small>
+    </span>
+  </button>
+
   <div class="label">Pages</div>
   <div class="layouts">
     {#each [["single", "Single"], ["spread", "Two pages"], ["cover", "Cover alone"]] as [key, label]}
@@ -98,6 +115,20 @@
       </button>
     {/each}
   </div>
+
+  {#if active?.isComic}
+    <div class="label">Comic</div>
+    <div class="sub row">
+      <span class="what">Page order</span>
+      <button class="chip" class:on={!active.rtl} onclick={() => active.setRtl(false)}>Left to right</button>
+      <button class="chip" class:on={active.rtl} onclick={() => active.setRtl(true)}>Right to left</button>
+    </div>
+    <div class="sub row">
+      <span class="what">Fit</span>
+      <button class="chip" class:on={active.fit === "page"} onclick={() => onsetfit("page")}>Page</button>
+      <button class="chip" class:on={active.fit === "width"} onclick={() => onsetfit("width")}>Width</button>
+    </div>
+  {/if}
 
   <div class="label">E-book text size</div>
   <div class="sub">
@@ -217,6 +248,15 @@
     display: flex;
     gap: 4px;
     padding: 2px 8px 6px 28px;
+  }
+
+  .row {
+    align-items: center;
+  }
+
+  .what {
+    min-width: 72px;
+    font-size: 12px;
   }
 
   .book-btn {

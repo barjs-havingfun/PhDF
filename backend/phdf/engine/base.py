@@ -19,6 +19,7 @@ class DocumentInfo:
     author: str | None = None
     is_encrypted: bool = False
     reflowable: bool = False  # an e-book (EPUB…): laid out into pages; no annotations in the file
+    kind: str = "pdf"  # "pdf", "ebook" (EPUB…) or "comic" (CBZ: one image per page)
 
 
 @dataclass(frozen=True)
@@ -95,8 +96,17 @@ class PdfDocument(ABC):
     def page_size(self, page: int) -> tuple[float, float]:
         """Page (width, height) in PDF points, rotation applied."""
 
-    def page_sizes(self) -> list[tuple[float, float]]:
+    def page_sizes(self, quick: bool = False) -> list[tuple[float, float]]:
+        """quick: may guess sizes that take long to read (see `sizes_known`)."""
         return [self.page_size(i) for i in range(self.info().page_count)]
+
+    def sizes_known(self) -> bool:
+        """False while `page_sizes(quick=True)` would guess."""
+        return True
+
+    def remember_sizes(self, sizes: list[tuple[float, float]]) -> None:
+        """Sizes measured page by page outside `page_sizes` (see `sizes_known`)."""
+        return None
 
     def page_image(self, page: int, scale: float, fmt: str = "png") -> bytes:
         """A whole page as an image file ("png" or "jpg"), for saving."""
