@@ -17,6 +17,8 @@ Markdown editor, a notes vault (Obsidian or any folder of notes), OCR, and a ter
   notes (an Obsidian vault, a Logseq graph or a plain folder). *Open* after sending opens the
   note in Obsidian when the folder is an Obsidian vault, else in your Markdown app. Your
   chosen folder carries over.
+- Linux: the app works again. Its window opened, but start-up stopped at the first call to
+  the backend, so nothing loaded.
 - macOS and Linux: the interface size (Settings → Appearance) works; it changed nothing there.
 - macOS: Print opens the system print panel with your page range and unsaved marks (Open in
   Preview is still there as a fallback).

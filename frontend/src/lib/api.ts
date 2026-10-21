@@ -355,11 +355,22 @@ declare global {
 
 let ready: Promise<PyApi> | null = null;
 
-/** Resolves once pywebview has injected the API. Never resolves in a plain browser. */
+/** Resolves once pywebview has injected the API. Never resolves in a plain browser.
+ *  pywebview creates `window.pywebview.api` first and adds its functions afterwards (on Linux a
+ *  moment later), then fires "pywebviewready": wait for the functions, not just the object. */
 export function api(): Promise<PyApi> {
   ready ??= new Promise((resolve) => {
-    if (window.pywebview?.api) resolve(window.pywebview.api);
-    else window.addEventListener("pywebviewready", () => resolve(window.pywebview!.api), { once: true });
+    const filled = () => typeof window.pywebview?.api?.app_info === "function";
+    if (filled()) return resolve(window.pywebview!.api);
+    let poll: ReturnType<typeof setInterval> | undefined;
+    const check = () => {
+      if (!filled()) return;
+      clearInterval(poll);
+      window.removeEventListener("pywebviewready", check);
+      resolve(window.pywebview!.api);
+    };
+    window.addEventListener("pywebviewready", check);
+    poll = setInterval(check, 50); // the event may have come before this listener
   });
   return ready;
 }
