@@ -4,6 +4,7 @@ Set PHDF_DEV=1 to load the Vite dev server (http://localhost:5173) with devtools
 Variables can also come from a `.env` file in the project root (see `.env.example`).
 """
 
+import contextlib
 import json
 import mimetypes
 import os
@@ -12,6 +13,7 @@ import sys
 import tempfile
 import threading
 from pathlib import Path
+from typing import Any
 
 import webview
 
@@ -187,6 +189,54 @@ def per_monitor_dpi() -> None:
         ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # PMv2
 
 
+def linux_webkit() -> None:
+    """WebKitGTK 2.42+ draws through DMA-BUF buffers, which give a blank, white window with
+    some NVIDIA drivers, in virtual machines and on virtual screens. The older shared-memory path
+    works everywhere; a user's own setting wins."""
+    if sys.platform.startswith("linux"):
+        os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+
+
+# --smoke-ui: what the page shows when it never reports (read through the native web view, which
+# works even when PhDF's own bridge or scripts don't).
+SMOKE_LIMIT = 90  # seconds; the release workflow stops PhDF at 120
+SMOKE_PROBE = """JSON.stringify({
+  readyState: document.readyState,
+  bridge: !!(window.pywebview && window.pywebview.api),
+  appRendered: !!(document.getElementById("app") && document.getElementById("app").children.length),
+  images: Array.from(document.images).slice(0, 6).map((i) =>
+    i.complete && i.naturalWidth ? "ok" : "not loaded: " + i.src.slice(0, 90)),
+  errors: (window.__phdfErrors || ["(no error list: index.html didn't run)"]).slice(0, 12),
+  agent: navigator.userAgent,
+})"""
+
+
+def smoke_watchdog(core: Core) -> None:
+    """--smoke-ui: if the page hasn't reported after SMOKE_LIMIT, ask it what it shows, write
+    that to ui-ready.json and the log, and quit with exit code 2."""
+    if core.smoke_done.wait(SMOKE_LIMIT):
+        return
+    seen: list[Any] = ["the web view did not answer"]
+
+    def probe() -> None:
+        api = next(iter(core.windows.values()), None)
+        if api is not None and api._window is not None:
+            seen[0] = api._window.evaluate_js(SMOKE_PROBE)
+
+    asking = threading.Thread(target=probe, daemon=True)
+    asking.start()
+    asking.join(15)
+    report = {
+        "ok": False,
+        "stalled": f"no report from the page after {SMOKE_LIMIT} s",
+        "page": seen[0],
+    }
+    with contextlib.suppress(OSError):
+        (data_dir() / "ui-ready.json").write_text(json.dumps(report), "utf-8")
+    print(f"smoke-ui: {report}", flush=True)
+    os._exit(2)
+
+
 def system_typelibs() -> None:
     """Linux app build: PyInstaller points GObject at its own typelibs only, and those lack
     WebKit2. The app uses the distro's GLib / GTK / WebKit (phdf.spec leaves them out), so the
@@ -227,6 +277,7 @@ def system_typelibs() -> None:
 
 def main() -> None:
     system_typelibs()
+    linux_webkit()
     if "--self-test" in sys.argv:  # release CI: check the built app, no window
         from phdf import selftest
 
@@ -262,6 +313,9 @@ def main() -> None:
     # Release CI: start for real, open the file given, wait for the page to show it (ui_ready).
     core.smoke = "--smoke-ui" in sys.argv
     (data_dir() / "ui-ready.json").unlink(missing_ok=True)
+    if core.smoke:
+        core.smoke_note(f"started; files: {core.startup_paths}")
+        threading.Thread(target=smoke_watchdog, args=(core,), daemon=True).start()
 
     def create_window(window_id: str, x: int | None = None, y: int | None = None) -> None:
         api = Api(core, window_id)
@@ -289,6 +343,8 @@ def main() -> None:
         core.windows[window_id] = api
         # The native title bar in PhDF's colors (Windows), before the page sets it exactly.
         window.events.shown += lambda: titlebar.apply(window, titlebar.os_dark())
+        window.events.loaded += lambda: core.smoke_note(f"window {window_id}: page loaded")
+        window.events.shown += lambda: core.smoke_note(f"window {window_id}: shown")
         window.events.closing += api._on_closing
         window.events.closed += api._on_closed
         if not detached:

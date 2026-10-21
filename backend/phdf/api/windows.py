@@ -27,6 +27,7 @@ class WindowsApi(ApiBase):
     # --- app / windows ----------------------------------------------------------------------
 
     def app_info(self) -> dict[str, Any]:
+        self._core.smoke_note("the page called app_info: the bridge works")
         return {
             "name": "PhDF",
             "version": __version__,
@@ -42,6 +43,8 @@ class WindowsApi(ApiBase):
         report says what it saw). Written to `<data dir>/ui-ready.json`, then PhDF quits."""
         if not self._core.smoke:
             return
+        self._core.smoke_note(f"the page reported: {report}")
+        self._core.smoke_done.set()
         ok = bool(report.get("pageImage")) and int(report.get("tabs", 0)) >= 1
         (data_dir() / "ui-ready.json").write_text(json.dumps({**report, "ok": ok}), "utf-8")
         for api in list(self._core.windows.values()):
@@ -51,6 +54,7 @@ class WindowsApi(ApiBase):
         """Files PhDF was started with; handed to the first window that asks."""
         paths, self._core.startup_paths = self._core.startup_paths, []
         self._core.startup_taken = True
+        self._core.smoke_note(f"the page asked for the files to open: {paths}")
         return paths
 
     def pick_file(self, kind: str = "document") -> str | None:

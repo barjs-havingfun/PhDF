@@ -665,6 +665,7 @@
     const py = await api();
     const appInfo = await py.app_info();
     setRenderBaseUrl(appInfo.renderBaseUrl);
+    if (appInfo.smoke) reportReady(); // watches on its own: a later start-up step may stall
     // Each call is a round trip to the backend: ask for all the settings at once.
     await Promise.all([
       py.get_setting("invertPages", false).then((v) => (invert = v)),
@@ -755,13 +756,12 @@
     if (gradingFolder) await startGrading(gradingFolder);
     // Files PhDF was started with ("Open with", command line).
     for (const path of await py.startup_paths()) await openPath(path);
-    if (appInfo.smoke) reportReady();
   });
 
   /** Release CI (`PhDF --smoke-ui <file>`): tell the backend once a page image is really on
    *  screen, so a blank window or a broken bridge fails the check instead of passing it. */
   async function reportReady() {
-    const end = Date.now() + 40_000;
+    const end = Date.now() + 75_000; // the backend gives up at 90 s
     let shown = false;
     while (!shown && Date.now() < end) {
       const img = document.querySelector<HTMLImageElement>("img[src*='/page/']");

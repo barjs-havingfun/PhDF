@@ -268,3 +268,32 @@ def test_linux_build_prefers_the_distros_typelibs(monkeypatch):
     ]
     assert "GIO_MODULE_DIR" not in os.environ and "GTK_PATH" not in os.environ
     assert os.environ["PANGO_LIBDIR"] == "/somewhere/else"
+
+
+def test_smoke_watchdog_reports_what_a_stalled_page_shows(tmp_path, monkeypatch):
+    import json
+
+    import pytest
+
+    from phdf import app
+
+    monkeypatch.setenv("PHDF_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(app, "SMOKE_LIMIT", 0)
+
+    class Stop(Exception):
+        pass
+
+    def exit_(code):
+        raise Stop(code)
+
+    monkeypatch.setattr(app.os, "_exit", exit_)
+    core = make_core(tmp_path)
+    api = Api(core, "main")
+    api._window = FakeWindow()
+    api._window.evaluate_js = lambda script: '{"readyState": "loading", "bridge": false}'
+    core.windows["main"] = api
+    with pytest.raises(Stop) as stopped:
+        app.smoke_watchdog(core)
+    assert stopped.value.args == (2,)
+    report = json.loads((tmp_path / "ui-ready.json").read_text("utf-8"))
+    assert report["ok"] is False and '"bridge": false' in report["page"]

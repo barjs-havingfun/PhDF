@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PhDF</title>
+    <script>
+      // Errors from the very start, also a script that fails to load: the release smoke check
+      // (PhDF --smoke-ui) reads them when the page doesn't come up.
+      window.__phdfErrors = [];
+      addEventListener("error", (e) => __phdfErrors.push(String(e.message || "load error") + " @ " + (e.filename || (e.target && e.target.src) || "")), true);
+      addEventListener("unhandledrejection", (e) => __phdfErrors.push("promise: " + String(e.reason)));
+    </script>
   </head>
   <body>
     <div id="app"></div>

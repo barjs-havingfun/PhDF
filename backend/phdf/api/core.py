@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import threading
+import time
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -51,6 +52,8 @@ class Core:
         self.startup_paths: list[str] = []  # files from the command line, opened once
         self.startup_taken = False  # a page has asked for them: later files go to a window
         self.smoke = False  # `PhDF --smoke-ui <file>` (release CI): quit once the page reports
+        self.smoke_done = threading.Event()
+        self._smoke_start = time.monotonic()
         self._docs: dict[str, PdfDocument] = {}
         self._paths: dict[str, str] = {}
         self._refs: Counter[str] = Counter()
@@ -66,6 +69,11 @@ class Core:
         self.passwords: dict[str, str] = {}
 
     # All methods below expect the caller to hold `lock`, except `render` and `window_closed`.
+
+    def smoke_note(self, text: str) -> None:
+        """--smoke-ui: each start-up stage in the CI log, so a stall shows where it stopped."""
+        if self.smoke:
+            print(f"smoke-ui {time.monotonic() - self._smoke_start:5.1f} s  {text}", flush=True)
 
     def resolve(self, doc_id: str) -> str:
         while doc_id in self._aliases:

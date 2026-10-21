@@ -228,13 +228,13 @@ jobs:
         include:
           - name: Ubuntu 24.04
             image: ubuntu:24.04
-            setup: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y gir1.2-webkit2-4.1 xvfb
+            setup: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y gir1.2-webkit2-4.1 xvfb libgl1-mesa-dri libegl-mesa0
           - name: Fedora
             image: fedora:latest
-            setup: dnf install -y gtk3 webkit2gtk4.1 xorg-x11-server-Xvfb
+            setup: dnf install -y gtk3 webkit2gtk4.1 xorg-x11-server-Xvfb mesa-dri-drivers mesa-libEGL
           - name: Arch
             image: archlinux:latest
-            setup: pacman -Syu --noconfirm gtk3 webkit2gtk-4.1 xorg-server-xvfb
+            setup: pacman -Syu --noconfirm gtk3 webkit2gtk-4.1 xorg-server-xvfb mesa
     name: Start on ${{ matrix.name }}
     runs-on: ubuntu-latest
     container: ${{ matrix.image }}
@@ -248,9 +248,15 @@ jobs:
         env:
           PHDF_DATA_DIR: /tmp/phdf
           WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: "1" # containers have no user namespaces
+          # Containers have no session / accessibility bus or GPU, which a desktop always has:
+          # GTK would wait for the bus, and WebKit should draw in software.
+          NO_AT_BRIDGE: "1"
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          XDG_RUNTIME_DIR: /tmp/xdg-runtime
         run: |
           chmod +x PhDF-*.AppImage
-          Xvfb :99 & export DISPLAY=:99; sleep 2
+          mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+          Xvfb :99 -screen 0 1400x900x24 & export DISPLAY=:99; sleep 2
           ./PhDF-*.AppImage --appimage-extract-and-run --self-test || { echo "The self-test failed"; exit 1; }
           set +e
           timeout 120 ./PhDF-*.AppImage --appimage-extract-and-run --smoke-ui "$PHDF_DATA_DIR/smoke.pdf" > log.txt 2>&1
