@@ -312,13 +312,13 @@ interface PyApi {
   save_csv(name: string, text: string): Promise<string | null>;
   grading_scan(folder: string): Promise<GradingFolder>;
   grading_copy(folder: string, rel: string): Promise<string>;
-  obsidian_append(title: string, block: string): Promise<string>;
-  obsidian_write(
+  vault_append(title: string, block: string): Promise<string>;
+  vault_write(
     title: string,
     text: string,
     overwrite?: boolean,
   ): Promise<{ path: string; written: boolean; exists: boolean }>;
-  /** A note in the vault: in Obsidian if the vault is one, else the default Markdown app. */
+  /** A note in the vault, in the system's app for Markdown files. */
   open_in_vault(path: string): Promise<void>;
   md_for_pdf(pdfPath: string): Promise<{ path: string; exists: boolean; linked: boolean }>;
   pdf_for_md(mdPath: string): Promise<string | null>;

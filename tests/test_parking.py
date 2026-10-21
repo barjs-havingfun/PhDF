@@ -29,7 +29,7 @@ def test_one_list_per_document_next_to_it(tmp_path, monkeypatch):
 
     monkeypatch.setenv("PHDF_DATA_DIR", str(tmp_path / "data"))
     api = Api(Core(default_engine(), Store(tmp_path / "db.sqlite")), "main")
-    api.set_setting("obsidian.vault", str(tmp_path / "Vault"))  # not used for parking
+    api.set_setting("vault.path", str(tmp_path / "Vault"))  # not used for parking
 
     pdf = tmp_path / "Books" / "Deep Work.pdf"
     path = api.parking_add("second", "Deep Work, p. 3", str(pdf))

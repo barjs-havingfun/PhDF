@@ -23,7 +23,7 @@ Backend `backend/phdf/`
   internals `_private`) is built in `__init__.py` from one class per feature file:
   `windows` (app, dialogs, closing, theme, zoom, updates, settings, cleanup), `documents`
   (open, text, search, positions, bookmarks), `annotations` (+ save / revert), `library`
-  (reading stats, Library, About), `ocr_export`, `notes` (grading folders, Obsidian, parking,
+  (reading stats, Library, About), `ocr_export`, `notes` (grading folders, vault, parking,
   Markdown files), `ai` (terminal, equations, AI context / cache), `tools` (PhDF Tools),
   `links`. Per-window state: `base.py` `ApiBase`.
 - `engine/base.py` (interface, dataclasses) + `engine/mupdf.py` (all PyMuPDF specifics).

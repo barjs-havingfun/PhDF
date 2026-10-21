@@ -148,6 +148,16 @@ def startup_paths(argv: list[str]) -> list[str]:
     return paths
 
 
+def migrate_settings(store: Store) -> None:
+    """Settings renamed since: the vault's folder was stored under older names until 0.9.1."""
+    for old, new in (("obsidian.vault", "vault.path"), ("obsidian.folder", "vault.folder")):
+        value = store.get_setting(old)
+        if value is not None:
+            if store.get_setting(new) is None:
+                store.set_setting(new, value)
+            store.delete_setting(old)
+
+
 def saved_window_ids(store: Store) -> list[str]:
     """Windows to restore. Migrates the single-window session format of v0.1.0."""
     if (legacy := store.get_setting("session")) is not None:
@@ -296,6 +306,7 @@ def main() -> None:
         drop_stale_page_cache(index, data_dir() / "webview")
 
     store = Store(data_dir() / "phdf.db")
+    migrate_settings(store)
     if store.get_setting("window.perMonitorDpi", True):  # Settings → Appearance
         per_monitor_dpi()
     titlebar.app_id()

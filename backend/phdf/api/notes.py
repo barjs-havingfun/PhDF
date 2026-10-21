@@ -1,15 +1,13 @@
-"""Notes: grading folders, the vault (Obsidian or any folder of notes), parking lot, Markdown
-files next to PDFs."""
+"""Notes: grading folders, the vault (a folder of Markdown notes), parking lot, Markdown files
+next to PDFs."""
 
 import os
 import re
 import threading
 import uuid
-import webbrowser
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 import webview
 
@@ -49,7 +47,7 @@ class NotesApi(ApiBase):
         """Path of the marked copy of one exam (created from the original on first use)."""
         return str(grading.graded_copy(folder, rel))
 
-    # --- vault: a folder of Markdown notes (Obsidian, Logseq, any folder) -----------------------
+    # --- vault: a folder of Markdown notes the user chose -------------------------------------
 
     def pick_folder(self) -> str | None:
         window = self._window or webview.active_window()
@@ -60,14 +58,14 @@ class NotesApi(ApiBase):
 
     def _vault_note(self, title: str) -> Path:
         store = self._core.store
-        vault = store.get_setting("obsidian.vault")
+        vault = store.get_setting("vault.path")
         if not vault:
             raise ValueError("No vault chosen (Settings → Vault)")
-        folder = (store.get_setting("obsidian.folder") or "PhDF").strip(" /\\")
+        folder = (store.get_setting("vault.folder") or "PhDF").strip(" /\\")
         name = re.sub(r'[<>:"/\\|?*\x00-\x1f#^\[\]]', "-", title).strip(" .") or "Untitled"
         return Path(vault, folder, f"{name}.md") if folder else Path(vault, f"{name}.md")
 
-    def obsidian_append(self, title: str, block: str) -> str:
+    def vault_append(self, title: str, block: str) -> str:
         """Append a pin + quote to the book's note in the vault (created with a heading)."""
         path = self._vault_note(title)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -77,7 +75,7 @@ class NotesApi(ApiBase):
         self.write_text(str(path), text + block)
         return str(path)
 
-    def obsidian_write(self, title: str, text: str, overwrite: bool = False) -> dict[str, Any]:
+    def vault_write(self, title: str, text: str, overwrite: bool = False) -> dict[str, Any]:
         """Copy a note into the vault. Without `overwrite`, an existing file is left alone."""
         path = self._vault_note(title)
         if path.exists() and not overwrite:
@@ -109,13 +107,8 @@ class NotesApi(ApiBase):
         return parking.set_done(Path(self.parking_path(document)), line, text, done)
 
     def open_in_vault(self, path: str) -> None:
-        """Open a note written to the vault: in Obsidian when the vault is one (it has an
-        .obsidian folder), else with the system's app for Markdown files."""
-        vault = self._core.store.get_setting("obsidian.vault")
-        if vault and Path(vault, ".obsidian").is_dir():
-            webbrowser.open("obsidian://open?path=" + quote(path, safe=""))
-        else:
-            self.open_in_default_app(path)
+        """Open a note written to the vault with the system's app for Markdown files."""
+        self.open_in_default_app(path)
 
     # --- markdown files ---------------------------------------------------------------------
 

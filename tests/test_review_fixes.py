@@ -1,4 +1,4 @@
-"""Regression checks for CODE_REVIEW_2026-10-21.md."""
+"""Regression checks for the 2026-10-21 code review (R1-R10) and its follow-ups."""
 
 import threading
 
@@ -180,20 +180,25 @@ def test_r10_a_moved_identical_copy_can_be_relinked(tmp_path, monkeypatch, sampl
     assert api.library_relink(copy_id)["reason"] == "different"
 
 
-def test_open_in_vault_uses_obsidian_only_for_obsidian_vaults(tmp_path, monkeypatch):
-    import phdf.api.notes
-
+def test_open_in_vault_uses_the_markdown_app(tmp_path, monkeypatch):
     api = make_api(tmp_path, monkeypatch)
     opened = []
-    monkeypatch.setattr(phdf.api.notes.webbrowser, "open", lambda url: opened.append(url))
     monkeypatch.setattr(api, "open_in_default_app", lambda path: opened.append(path))
-    vault = tmp_path / "notes"
-    vault.mkdir()
-    api.set_setting("obsidian.vault", str(vault))
-    api.open_in_vault(str(vault / "a.md"))  # a plain folder: the Markdown app
-    (vault / ".obsidian").mkdir()
-    api.open_in_vault(str(vault / "a.md"))  # an Obsidian vault: Obsidian
-    assert opened[0] == str(vault / "a.md") and opened[1].startswith("obsidian://open?path=")
+    api.open_in_vault(str(tmp_path / "a.md"))
+    assert opened == [str(tmp_path / "a.md")]
+
+
+def test_vault_settings_move_to_their_new_names(tmp_path):
+    from phdf.app import migrate_settings
+    from phdf.db import Store
+
+    store = Store(tmp_path / "db.sqlite")
+    store.set_setting("obsidian.vault", "/notes")
+    store.set_setting("obsidian.folder", "Books")
+    migrate_settings(store)
+    assert store.get_setting("vault.path") == "/notes"
+    assert store.get_setting("vault.folder") == "Books"
+    assert store.get_setting("obsidian.vault") is None
 
 
 @pytest.mark.parametrize("platform", ["darwin", "linux"])

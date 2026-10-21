@@ -73,21 +73,21 @@ def test_export_markdown(api, sample_pdf):
     assert "Page 1" in md and "Page 3" in md
 
 
-def test_obsidian_notes(api, tmp_path):
+def test_vault_notes(api, tmp_path):
     with pytest.raises(ValueError):
-        api.obsidian_append("Book", "x")
+        api.vault_append("Book", "x")
     vault = tmp_path / "Vault"
-    api.set_setting("obsidian.vault", str(vault))
+    api.set_setting("vault.path", str(vault))
 
-    path = api.obsidian_append('A: "Weird"/Title?', "⎘ phdf · p.1 · #abcde\n> “quote”\n\n")
+    path = api.vault_append('A: "Weird"/Title?', "⎘ phdf · p.1 · #abcde\n> “quote”\n\n")
     assert Path(path) == vault / "PhDF" / "A- -Weird--Title-.md"
-    api.obsidian_append('A: "Weird"/Title?', "second\n")
+    api.vault_append('A: "Weird"/Title?', "second\n")
     assert Path(path).read_text(encoding="utf-8") == (
         '# A: "Weird"/Title?\n\n⎘ phdf · p.1 · #abcde\n> “quote”\n\nsecond\n'
     )
 
-    first = api.obsidian_write("Notes", "one")
+    first = api.vault_write("Notes", "one")
     assert first["written"]
-    assert api.obsidian_write("Notes", "two")["written"] is False
-    assert api.obsidian_write("Notes", "two", overwrite=True)["written"]
+    assert api.vault_write("Notes", "two")["written"] is False
+    assert api.vault_write("Notes", "two", overwrite=True)["written"]
     assert (vault / "PhDF" / "Notes.md").read_text(encoding="utf-8") == "two"

@@ -1,4 +1,4 @@
-// "Live" mode of the note editor (like Obsidian's live preview): Markdown marks are hidden and
+// "Live" mode of the note editor (a live preview): Markdown marks are hidden and
 // the text looks formatted, except on the lines being edited, which show the raw Markdown.
 import { syntaxTree } from "@codemirror/language";
 import { StateField, type EditorState, type Range } from "@codemirror/state";
@@ -100,7 +100,7 @@ function build(view: EditorView): DecorationSet {
       },
     });
 
-    // Obsidian extras the parser doesn't know: ==highlight== and %%comment%% (one line each).
+    // Extras common in note apps that the parser doesn't know: ==highlight== and %%comment%% (one line each).
     for (let pos = from; pos <= to; ) {
       const line = state.doc.lineAt(pos);
       const raw = isActive(line.from);

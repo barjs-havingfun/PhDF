@@ -644,9 +644,9 @@ export class Tab {
   }
 
   /** Send a pin + quote for an annotation to this book's note in the vault. */
-  async sendToObsidian(annot: Annotation): Promise<string> {
+  async sendToVault(annot: Annotation): Promise<string> {
     await this.loadOutline();
-    return (await api()).obsidian_append(this.title, pinBlock(annot, sectionFor(this.outline, annot.page)));
+    return (await api()).vault_append(this.title, pinBlock(annot, sectionFor(this.outline, annot.page)));
   }
 
   /** The document's text converted to Markdown (only the text: notes live in the .md note). */

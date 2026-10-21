@@ -39,8 +39,8 @@
     if (first) await tab.noteInMd(first);
   }
 
-  async function toObsidian() {
-    if (!(await (await api()).get_setting("obsidian.vault", null))) {
+  async function toVault() {
+    if (!(await (await api()).get_setting("vault.path", null))) {
       onclose();
       notify.show({ text: "Choose your vault first (Settings → Vault).", action: { label: "Settings", run: () => (ui.settingsOpen = true) } });
       return;
@@ -48,7 +48,7 @@
     const [first] = await annotate("highlight", DEFAULT_COLOR);
     if (!first) return;
     try {
-      const path = await tab.sendToObsidian(first);
+      const path = await tab.sendToVault(first);
       notify.show({
         text: `Sent to vault · ${path.split(/[\\/]/).pop()}`,
         action: { label: "Open", run: async () => (await api()).open_in_vault(path) },
@@ -110,7 +110,7 @@
     </button>
     <span class="sep"></span>
     <button class="icon" title="Note in MD" onclick={noteInMd}><Icon name="mdnote" size={16} /></button>
-    <button class="icon" title="Send to Vault" onclick={toObsidian}><Icon name="vault" size={16} /></button>
+    <button class="icon" title="Send to Vault" onclick={toVault}><Icon name="vault" size={16} /></button>
     {/if}
     <button class="icon" title="Copy" onclick={copy}><Icon name="copy" size={16} /></button>
     <button class="icon" title={kbd("Copy with citation (Ctrl+Shift+C)")} onclick={copyCited}><Icon name="quote" size={16} /></button>

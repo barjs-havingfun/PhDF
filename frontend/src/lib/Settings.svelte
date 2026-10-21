@@ -49,8 +49,8 @@
 
   onMount(async () => {
     const py = await api();
-    vault = await py.get_setting("obsidian.vault", null);
-    folder = (await py.get_setting("obsidian.folder", "PhDF")) ?? "PhDF";
+    vault = await py.get_setting("vault.path", null);
+    folder = (await py.get_setting("vault.folder", "PhDF")) ?? "PhDF";
     const info = await py.ocr_info();
     installed = info.installed;
     common = info.common;
@@ -127,16 +127,16 @@
     const path = await py.pick_folder();
     if (!path) return;
     vault = path;
-    await py.set_setting("obsidian.vault", path);
+    await py.set_setting("vault.path", path);
   }
 
   async function clearVault() {
     vault = null;
-    await (await api()).set_setting("obsidian.vault", null);
+    await (await api()).set_setting("vault.path", null);
   }
 
   async function saveFolder() {
-    await (await api()).set_setting("obsidian.folder", folder.trim());
+    await (await api()).set_setting("vault.folder", folder.trim());
   }
 
   async function toggle(lang: string) {
@@ -303,7 +303,7 @@
         <input bind:value={folder} onchange={saveFolder} placeholder="PhDF" spellcheck="false" />
       </div>
       <p class="hint">
-        A folder of Markdown notes: an Obsidian vault, a Logseq graph, or any folder. “Send to Vault”
+        A folder of Markdown notes, used by your notes app or just as a folder. “Send to Vault”
         adds quotes to one note per book in this folder, e.g.
         <code>{folder || "PhDF"}/Attention Is All You Need.md</code>.
       </p>

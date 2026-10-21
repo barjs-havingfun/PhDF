@@ -52,16 +52,16 @@ describe("MdDoc", () => {
     disk.set("/n.md", { text: "a", mtime: 1 });
     const doc = new MdDoc("/n.md");
     await doc.load();
-    disk.set("/n.md", { text: "from Obsidian", mtime: 5 });
+    disk.set("/n.md", { text: "from another app", mtime: 5 });
     await doc.checkExternal();
-    expect(doc.text).toBe("from Obsidian");
+    expect(doc.text).toBe("from another app");
   });
 
   it("keeps text typed while a reload was on its way", async () => {
     disk.set("/n.md", { text: "a", mtime: 1 });
     const doc = new MdDoc("/n.md");
     await doc.load();
-    disk.set("/n.md", { text: "from Obsidian", mtime: 5 });
+    disk.set("/n.md", { text: "from another app", mtime: 5 });
     onRead = () => doc.edit("typed meanwhile");
     await doc.checkExternal();
     expect(doc.text).toBe("typed meanwhile");

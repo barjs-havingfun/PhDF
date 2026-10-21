@@ -1,1 +1,1 @@
-"""Feature services (render, annotations, OCR, export, Obsidian, PTY) — added per phase."""
+"""Feature services (render, annotations, OCR, export, vault, PTY), added per phase."""

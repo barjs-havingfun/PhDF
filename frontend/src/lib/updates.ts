@@ -1,6 +1,6 @@
 // Update check: only after the user said yes (asked once, or Settings → General), PhDF asks
 // GitHub for the latest release at start and shows a note when there is a newer one. Nothing
-// else is sent (CODE_SIGNING_POLICY.md: no network use the user didn't ask for).
+// else is sent (no network use the user didn't ask for).
 import { api } from "./api";
 import { notify } from "./notify.svelte";
 

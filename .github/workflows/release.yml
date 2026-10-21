@@ -2,8 +2,8 @@ name: Release
 
 # Push a tag like v0.7.0 to build PhDF for Windows (installer + zip), macOS (.dmg) and Linux
 # (AppImage) and make one draft GitHub Release with all files and SHA256SUMS.txt. Check the
-# draft on GitHub, then publish it. Windows files are signed once SignPath is set up
-# (CODE_SIGNING_POLICY.md); until then everything is unsigned.
+# draft on GitHub, then publish it. Windows files are signed once SignPath is set up; until
+# then everything is unsigned.
 # A manual run (Actions → Release → Run workflow) builds everything as artifacts only.
 on:
   push:

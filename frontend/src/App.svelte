@@ -189,12 +189,12 @@
   /** Write a note into the vault; if it exists, offer to replace it. */
   async function toVault(title: string, text: string) {
     const py = await api();
-    if (!(await py.get_setting("obsidian.vault", null))) {
+    if (!(await py.get_setting("vault.path", null))) {
       notify.show({ text: "Choose your vault first (Settings → Vault).", action: { label: "Settings", run: () => (ui.settingsOpen = true) } });
       return;
     }
     const open = (path: string) => ({ label: "Open", run: () => py.open_in_vault(path) });
-    const result = await py.obsidian_write(title, text);
+    const result = await py.vault_write(title, text);
     if (result.written) notify.show({ text: `Saved to vault · ${title}.md`, action: open(result.path) });
     else
       notify.show({
@@ -202,7 +202,7 @@
         action: {
           label: "Replace",
           run: async () => {
-            const r = await py.obsidian_write(title, text, true);
+            const r = await py.vault_write(title, text, true);
             notify.show({ text: `Replaced in vault · ${title}.md`, action: open(r.path) });
           },
         },

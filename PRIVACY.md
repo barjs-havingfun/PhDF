@@ -32,7 +32,7 @@ PhDF works offline. It goes online only when you ask it to:
   Tesseract project on GitHub.
 - **Web links** you click open in a preview window or your browser, which then talks to that
   website as any browser would.
-- **Obsidian**: PhDF only copies files into the vault folder you chose; nothing goes online.
+- **Vault**: PhDF only copies files into the vault folder you chose; nothing goes online.
 
 ## The AI terminal
 

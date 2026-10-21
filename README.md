@@ -1,9 +1,9 @@
-<p align="center"><img src="logo.png" width="128" alt="PhDF logo"></p>
+<p align="center"><img src="packaging/icons/phdf.png" width="128" alt="PhDF logo"></p>
 
 # PhDF
 
 A lightweight, reader-first PDF app for heavy readers - with position memory, a built-in
-Markdown editor, a notes vault (Obsidian or any folder of notes), OCR, and a terminal-based AI side panel.
+Markdown editor, a notes vault, OCR, and a terminal-based AI side panel.
 
 > **Status:** v0.9.1, in active development: book view, EPUB and comics (CBZ), PhDF Tools, printing,
 > password-protected PDFs, themes and more settings. Windows is the main platform; macOS and
@@ -13,43 +13,39 @@ Markdown editor, a notes vault (Obsidian or any folder of notes), OCR, and a ter
 
 ## What's new in 0.9.1
 
-- **Vault** instead of Obsidian: send quotes, notes and exports to any folder of Markdown
-  notes (an Obsidian vault, a Logseq graph or a plain folder). *Open* after sending opens the
-  note in Obsidian when the folder is an Obsidian vault, else in your Markdown app. Your
-  chosen folder carries over.
-- Linux: the app works again. Its window opened, but start-up stopped at the first call to
-  the backend, so nothing loaded.
-- macOS and Linux: the interface size (Settings → Appearance) works; it changed nothing there.
-- macOS: Print opens the system print panel with your page range and unsaved marks (Open in
-  Preview is still there as a fallback).
-- 0.9.0 was not published; everything below comes with 0.9.1.
-
-## What's new in 0.9.0
-
+**New**
 - **Comics (CBZ)**: open `.cbz` files like any book (also from Open with). Read → *Comic* sets
   the page order (*Right to left* for manga, remembered per book) and the fit (Page or Width).
   Image → AI works on panels, e.g. to translate one.
-- **Hide the next page** (Read menu): in book view, the page you read second is blurred so
-  it doesn't spoil anything. Click it to show it; the next-page button (or →) first shows it,
-  and the next press turns the page.
 - **Book view controls** (Read like a book) at the bottom right: previous / next buttons with a
-  zoom slider above them (drag up to zoom in, double-click to fit); they turn faint while the
-  mouse rests; once zoomed, a **Reset** button pops up above them. Ctrl+wheel and Ctrl+= /
-  Ctrl+- / Ctrl+0 zoom too, and dragging with the right mouse button moves around a zoomed page.
-- Comics open and turn pages much faster (a 526 MB volume: first screen in 0.1 s instead of
-  1-2 s): pages are shown from their original pictures and sizes are measured in the background.
-- Book view loads the next and previous pages ahead, so turning is immediate; the Library's
-  covers and the start-up settings load several at once.
+  zoom slider above them (drag up to zoom in); once zoomed, a **Reset** button pops up. Ctrl+wheel
+  and Ctrl+= / Ctrl+- / Ctrl+0 zoom too, and dragging with the right mouse button moves around a
+  zoomed page. They turn faint while the mouse rests.
+- **Hide the next page** (Read menu): in book view, the page you read second is blurred so it
+  doesn't spoil anything. Click it to show it; the next-page button (or →) first shows it, and
+  the next press turns the page.
+- **Vault**: send quotes, notes and exports to a folder of Markdown notes of your choice (⋯ →
+  Settings → Vault). *Open* after sending opens the note in your Markdown app.
 - **Home button** (the house left of Read): back to the start screen and its Library from
   anywhere.
 - **Library**: every cover is tagged PDF, EPUB or MNG, and *All / PDF / EPUB / MNG* shows only
   that kind.
 - The version number sits in the middle of the note's bottom bar.
-- Every release is now tested before it is published: the installed Windows app, the macOS app,
-  and the Linux AppImage on Ubuntu, Fedora and Arch each run a self-test (`PhDF --self-test`:
-  opening, drawing and saving documents, the AI terminal) and a start test.
+
+**Faster**
+- Comics open and turn pages much faster (a 526 MB volume: first screen in 0.1 s instead of
+  1-2 s): pages are shown from their original pictures and sizes are measured in the background.
+- Book view loads the next and previous pages ahead, so turning is immediate.
+- The Library's covers and the start-up settings load several at once; covers are 5x smaller.
+- OCR and Markdown conversion run in a separate process, so pages keep drawing meanwhile.
+- Printing prepares a few pages at a time instead of all of them at once.
 
 **Fixes**
+- Linux: the app works again. Its window opened, but start-up stopped at the first call to the
+  backend, so nothing loaded.
+- macOS and Linux: the interface size (Settings → Appearance) works; it changed nothing there.
+- macOS: Print opens the system print panel with your page range and unsaved marks (Open in
+  Preview is still there as a fallback).
 - Moving a drawing or editing a text box could change its id, breaking undo and its pins.
 - Password-protected PDFs: Revert works, and annotations can always be read.
 - A note open in two places, or changed in another app meanwhile, is never silently
@@ -57,6 +53,11 @@ Markdown editor, a notes vault (Obsidian or any folder of notes), OCR, and a ter
 - The AI no longer reads OCR text you discarded, or old pages after an e-book text-size change.
 - PhDF Tools keeps links between extracted pages; two-page view shows the last right-hand page;
   book view leaves typing alone and follows links.
+
+**Tested before every release**: the installed Windows app, the macOS app and the Linux
+AppImage on Ubuntu, Fedora and Arch each run a self-test (`PhDF --self-test`: documents,
+saving, the AI terminal, worker processes) and open a PDF in the real window
+(`PhDF --smoke-ui`), which must show the page.
 
 ## What's new in 0.8.1
 
@@ -142,7 +143,7 @@ and the document will take at your reading pace (fast scrolling doesn't count). 
 
 **OCR, export & vault:** scanned pages show a *Recognize Text* bar (language files are
 downloaded on first use - no Tesseract install needed). Your *vault* is any folder of Markdown
-notes: an Obsidian vault, a Logseq graph or a plain folder (set it in ⋯ → Settings → Vault). The
+notes of your choice (set it in ⋯ → Settings → Vault). The
 ⋯ menu exports the document as Markdown (to a file or your vault) and copies notes to the vault;
 *Send to Vault* in the selection menu adds the quote to the book's note there.
 
@@ -245,5 +246,4 @@ PhDF is built on open-source software, listed with their licenses in
 does and doesn't do with your data: [PRIVACY.md](PRIVACY.md).
 
 Windows release signing (starting once SignPath approves the project): free code signing provided by [SignPath.io](https://about.signpath.io),
-certificate by [SignPath Foundation](https://signpath.org); see
-[CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md).
+certificate by [SignPath Foundation](https://signpath.org).

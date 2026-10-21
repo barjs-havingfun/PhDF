@@ -28,7 +28,7 @@ function withMath(text: string, slots: string[]): string {
   };
   return outsideCode(text, (part) =>
     part
-      .replace(/%%[\s\S]*?%%/g, "") // Obsidian comments: not shown
+      .replace(/%%[\s\S]*?%%/g, "") // %% comments %%: not shown
       .replace(/==(?=\S)([^=\n]+?)(?<=\S)==/g, (_, s) => slot(`<mark>${escape(s)}</mark>`, false))
       .replace(/\$\$([\s\S]+?)\$\$/g, (_, src) => slot(tex(src.trim(), true), true))
       .replace(/(^|[^\\$\w])\$(?=\S)([^$\n]+?)(?<=\S)\$(?!\d)/g, (_, pre, src) => pre + slot(tex(src, false), false)),
